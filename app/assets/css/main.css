@@ -1,0 +1,58 @@
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --border: #e2e2dd;
+  --text: #1c1c1a;
+  --text-muted: #77776f;
+  --accent: #2f6f4e;
+  --accent-text: #ffffff;
+  --danger: #a8332a;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 12px rgb(0 0 0 / 4%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614;
+    --surface: #21201d;
+    --border: #34332e;
+    --text: #ececE6;
+    --text-muted: #98978d;
+    --accent: #5aa47c;
+    --accent-text: #10231a;
+    --danger: #e0796f;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 12px rgb(0 0 0 / 20%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* iOS でフォーカス時に自動ズームされないよう 16px 以上を維持する */
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP',
+    'Segoe UI', sans-serif;
+  line-height: 1.6;
+  /* iOS のセーフエリアを避ける */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+textarea {
+  font: inherit;
+}

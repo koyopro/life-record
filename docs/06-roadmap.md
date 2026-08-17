@@ -54,15 +54,15 @@ Item.status  = inbox
 
 ### スコープ
 
-- [ ] メモ投稿 API（`POST /api/items` — title + 任意の body で Item + Section を作成）
-- [ ] Inbox 一覧 API（`GET /api/items?status=inbox`）
-- [ ] スマートフォン向けの入力画面
-  - [ ] 開いた直後に入力欄へフォーカスが当たる
-  - [ ] 1行目をタイトル、2行目以降を本文として扱う
-  - [ ] 送信後は即座に入力欄が空になり、続けて書ける
-  - [ ] 楽観的UI更新（送信完了を待たずに一覧へ反映）
-- [ ] Inbox 一覧画面（新しい順のカード表示）
-- [ ] メモの削除
+- [x] メモ投稿 API（`POST /api/memos` — Item + Section を1トランザクションで作成）
+- [x] Inbox 一覧 API（`GET /api/memos?status=inbox`）
+- [x] スマートフォン向けの入力画面
+  - [x] 開いた直後に入力欄へフォーカスが当たる（タッチ端末では自動フォーカスしない）
+  - [x] 1行目をタイトル、2行目以降を本文として扱う
+  - [x] 送信後は即座に入力欄が空になり、続けて書ける
+  - [x] 楽観的UI更新（送信完了を待たずに一覧へ反映）
+- [x] Inbox 一覧画面（新しい順のカード表示）
+- [x] メモの削除（`DELETE /api/memos/:id`）
 
 認証は Vercel の Deployment Protection に任せるため、アプリ側の実装は不要。
 

@@ -91,6 +91,9 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 
 | メソッド | パス | 内容 |
 |---|---|---|
+| GET | `/api/memos` | クイックメモ一覧（Item + 作成日の Section） |
+| POST | `/api/memos` | クイックメモ作成（Item と Section を1トランザクションで作る） |
+| DELETE | `/api/memos/:id` | クイックメモ削除（Section は CASCADE） |
 | GET | `/api/items` | Item 一覧（`status` フィルタ、`sort` でソート軸指定） |
 | POST | `/api/items` | Item 作成（SmartAdd のパースを含む） |
 | GET | `/api/items/:id` | Item 詳細（Section を含む） |
@@ -118,8 +121,11 @@ TypeScript の型がスキーマから導出でき、生成物が軽く、SQL �
 
 | 環境 | ドライバ | 理由 |
 |---|---|---|
-| 本番 (Vercel) | `@neondatabase/serverless` | HTTP 経由。サーバーレスでコネクションが枯渇しない |
-| ローカル開発 | `pg` (node-postgres) | Docker のローカル PostgreSQL に TCP 接続する |
+| 本番 (Vercel) | `drizzle-orm/neon-serverless` | WebSocket 経由。サーバーレスでコネクションが枯渇しない |
+| ローカル開発 | `drizzle-orm/node-postgres` | Docker のローカル PostgreSQL に TCP 接続する |
+
+`neon-http` ではなく `neon-serverless` を使う。**`neon-http` はトランザクションに対応しておらず**、
+Item と Section をまとめて作る処理（クイックメモの作成）が本番で失敗するため。
 
 通常の `pg` による TCP コネクションプールは Vercel Functions のライフサイクルと相性が悪いため、本番では使わない。
 `DATABASE_URL` のホスト名で判定して切り替える。

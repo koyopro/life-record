@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/pg": "^8.23.0",
     "drizzle-kit": "^0.31.10",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "vue-tsc": "^3.3.10"
   }
 }

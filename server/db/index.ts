@@ -1,16 +1,25 @@
-import { drizzle as drizzleNeon } from 'drizzle-orm/neon-http'
-import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres'
-import { neon } from '@neondatabase/serverless'
-import { Pool } from 'pg'
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless'
+import {
+  drizzle as drizzlePg,
+  type NodePgDatabase,
+} from 'drizzle-orm/node-postgres'
+import { Pool as NeonPool } from '@neondatabase/serverless'
+import { Pool as PgPool } from 'pg'
 import * as schema from './schema'
 
 /**
  * 環境によってドライバを使い分ける（docs/04-architecture.md 4.4）。
  *
- * - 本番 (Vercel + Neon): HTTP 経由。サーバーレスでコネクションが枯渇しない
- * - ローカル開発:          通常の TCP コネクションプール
+ * - 本番 (Vercel + Neon): neon-serverless。WebSocket 経由で、
+ *   サーバーレスでもコネクションが枯渇しない。
+ * - ローカル開発:          node-postgres。Docker の PostgreSQL に TCP 接続する。
+ *
+ * neon-http ではなく neon-serverless を使うのは、Item と Section を
+ * まとめて作る際にトランザクションが必要なため（neon-http は非対応）。
  */
-function createDb() {
+export type Db = NodePgDatabase<typeof schema>
+
+function createDb(): Db {
   const url = process.env.DATABASE_URL
   if (!url) {
     throw new Error(
@@ -19,16 +28,19 @@ function createDb() {
   }
 
   if (url.includes('neon.tech')) {
-    return drizzleNeon(neon(url), { schema })
+    // 両ドライバはクエリAPIが同一なので、呼び出し側では同じ型として扱う
+    return drizzleNeon(new NeonPool({ connectionString: url }), {
+      schema,
+    }) as unknown as Db
   }
 
-  return drizzlePg(new Pool({ connectionString: url }), { schema })
+  return drizzlePg(new PgPool({ connectionString: url }), { schema })
 }
 
-let instance: ReturnType<typeof createDb> | undefined
+let instance: Db | undefined
 
 /** DB クライアント。初回アクセス時に接続を作る。 */
-export function useDb() {
+export function useDb(): Db {
   instance ??= createDb()
   return instance
 }
