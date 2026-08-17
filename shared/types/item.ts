@@ -1,0 +1,85 @@
+export const ITEM_STATUSES = [
+  'inbox',
+  'backlog',
+  'in_progress',
+  'closed',
+] as const
+
+export type ItemStatus = (typeof ITEM_STATUSES)[number]
+
+export const STATUS_LABELS: Record<ItemStatus, string> = {
+  inbox: 'Inbox',
+  backlog: 'Backlog',
+  in_progress: '対応中',
+  closed: '完了',
+}
+
+/** 重要度。小さいほど高い（docs/02-data-model.md 2.3）。 */
+export const PRIORITIES = [1, 2, 3] as const
+export type Priority = (typeof PRIORITIES)[number]
+
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  1: '高',
+  2: '中',
+  3: '低',
+}
+
+/** ソート軸（docs/08-todo-management.md 8.2）。 */
+export const SORT_KEYS = ['priority', 'due', 'created', 'title'] as const
+export type SortKey = (typeof SORT_KEYS)[number]
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  priority: '重要度順',
+  due: '期限日順',
+  created: '追加日順',
+  title: 'タイトル順',
+}
+
+export interface ItemDto {
+  id: string
+  title: string
+  status: ItemStatus
+  priority: Priority | null
+  /** 期限。ISO 8601。 */
+  dueAt: string | null
+  /** 期限に時刻の指定があるか。false なら日付のみの期限。 */
+  dueHasTime: boolean
+  /** 一覧カードに出す本文（先頭 Section の body）。なければ null。 */
+  body: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SectionDto {
+  id: string
+  date: string
+  body: string
+  position: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ItemDetailDto extends ItemDto {
+  sections: SectionDto[]
+}
+
+/** Item に対して変更できる項目。 */
+export interface ItemPatch {
+  title?: string
+  status?: ItemStatus
+  priority?: Priority | null
+  dueAt?: string | null
+  dueHasTime?: boolean
+}
+
+export function isItemStatus(value: unknown): value is ItemStatus {
+  return ITEM_STATUSES.includes(value as ItemStatus)
+}
+
+export function isSortKey(value: unknown): value is SortKey {
+  return SORT_KEYS.includes(value as SortKey)
+}
+
+export function isPriority(value: unknown): value is Priority {
+  return value === 1 || value === 2 || value === 3
+}

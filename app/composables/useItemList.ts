@@ -1,0 +1,350 @@
+import {
+  isSortKey,
+  type ItemDetailDto,
+  type ItemDto,
+  type ItemPatch,
+  type ItemStatus,
+  type Priority,
+  type SortKey,
+} from '~~/shared/types/item'
+
+interface Options {
+  /** 対象の status。'all' なら絞り込まない。 */
+  status: MaybeRefOrGetter<ItemStatus | 'all'>
+  /** ソート軸を localStorage に覚えるためのキー。画面ごとに分ける。 */
+  sortStorageKey: string
+  defaultSort?: SortKey
+}
+
+/**
+ * 一覧の取得・カーソル・複数選択・編集操作をまとめたもの。
+ *
+ * キーボード操作（docs/08-todo-management.md 8.3）は「選択中のタスク」に
+ * 対して働くため、カーソルと選択の状態をデータと同じ場所で持つ。
+ */
+export function useItemList(options: Options) {
+  const status = computed(() => toValue(options.status))
+  const sort = ref<SortKey>(options.defaultSort ?? 'priority')
+  const undoStack = useUndo()
+
+  const message = ref<string | null>(null)
+  const errorMessage = ref<string | null>(null)
+
+  const {
+    data,
+    pending: loading,
+    error,
+    refresh,
+  } = useFetch<ItemDto[]>('/api/items', {
+    query: { status, sort },
+    default: () => [],
+  })
+
+  const items = computed(() => data.value ?? [])
+
+  // --- カーソルと選択 -------------------------------------------------
+
+  const cursor = ref(0)
+  const selectedIds = ref<Set<string>>(new Set())
+
+  const cursorItem = computed<ItemDto | null>(
+    () => items.value[cursor.value] ?? null,
+  )
+
+  /** 操作の対象。複数選択があればそちら、なければカーソル位置。 */
+  const targets = computed<ItemDto[]>(() => {
+    if (selectedIds.value.size > 0) {
+      return items.value.filter((item) => selectedIds.value.has(item.id))
+    }
+    return cursorItem.value ? [cursorItem.value] : []
+  })
+
+  watch(items, (list) => {
+    // 件数が減ったときにカーソルが範囲外へ出ないようにする
+    if (cursor.value > list.length - 1) cursor.value = Math.max(0, list.length - 1)
+    // 一覧から消えたものは選択からも外す
+    const alive = new Set(list.map((item) => item.id))
+    const next = new Set([...selectedIds.value].filter((id) => alive.has(id)))
+    if (next.size !== selectedIds.value.size) selectedIds.value = next
+  })
+
+  function moveCursor(delta: number) {
+    if (items.value.length === 0) return
+    const next = cursor.value + delta
+    cursor.value = Math.min(Math.max(next, 0), items.value.length - 1)
+  }
+
+  function focusItem(id: string) {
+    const index = items.value.findIndex((item) => item.id === id)
+    if (index >= 0) cursor.value = index
+  }
+
+  function toggleSelect(id?: string) {
+    const targetId = id ?? cursorItem.value?.id
+    if (!targetId) return
+    const next = new Set(selectedIds.value)
+    if (next.has(targetId)) next.delete(targetId)
+    else next.add(targetId)
+    selectedIds.value = next
+  }
+
+  function clearSelection() {
+    selectedIds.value = new Set()
+  }
+
+  // --- 編集操作 -------------------------------------------------------
+
+  function describe(count: number, action: string): string {
+    return count === 1 ? action : `${count}件を${action}`
+  }
+
+  /**
+   * 対象に patch を適用し、元に戻す処理を Undo スタックへ積む。
+   *
+   * 元の値は Item ごとに異なるため、まとめて戻さず1件ずつ復元する。
+   */
+  async function applyPatch(
+    patch: ItemPatch,
+    label: string,
+    scope?: ItemDto[],
+  ) {
+    const list = scope ?? targets.value
+    if (list.length === 0) return
+
+    const keys = Object.keys(patch) as (keyof ItemPatch)[]
+    const before = list.map((item) => ({
+      id: item.id,
+      values: Object.fromEntries(
+        keys.map((key) => [key, item[key as keyof ItemDto]]),
+      ) as ItemPatch,
+    }))
+
+    try {
+      await request(async () => {
+        // 1件なら単体エンドポイント、複数なら一括エンドポイント。
+        // 三項演算子でまとめると型推論が破綻するので分岐を分ける。
+        const single = list.length === 1 ? list[0] : undefined
+        if (single) {
+          await $fetch(itemPath(single.id), { method: 'PATCH', body: patch })
+          return
+        }
+        await $fetch<ItemDto[]>('/api/items', {
+          method: 'PATCH',
+          body: { ids: list.map((item) => item.id), patch },
+        })
+      })
+    } catch {
+      return
+    }
+
+    undoStack.push({
+      label,
+      revert: async () => {
+        for (const snapshot of before) {
+          await $fetch(itemPath(snapshot.id), {
+            method: 'PATCH',
+            body: snapshot.values,
+          })
+        }
+        await refresh()
+      },
+    })
+
+    message.value = describe(list.length, label)
+    clearSelection()
+    await refresh()
+  }
+
+  async function complete() {
+    await applyPatch({ status: 'closed' }, '完了にした')
+  }
+
+  async function setStatus(status: ItemStatus) {
+    await applyPatch({ status }, `${STATUS_LABELS_JA[status]}にした`)
+  }
+
+  async function setPriority(priority: Priority | null) {
+    const label = priority ? `重要度を${priority}にした` : '重要度を外した'
+    await applyPatch({ priority }, label)
+  }
+
+  async function setDue(dueAt: Date | null, hasTime = false) {
+    await applyPatch(
+      { dueAt: dueAt?.toISOString() ?? null, dueHasTime: hasTime },
+      dueAt ? '期限を設定した' : '期限を外した',
+    )
+  }
+
+  /** 期限を1日延ばす。Item ごとに元の期限が違うので個別に計算する。 */
+  async function postpone() {
+    const list = targets.value
+    if (list.length === 0) return
+
+    const before = list.map((item) => ({
+      id: item.id,
+      values: { dueAt: item.dueAt, dueHasTime: item.dueHasTime } as ItemPatch,
+    }))
+
+    try {
+      await request(async () => {
+        for (const item of list) {
+          await $fetch(itemPath(item.id), {
+            method: 'PATCH',
+            body: {
+              dueAt: postponedDue(item).toISOString(),
+              dueHasTime: item.dueHasTime,
+            },
+          })
+        }
+      })
+    } catch {
+      return
+    }
+
+    undoStack.push({
+      label: '期限を延ばした',
+      revert: async () => {
+        for (const snapshot of before) {
+          await $fetch(itemPath(snapshot.id), {
+            method: 'PATCH',
+            body: snapshot.values,
+          })
+        }
+        await refresh()
+      },
+    })
+
+    message.value = describe(list.length, '期限を1日延ばした')
+    clearSelection()
+    await refresh()
+  }
+
+  /** 削除。スナップショットを保持し、Undo で復元できるようにする。 */
+  async function remove() {
+    const list = targets.value
+    if (list.length === 0) return
+
+    const snapshots: ItemDetailDto[] = []
+    try {
+      await request(async () => {
+        for (const item of list) {
+          snapshots.push(
+            await $fetch<ItemDetailDto>(itemPath(item.id), {
+              method: 'DELETE',
+            }),
+          )
+        }
+      })
+    } catch {
+      return
+    }
+
+    undoStack.push({
+      label: '削除した',
+      revert: async () => {
+        for (const snapshot of snapshots) {
+          await $fetch<ItemDto>('/api/items/restore', {
+            method: 'POST',
+            body: snapshot,
+          })
+        }
+        await refresh()
+      },
+    })
+
+    message.value = describe(list.length, '削除した')
+    clearSelection()
+    await refresh()
+  }
+
+  async function undo() {
+    const label = await undoStack.undo()
+    message.value = label ? `「${label}」を取り消した` : '取り消せる操作がありません'
+  }
+
+  async function create(text: string): Promise<boolean> {
+    try {
+      await request(() =>
+        $fetch<ItemDto>('/api/items', { method: 'POST', body: { text } }),
+      )
+    } catch {
+      return false
+    }
+    await refresh()
+    return true
+  }
+
+  /** 通信エラーを画面に出せる形にそろえる。 */
+  async function request(fn: () => Promise<unknown>): Promise<void> {
+    errorMessage.value = null
+    try {
+      await fn()
+    } catch (e) {
+      errorMessage.value = extractMessage(e)
+      throw e
+    }
+  }
+
+  // --- ソート ---------------------------------------------------------
+
+  onMounted(() => {
+    const stored = localStorage.getItem(options.sortStorageKey)
+    if (isSortKey(stored)) sort.value = stored
+  })
+
+  watch(sort, (value) => {
+    if (import.meta.client) localStorage.setItem(options.sortStorageKey, value)
+  })
+
+  return {
+    items,
+    loading,
+    error,
+    message,
+    errorMessage,
+    sort,
+    cursor,
+    cursorItem,
+    selectedIds,
+    targets,
+    canUndo: undoStack.canUndo,
+    moveCursor,
+    focusItem,
+    toggleSelect,
+    clearSelection,
+    complete,
+    setStatus,
+    setPriority,
+    setDue,
+    postpone,
+    remove,
+    undo,
+    create,
+    refresh,
+  }
+}
+
+/**
+ * URL を string 型として組み立てるための薄いラッパー。
+ *
+ * テンプレートリテラルをそのまま $fetch に渡すと、Nitro の型付きルート推論が
+ * 全ルートを突き合わせようとして型チェックが破綻する。
+ */
+function itemPath(id: string): string {
+  return `/api/items/${id}`
+}
+
+const STATUS_LABELS_JA: Record<ItemStatus, string> = {
+  inbox: 'Inbox',
+  backlog: 'Backlog',
+  in_progress: '対応中',
+  closed: '完了',
+}
+
+function extractMessage(e: unknown): string {
+  if (typeof e === 'object' && e !== null) {
+    const data = (e as { data?: { statusMessage?: string } }).data
+    if (data?.statusMessage) return data.statusMessage
+  }
+  return '操作に失敗しました'
+}

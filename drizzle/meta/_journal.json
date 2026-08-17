@@ -8,6 +8,13 @@
       "when": 1786995703575,
       "tag": "0000_clumsy_wraith",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787005007519,
+      "tag": "0001_closed_chat",
+      "breakpoints": true
     }
   ]
 }

@@ -91,22 +91,23 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 
 | メソッド | パス | 内容 |
 |---|---|---|
-| GET | `/api/memos` | クイックメモ一覧（Item + 作成日の Section） |
-| POST | `/api/memos` | クイックメモ作成（Item と Section を1トランザクションで作る） |
-| DELETE | `/api/memos/:id` | クイックメモ削除（Section は CASCADE） |
 | GET | `/api/items` | Item 一覧（`status` / `tag` フィルタ、`sort` でソート軸指定） |
-| POST | `/api/items` | Item 作成（SmartAdd のパースを含む） |
+| POST | `/api/items` | Item 作成。1行目を SmartAdd として解釈し、2行目以降は Section にする |
+| PATCH | `/api/items` | 複数選択した Item への一括更新 |
 | GET | `/api/items/:id` | Item 詳細（Section・タグを含む） |
 | PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / due_at / 繰り返し） |
-| POST | `/api/items/parse` | SmartAdd の入力プレビュー用パース（副作用なし） |
+| DELETE | `/api/items/:id` | Item 削除。Undo 用に削除内容を返す |
+| POST | `/api/items/restore` | 削除した Item の復元（Undo 専用） |
 | PUT | `/api/items/:id/tags` | Item のタグを設定 |
 | GET | `/api/tags` | タグ一覧（Item 件数つき） |
 | PATCH | `/api/tags/:id` | タグのリネーム |
 | DELETE | `/api/tags/:id` | タグの削除 |
-| DELETE | `/api/items/:id` | Item 削除 |
 | POST | `/api/sections` | Section 作成 |
-| PATCH | `/api/sections/:id` | Section 更新 |
+| PATCH | `/api/sections/:id` | Section 更新（本文のリアルタイム保存で呼ばれる） |
 | DELETE | `/api/sections/:id` | Section 削除 |
+
+クイックメモ専用のエンドポイントは設けない。クイックメモも SmartAdd も
+「1行目を解釈して Item を作る」処理は同じで、分けると同じロジックが二重になるため。
 | GET | `/api/diaries/:date` | 指定日の Diary 取得 |
 | PUT | `/api/diaries/:date` | Diary の upsert |
 | GET | `/api/diaries` | Diary 一覧 |

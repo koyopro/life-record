@@ -1,0 +1,1 @@
+ALTER TABLE "items" ADD COLUMN "due_has_time" boolean DEFAULT false NOT NULL;

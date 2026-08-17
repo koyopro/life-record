@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   date,
   index,
@@ -11,18 +12,15 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
+// drizzle-kit は Nuxt のエイリアスを解決しないため相対パスで参照する
+import { ITEM_STATUSES } from '../../shared/types/item'
 
 /**
  * データモデルの定義は docs/02-data-model.md を正とする。
  * このファイルはその実装であり、変更時は必ずドキュメント側も更新すること。
  */
 
-export const itemStatus = pgEnum('item_status', [
-  'inbox',
-  'backlog',
-  'in_progress',
-  'closed',
-])
+export const itemStatus = pgEnum('item_status', ITEM_STATUSES)
 
 /** TODO・タスクそのもの。本文は持たず、記録は Section 側に積み重ねる。 */
 export const items = pgTable(
@@ -35,6 +33,11 @@ export const items = pgTable(
     priority: smallint('priority'),
     /** 期限。作業日（Section.date）とは別概念。 */
     dueAt: timestamp('due_at', { withTimezone: true }),
+    /**
+     * 期限に時刻の指定があるか。
+     * false のとき due_at は当日の 23:59 を指し、UI では日付のみを表示する。
+     */
+    dueHasTime: boolean('due_has_time').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
