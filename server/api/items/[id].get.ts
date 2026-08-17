@@ -2,6 +2,7 @@ import { asc, eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
 import { assertUuid, toItemDto, toSectionDto } from '~~/server/utils/items'
+import { tagsByItemId } from '~~/server/utils/tags'
 import type { ItemDetailDto } from '~~/shared/types/item'
 
 /** Item の詳細。紐づく Section を時系列で含める。 */
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
 
   const [item] = await db.select().from(items).where(eq(items.id, id))
   if (!item) {
-    throw createError({ statusCode: 404, statusMessage: '見つかりません' })
+    throw createError({ statusCode: 404, message: '見つかりません' })
   }
 
   const rows = await db
@@ -26,8 +27,10 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
     return a.position - b.position
   })
 
+  const tagNames = await tagsByItemId(db, [id])
+
   return {
-    ...toItemDto(item, ordered[0]?.body ?? null),
+    ...toItemDto(item, ordered[0]?.body ?? null, tagNames.get(id) ?? []),
     sections: ordered.map(toSectionDto),
   }
 })

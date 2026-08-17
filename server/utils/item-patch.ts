@@ -17,7 +17,7 @@ export interface ItemUpdateValues {
  */
 export function toUpdateValues(patch: unknown): ItemUpdateValues {
   if (typeof patch !== 'object' || patch === null) {
-    throw createError({ statusCode: 400, statusMessage: '不正な内容です' })
+    throw createError({ statusCode: 400, message: '不正な内容です' })
   }
 
   const input = patch as Record<string, unknown>
@@ -28,13 +28,13 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
     if (!title) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'タイトルは空にできません',
+        message: 'タイトルは空にできません',
       })
     }
     if (title.length > TITLE_MAX_LENGTH) {
       throw createError({
         statusCode: 400,
-        statusMessage: `タイトルは ${TITLE_MAX_LENGTH} 文字までです`,
+        message: `タイトルは ${TITLE_MAX_LENGTH} 文字までです`,
       })
     }
     values.title = title
@@ -42,7 +42,7 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
 
   if ('status' in input) {
     if (!isItemStatus(input.status)) {
-      throw createError({ statusCode: 400, statusMessage: '不正な status です' })
+      throw createError({ statusCode: 400, message: '不正な status です' })
     }
     values.status = input.status
   }
@@ -55,7 +55,7 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
     } else {
       throw createError({
         statusCode: 400,
-        statusMessage: '重要度は 1〜3 か null です',
+        message: '重要度は 1〜3 か null です',
       })
     }
   }
@@ -70,12 +70,12 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
       if (Number.isNaN(date.getTime())) {
         throw createError({
           statusCode: 400,
-          statusMessage: '不正な期限です',
+          message: '不正な期限です',
         })
       }
       values.dueAt = date
     } else {
-      throw createError({ statusCode: 400, statusMessage: '不正な期限です' })
+      throw createError({ statusCode: 400, message: '不正な期限です' })
     }
   }
 
@@ -83,7 +83,7 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
     if (typeof input.dueHasTime !== 'boolean') {
       throw createError({
         statusCode: 400,
-        statusMessage: '不正な dueHasTime です',
+        message: '不正な dueHasTime です',
       })
     }
     values.dueHasTime = input.dueHasTime
@@ -93,7 +93,7 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
   if (Object.keys(values).length === 1) {
     throw createError({
       statusCode: 400,
-      statusMessage: '変更内容がありません',
+      message: '変更内容がありません',
     })
   }
 

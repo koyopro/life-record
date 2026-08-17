@@ -6,14 +6,17 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 // drizzle-kit は Nuxt のエイリアスを解決しないため相対パスで参照する
 import { ITEM_STATUSES } from '../../shared/types/item'
+import { TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
 
 /**
  * データモデルの定義は docs/02-data-model.md を正とする。
@@ -82,6 +85,40 @@ export const sections = pgTable(
   ],
 )
 
+/** Item を横断的に分類するタグ。名前は正規化済み（docs/09-tags.md）。 */
+export const tags = pgTable(
+  'tags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique('tags_name_unique').on(t.name),
+    check('tags_name_not_blank', sql`length(btrim(${t.name})) > 0`),
+    check('tags_name_length', sql`length(${t.name}) <= ${sql.raw(String(TAG_NAME_MAX_LENGTH))}`),
+  ],
+)
+
+export const itemTags = pgTable(
+  'item_tags',
+  {
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'cascade' }),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'cascade' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.itemId, t.tagId] }),
+    // タグから Item を引く経路（item_id が先頭の主キーでは効かない）
+    index('item_tags_tag_id_idx').on(t.tagId),
+  ],
+)
+
 /** カレンダーベースの1日1ページの日記。date が主キー。 */
 export const diaries = pgTable('diaries', {
   date: date('date').primaryKey(),
@@ -96,6 +133,7 @@ export const diaries = pgTable('diaries', {
 
 export const itemsRelations = relations(items, ({ many }) => ({
   sections: many(sections),
+  itemTags: many(itemTags),
 }))
 
 export const sectionsRelations = relations(sections, ({ one }) => ({
@@ -105,10 +143,27 @@ export const sectionsRelations = relations(sections, ({ one }) => ({
   }),
 }))
 
+export const tagsRelations = relations(tags, ({ many }) => ({
+  itemTags: many(itemTags),
+}))
+
+export const itemTagsRelations = relations(itemTags, ({ one }) => ({
+  item: one(items, {
+    fields: [itemTags.itemId],
+    references: [items.id],
+  }),
+  tag: one(tags, {
+    fields: [itemTags.tagId],
+    references: [tags.id],
+  }),
+}))
+
 export type Item = typeof items.$inferSelect
 export type NewItem = typeof items.$inferInsert
 export type Section = typeof sections.$inferSelect
 export type NewSection = typeof sections.$inferInsert
 export type Diary = typeof diaries.$inferSelect
 export type NewDiary = typeof diaries.$inferInsert
+export type Tag = typeof tags.$inferSelect
+export type NewTag = typeof tags.$inferInsert
 export type ItemStatus = Item['status']

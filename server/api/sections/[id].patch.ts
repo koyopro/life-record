@@ -16,12 +16,12 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
   const payload = await readBody<{ body?: unknown }>(event)
 
   if (typeof payload?.body !== 'string') {
-    throw createError({ statusCode: 400, statusMessage: '不正な本文です' })
+    throw createError({ statusCode: 400, message: '不正な本文です' })
   }
   if (payload.body.length > BODY_MAX_LENGTH) {
     throw createError({
       statusCode: 400,
-      statusMessage: `本文は ${BODY_MAX_LENGTH} 文字までです`,
+      message: `本文は ${BODY_MAX_LENGTH} 文字までです`,
     })
   }
 
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
     .returning()
 
   if (!updated) {
-    throw createError({ statusCode: 404, statusMessage: '見つかりません' })
+    throw createError({ statusCode: 404, message: '見つかりません' })
   }
 
   return toSectionDto(updated)

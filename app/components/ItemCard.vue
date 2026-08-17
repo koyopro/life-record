@@ -13,6 +13,7 @@ const emit = defineEmits<{
   complete: []
   open: []
   longpress: []
+  filterTag: [tag: string]
 }>()
 
 const due = computed(() => formatDue(props.item))
@@ -117,7 +118,10 @@ function onTouchEnd() {
         {{ item.title }}
       </button>
       <p v-if="item.body" class="card__body">{{ item.body }}</p>
-      <div v-if="item.priority || due.state !== 'none'" class="card__meta">
+      <div
+        v-if="item.priority || due.state !== 'none' || item.tags.length"
+        class="card__meta"
+      >
         <span
           v-if="item.priority"
           class="card__priority"
@@ -132,6 +136,16 @@ function onTouchEnd() {
         >
           {{ due.label }}
         </span>
+        <button
+          v-for="tag in item.tags"
+          :key="tag"
+          type="button"
+          class="card__tag"
+          :aria-label="`タグ「${tag}」で絞り込む`"
+          @click.stop="emit('filterTag', tag)"
+        >
+          #{{ tag }}
+        </button>
       </div>
     </div>
 
@@ -282,6 +296,15 @@ function onTouchEnd() {
 .card__due--today {
   color: var(--accent);
   font-weight: 600;
+}
+
+.card__tag {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .card__select {

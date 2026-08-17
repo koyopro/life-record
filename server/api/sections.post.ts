@@ -25,14 +25,14 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
   if (body.length > BODY_MAX_LENGTH) {
     throw createError({
       statusCode: 400,
-      statusMessage: `本文は ${BODY_MAX_LENGTH} 文字までです`,
+      message: `本文は ${BODY_MAX_LENGTH} 文字までです`,
     })
   }
 
   let date = toAppDate()
   if (payload?.date !== undefined) {
     if (typeof payload.date !== 'string' || !DATE_PATTERN.test(payload.date)) {
-      throw createError({ statusCode: 400, statusMessage: '不正な日付です' })
+      throw createError({ statusCode: 400, message: '不正な日付です' })
     }
     date = payload.date
   }
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
     if (!item) {
       throw createError({
         statusCode: 404,
-        statusMessage: 'Item が見つかりません',
+        message: 'Item が見つかりません',
       })
     }
 
@@ -70,7 +70,7 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
       .returning()
 
     if (!created) {
-      throw createError({ statusCode: 500, statusMessage: '作成に失敗しました' })
+      throw createError({ statusCode: 500, message: '作成に失敗しました' })
     }
 
     return toSectionDto(created)

@@ -1,7 +1,8 @@
 import { useDb } from '~~/server/db'
-import { items, sections } from '~~/server/db/schema'
+import { itemTags, items, sections } from '~~/server/db/schema'
 import { toAppDate } from '~~/server/utils/date'
 import { toItemDto } from '~~/server/utils/items'
+import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, type ItemDto, type ItemStatus } from '~~/shared/types/item'
 import { parseSmartAdd } from '~~/shared/utils/smart-add'
 import {
@@ -28,26 +29,26 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
 
   const split = payload?.text ? splitInput(payload.text) : null
   if (!split) {
-    throw createError({ statusCode: 400, statusMessage: '内容が空です' })
+    throw createError({ statusCode: 400, message: '内容が空です' })
   }
 
   const parsed = parseSmartAdd(split.titleLine)
   if (!parsed.title) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'タイトルが空です',
+      message: 'タイトルが空です',
     })
   }
   if (parsed.title.length > TITLE_MAX_LENGTH) {
     throw createError({
       statusCode: 400,
-      statusMessage: `タイトルは ${TITLE_MAX_LENGTH} 文字までです`,
+      message: `タイトルは ${TITLE_MAX_LENGTH} 文字までです`,
     })
   }
   if (split.body && split.body.length > BODY_MAX_LENGTH) {
     throw createError({
       statusCode: 400,
-      statusMessage: `本文は ${BODY_MAX_LENGTH} 文字までです`,
+      message: `本文は ${BODY_MAX_LENGTH} 文字までです`,
     })
   }
 
@@ -73,7 +74,7 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
     if (!item) {
       throw createError({
         statusCode: 500,
-        statusMessage: '作成に失敗しました',
+        message: '作成に失敗しました',
       })
     }
 
@@ -86,6 +87,13 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
       })
     }
 
-    return toItemDto(item, split.body ?? null)
+    if (parsed.tags.length > 0) {
+      const tagIds = await ensureTags(tx, parsed.tags)
+      await tx.insert(itemTags).values(
+        [...tagIds.values()].map((tagId) => ({ itemId: item.id, tagId })),
+      )
+    }
+
+    return toItemDto(item, split.body ?? null, [...parsed.tags].sort())
   })
 })

@@ -7,6 +7,7 @@ const emit = defineEmits<{
   complete: []
   priority: [value: 1 | 2 | 3 | null]
   due: []
+  tags: []
   postpone: []
   open: []
   remove: []
@@ -53,6 +54,9 @@ const emit = defineEmits<{
       </button>
       <button type="button" class="sheet__action" @click="emit('postpone')">
         期限を1日延ばす
+      </button>
+      <button type="button" class="sheet__action" @click="emit('tags')">
+        タグを変更
       </button>
       <button type="button" class="sheet__action" @click="emit('open')">
         詳細を開く

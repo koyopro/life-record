@@ -104,6 +104,22 @@ async function patch(values: Record<string, unknown>) {
 }
 
 const dueOpen = ref(false)
+const tagOpen = ref(false)
+const tagList = useTags()
+
+async function applyTags(changes: { add: string[]; remove: string[] }) {
+  tagOpen.value = false
+  actionError.value = null
+  try {
+    await $fetch('/api/items/tags', {
+      method: 'POST',
+      body: { ids: [id.value], add: changes.add, remove: changes.remove },
+    })
+    await Promise.all([refresh(), tagList.refresh()])
+  } catch {
+    actionError.value = 'タグを変更できませんでした'
+  }
+}
 
 async function applyDue(due: { date: Date; hasTime: boolean } | null) {
   dueOpen.value = false
@@ -225,6 +241,23 @@ async function removeSection(section: SectionDto) {
         </div>
 
         <div class="meta__row">
+          <span class="meta__label">タグ</span>
+          <div class="meta__values">
+            <NuxtLink
+              v-for="name in item.tags"
+              :key="name"
+              class="chip chip--link"
+              :to="{ path: '/items', query: { status: 'all', tag: name } }"
+            >
+              #{{ name }}
+            </NuxtLink>
+            <button type="button" class="chip chip--quiet" @click="tagOpen = true">
+              {{ item.tags.length ? '変更する' : '追加する' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="meta__row">
           <span class="meta__label">期限</span>
           <div class="meta__values">
             <button type="button" class="chip" @click="dueOpen = true">
@@ -287,6 +320,13 @@ async function removeSection(section: SectionDto) {
       </div>
 
       <DueDialog v-if="dueOpen" :count="1" @submit="applyDue" @close="dueOpen = false" />
+
+      <TagDialog
+        v-if="tagOpen"
+        :items="[item]"
+        @apply="applyTags"
+        @close="tagOpen = false"
+      />
     </template>
   </div>
 </template>
@@ -390,6 +430,13 @@ async function removeSection(section: SectionDto) {
 
 .chip--quiet {
   color: var(--text-muted);
+}
+
+.chip--link {
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .body {

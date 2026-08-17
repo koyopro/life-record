@@ -1,5 +1,6 @@
 import * as chrono from 'chrono-node'
 import { isPriority, type Priority } from '../types/item'
+import { normalizeTagName } from '../types/tag'
 
 /**
  * SmartAdd（docs/08-todo-management.md 8.4）。
@@ -15,6 +16,8 @@ export interface SmartAddResult {
   /** 期限に時刻の指定があったか。false なら日付のみ。 */
   dueHasTime: boolean
   priority: Priority | null
+  /** 正規化済みのタグ名。 */
+  tags: string[]
   /** 解釈できなかった記法。UI で警告として出す。 */
   warnings: string[]
 }
@@ -24,9 +27,9 @@ export interface SmartAddResult {
  *
  * 解釈せずタイトルの一部として残す。後から対応を追加しても、
  * 過去データの解釈が変わらないようにするため。
- * `#` は Milestone 4、`*` は Milestone 5 で対応する。
+ * `*` は Milestone 5 で対応する。
  */
-const RESERVED_SYMBOLS = ['#', '*', '@', '=']
+const RESERVED_SYMBOLS = ['*', '@', '=']
 
 /** 日付表現の終わりを示す記号。ここまでを chrono に渡す。 */
 const TOKEN_BOUNDARY = /[!#*@=]/
@@ -41,6 +44,11 @@ export function parseSmartAdd(
   const priorityResult = extractPriority(rest, warnings)
   rest = priorityResult.rest
 
+  // 日付の解釈より先に取り除く。`^明日 #買い物` のように
+  // 期限の後ろに続くタグを日付表現に混ぜないため。
+  const tagResult = extractTags(rest, warnings)
+  rest = tagResult.rest
+
   const dueResult = extractDue(rest, referenceDate, warnings)
   rest = dueResult.rest
 
@@ -51,8 +59,31 @@ export function parseSmartAdd(
     dueAt: dueResult.dueAt,
     dueHasTime: dueResult.dueHasTime,
     priority: priorityResult.priority,
+    tags: tagResult.tags,
     warnings,
   }
+}
+
+/**
+ * `#買い物` のようなタグ指定を取り出す（docs/09-tags.md 9.4）。
+ *
+ * RTM では `#` がリストとタグの両方に使われるが、このサービスに
+ * リストの概念はないため常にタグとして解釈する。
+ */
+function extractTags(input: string, warnings: string[]) {
+  const tags: string[] = []
+
+  const rest = input.replace(/#([^\s,#]+)/g, (token, raw: string) => {
+    const name = normalizeTagName(raw)
+    if (!name) {
+      warnings.push(`「${token}」はタグ名として使えません`)
+      return token
+    }
+    if (!tags.includes(name)) tags.push(name)
+    return ' '
+  })
+
+  return { rest, tags }
 }
 
 /**

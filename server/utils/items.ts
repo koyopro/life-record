@@ -59,7 +59,11 @@ export async function firstSectionBodies(
   return byItemId
 }
 
-export function toItemDto(item: Item, body: string | null = null): ItemDto {
+export function toItemDto(
+  item: Item,
+  body: string | null = null,
+  tags: string[] = [],
+): ItemDto {
   return {
     id: item.id,
     title: item.title,
@@ -68,9 +72,26 @@ export function toItemDto(item: Item, body: string | null = null): ItemDto {
     dueAt: item.dueAt?.toISOString() ?? null,
     dueHasTime: item.dueHasTime,
     body,
+    tags,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   }
+}
+
+/**
+ * Item 群を DTO へ変換する。本文とタグをまとめて引いてから組み立てる。
+ * 件数分の往復を避けるため、一覧系はすべてこれを通す。
+ */
+export async function toItemDtos(db: Db, rows: Item[]): Promise<ItemDto[]> {
+  const ids = rows.map((row) => row.id)
+  const [bodies, tagNames] = await Promise.all([
+    firstSectionBodies(db, ids),
+    tagsByItemId(db, ids),
+  ])
+
+  return rows.map((row) =>
+    toItemDto(row, bodies.get(row.id) ?? null, tagNames.get(row.id) ?? []),
+  )
 }
 
 export function toSectionDto(section: Section): SectionDto {
@@ -91,7 +112,7 @@ export function assertUuid(value: unknown, label = 'ID'): string {
   if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
     throw createError({
       statusCode: 400,
-      statusMessage: `不正な${label}です`,
+      message: `不正な${label}です`,
     })
   }
   return value

@@ -11,6 +11,10 @@ import {
 interface Options {
   /** 対象の status。'all' なら絞り込まない。 */
   status: MaybeRefOrGetter<ItemStatus | 'all'>
+  /** 絞り込むタグ名。undefined なら絞り込まない。 */
+  tag?: MaybeRefOrGetter<string | undefined>
+  /** タグが付いていない Item だけに絞るか。 */
+  untagged?: MaybeRefOrGetter<boolean>
   /** ソート軸を localStorage に覚えるためのキー。画面ごとに分ける。 */
   sortStorageKey: string
   defaultSort?: SortKey
@@ -24,8 +28,13 @@ interface Options {
  */
 export function useItemList(options: Options) {
   const status = computed(() => toValue(options.status))
+  const tag = computed(() => toValue(options.tag ?? undefined))
+  const untagged = computed(() =>
+    toValue(options.untagged ?? false) ? 'true' : undefined,
+  )
   const sort = ref<SortKey>(options.defaultSort ?? 'priority')
   const undoStack = useUndo()
+  const tagList = useTags()
 
   const message = ref<string | null>(null)
   const errorMessage = ref<string | null>(null)
@@ -36,7 +45,7 @@ export function useItemList(options: Options) {
     error,
     refresh,
   } = useFetch<ItemDto[]>('/api/items', {
-    query: { status, sort },
+    query: { status, sort, tag, untagged },
     default: () => [],
   })
 
@@ -254,7 +263,58 @@ export function useItemList(options: Options) {
 
     message.value = describe(list.length, '削除した')
     clearSelection()
-    await refresh()
+    // 削除で参照が0になったタグは消えるため、一覧を取り直す
+    await Promise.all([refresh(), tagList.refresh()])
+  }
+
+  /**
+   * 対象のタグを付け外しする。
+   *
+   * Undo では逆向きの付け外しを行う。タグは他の Item と共有されるため、
+   * 一括で元に戻すのではなく、変更内容の反転で戻す。
+   */
+  async function applyTags(add: string[], remove: string[]) {
+    const list = targets.value
+    if (list.length === 0) return
+    if (add.length === 0 && remove.length === 0) return
+
+    // すでに付いていた / 付いていなかったものは戻す対象から外す。
+    // 他の操作で付いたタグを Undo で誤って剥がさないようにするため。
+    const addedNow = add.filter((name) =>
+      list.some((item) => !item.tags.includes(name)),
+    )
+    const removedNow = remove.filter((name) =>
+      list.some((item) => item.tags.includes(name)),
+    )
+    const ids = list.map((item) => item.id)
+
+    try {
+      await request(() =>
+        $fetch<ItemDto[]>('/api/items/tags', {
+          method: 'POST',
+          body: { ids, add, remove },
+        }),
+      )
+    } catch {
+      return
+    }
+
+    if (addedNow.length > 0 || removedNow.length > 0) {
+      undoStack.push({
+        label: 'タグを変更した',
+        revert: async () => {
+          await $fetch<ItemDto[]>('/api/items/tags', {
+            method: 'POST',
+            body: { ids, add: removedNow, remove: addedNow },
+          })
+          await Promise.all([refresh(), tagList.refresh()])
+        },
+      })
+    }
+
+    message.value = describe(list.length, 'タグを変更した')
+    clearSelection()
+    await Promise.all([refresh(), tagList.refresh()])
   }
 
   async function undo() {
@@ -270,7 +330,7 @@ export function useItemList(options: Options) {
     } catch {
       return false
     }
-    await refresh()
+    await Promise.all([refresh(), tagList.refresh()])
     return true
   }
 
@@ -318,6 +378,7 @@ export function useItemList(options: Options) {
     setDue,
     postpone,
     remove,
+    applyTags,
     undo,
     create,
     refresh,
@@ -343,8 +404,10 @@ const STATUS_LABELS_JA: Record<ItemStatus, string> = {
 
 function extractMessage(e: unknown): string {
   if (typeof e === 'object' && e !== null) {
-    const data = (e as { data?: { statusMessage?: string } }).data
-    if (data?.statusMessage) return data.statusMessage
+    // サーバーは message で返す。statusMessage は HTTP ステータス行に載るため
+    // 日本語が壊れる（h3 も将来サニタイズすると警告している）。
+    const data = (e as { data?: { message?: string } }).data
+    if (data?.message) return data.message
   }
   return '操作に失敗しました'
 }

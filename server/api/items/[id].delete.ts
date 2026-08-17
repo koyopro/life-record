@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
 import { assertUuid, toItemDto, toSectionDto } from '~~/server/utils/items'
+import { tagsByItemId } from '~~/server/utils/tags'
 import type { ItemDetailDto } from '~~/shared/types/item'
 
 /**
@@ -20,13 +21,16 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
       .from(sections)
       .where(eq(sections.itemId, id))
 
+    // 削除前に控えておく。Undo で元のタグごと戻すため。
+    const removedTags = (await tagsByItemId(tx, [id])).get(id) ?? []
+
     const [removed] = await tx
       .delete(items)
       .where(eq(items.id, id))
       .returning()
 
     if (!removed) {
-      throw createError({ statusCode: 404, statusMessage: '見つかりません' })
+      throw createError({ statusCode: 404, message: '見つかりません' })
     }
 
     const ordered = [...removedSections].sort((a, b) => {
@@ -35,7 +39,7 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
     })
 
     return {
-      ...toItemDto(removed, ordered[0]?.body ?? null),
+      ...toItemDto(removed, ordered[0]?.body ?? null, removedTags),
       sections: ordered.map(toSectionDto),
     }
   })

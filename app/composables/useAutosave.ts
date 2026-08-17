@@ -112,8 +112,10 @@ export const SAVE_STATE_LABELS: Record<SaveState, string> = {
 
 function extractSaveError(e: unknown): string {
   if (typeof e === 'object' && e !== null) {
-    const data = (e as { data?: { statusMessage?: string } }).data
-    if (data?.statusMessage) return data.statusMessage
+    // サーバーは message で返す。statusMessage は HTTP ステータス行に載るため
+    // 日本語が壊れる（h3 も将来サニタイズすると警告している）。
+    const data = (e as { data?: { message?: string } }).data
+    if (data?.message) return data.message
   }
   return '保存に失敗しました'
 }

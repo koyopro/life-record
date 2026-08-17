@@ -2,11 +2,7 @@ import { inArray } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { items } from '~~/server/db/schema'
 import { toUpdateValues } from '~~/server/utils/item-patch'
-import {
-  assertUuid,
-  firstSectionBodies,
-  toItemDto,
-} from '~~/server/utils/items'
+import { assertUuid, toItemDtos } from '~~/server/utils/items'
 import type { ItemDto } from '~~/shared/types/item'
 
 /** 複数選択（`x`）した Item への一括操作（docs/08-todo-management.md 8.3）。 */
@@ -23,13 +19,13 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
   if (!Array.isArray(payload?.ids) || payload.ids.length === 0) {
     throw createError({
       statusCode: 400,
-      statusMessage: '対象が指定されていません',
+      message: '対象が指定されていません',
     })
   }
   if (payload.ids.length > MAX_BULK_SIZE) {
     throw createError({
       statusCode: 400,
-      statusMessage: `一度に変更できるのは ${MAX_BULK_SIZE} 件までです`,
+      message: `一度に変更できるのは ${MAX_BULK_SIZE} 件までです`,
     })
   }
 
@@ -43,10 +39,5 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
     .where(inArray(items.id, ids))
     .returning()
 
-  const bodies = await firstSectionBodies(
-    db,
-    updated.map((row) => row.id),
-  )
-
-  return updated.map((row) => toItemDto(row, bodies.get(row.id) ?? null))
+  return await toItemDtos(db, updated)
 })

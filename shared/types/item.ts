@@ -46,6 +46,8 @@ export interface ItemDto {
   dueHasTime: boolean
   /** 一覧カードに出す本文（先頭 Section の body）。なければ null。 */
   body: string | null
+  /** 付いているタグ名。正規化済み・名前順。 */
+  tags: string[]
   createdAt: string
   updatedAt: string
 }

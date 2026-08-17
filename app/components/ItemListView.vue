@@ -12,17 +12,27 @@ const props = defineProps<{
   storageKey: string
   /** 並べ替えを操作させるか。Inbox は追加順で十分なので隠す。 */
   showSort?: boolean
+  /** 絞り込むタグ名。 */
+  tag?: string
+  /** タグが付いていない Item だけに絞るか。 */
+  untagged?: boolean
   emptyMessage: string
 }>()
 
+const emit = defineEmits<{ filterTag: [tag: string] }>()
+
 const list = useItemList({
   status: () => props.status,
+  tag: () => props.tag,
+  untagged: () => Boolean(props.untagged),
   sortStorageKey: props.storageKey,
   defaultSort: props.status === 'inbox' ? 'created' : 'priority',
 })
 
 const helpOpen = ref(false)
 const dueOpen = ref(false)
+const tagOpen = ref(false)
+const tagFocusRemoval = ref(false)
 const actionTarget = ref<ItemDto | null>(null)
 
 function open(item: ItemDto) {
@@ -108,6 +118,20 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.setPriority(null),
   },
   {
+    keys: ['t'],
+    label: 'タグを追加',
+    group: '編集',
+    run: () => openTags(false),
+  },
+  {
+    keys: ['T'],
+    display: 't',
+    shift: true,
+    label: 'タグを外す',
+    group: '編集',
+    run: () => openTags(true),
+  },
+  {
     keys: ['Delete', 'Backspace'],
     display: 'Delete',
     label: '削除',
@@ -137,9 +161,10 @@ const shortcuts = computed<Shortcut[]>(() => [
     group: 'その他',
     allowInInput: true,
     run: () => {
-      if (helpOpen.value || dueOpen.value || actionTarget.value) {
+      if (helpOpen.value || dueOpen.value || tagOpen.value || actionTarget.value) {
         helpOpen.value = false
         dueOpen.value = false
+        tagOpen.value = false
         actionTarget.value = null
         return
       }
@@ -164,6 +189,17 @@ async function toggleComplete(item: ItemDto) {
 async function applyDue(due: { date: Date; hasTime: boolean } | null) {
   dueOpen.value = false
   await list.setDue(due?.date ?? null, due?.hasTime ?? false)
+}
+
+function openTags(focusRemoval: boolean) {
+  if (list.targets.value.length === 0) return
+  tagFocusRemoval.value = focusRemoval
+  tagOpen.value = true
+}
+
+async function applyTags(changes: { add: string[]; remove: string[] }) {
+  tagOpen.value = false
+  await list.applyTags(changes.add, changes.remove)
 }
 
 async function fromSheet(action: () => Promise<void>) {
@@ -238,6 +274,7 @@ defineExpose({ create: list.create, refresh: list.refresh })
           @complete="toggleComplete(item)"
           @open="open(item)"
           @longpress="actionTarget = item"
+          @filter-tag="(tag) => emit('filterTag', tag)"
         />
       </li>
     </ul>
@@ -251,6 +288,14 @@ defineExpose({ create: list.create, refresh: list.refresh })
       @close="dueOpen = false"
     />
 
+    <TagDialog
+      v-if="tagOpen"
+      :items="list.targets.value"
+      :focus-removal="tagFocusRemoval"
+      @apply="applyTags"
+      @close="tagOpen = false"
+    />
+
     <ItemActionSheet
       v-if="actionTarget"
       :item="actionTarget"
@@ -258,6 +303,14 @@ defineExpose({ create: list.create, refresh: list.refresh })
       @complete="fromSheet(() => toggleComplete(actionTarget!))"
       @priority="(value) => fromSheet(() => list.setPriority(value))"
       @postpone="fromSheet(() => list.postpone())"
+      @tags="
+        () => {
+          actionTarget && list.focusItem(actionTarget.id)
+          actionTarget = null
+          list.clearSelection()
+          openTags(false)
+        }
+      "
       @due="
         () => {
           actionTarget && list.focusItem(actionTarget.id)

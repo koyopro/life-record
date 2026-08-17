@@ -15,6 +15,13 @@
       "when": 1787005007519,
       "tag": "0001_closed_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787006944506,
+      "tag": "0002_same_echo",
+      "breakpoints": true
     }
   ]
 }
