@@ -192,7 +192,7 @@ Milestone 2 のクイックメモ入力欄でも SmartAdd を有効にする。
 
 [06-roadmap.md](06-roadmap.md) Milestone 3 として実装する。
 
-- [ ] `items.priority` の追加（マイグレーション）
+- [x] `items.priority` をスキーマに定義（初期マイグレーションに含めた）
 - [ ] 重要度順ソート（既定）
 - [ ] 期限日順ソート
 - [ ] ソート軸の切り替えUIと状態の永続化

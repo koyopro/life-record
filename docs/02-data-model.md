@@ -80,7 +80,7 @@ Remember The Milk に倣い、**値が小さいほど重要度が高い**。
 一覧の既定のソートは「重要度順 → 期限日順」とし、NULL は末尾に置く。
 詳細は [08-todo-management.md](08-todo-management.md) を参照。
 
-このカラムは Milestone 3 で追加する。Milestone 2（クイックメモ）の時点では存在しない。
+カラム自体は初期スキーマに含める（マイグレーションを分けない）。実際に使い始めるのは Milestone 3。
 
 ### type カラムについて
 

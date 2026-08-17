@@ -1,0 +1,23 @@
+# 開発用 PostgreSQL。本番は Neon を使う。
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: datalake-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: datalake
+      POSTGRES_PASSWORD: datalake
+      POSTGRES_DB: datalake
+      TZ: Asia/Tokyo
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datalake -d datalake"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:
