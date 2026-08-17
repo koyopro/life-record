@@ -27,7 +27,13 @@ const props = defineProps<{
   emptyMessage: string
 }>()
 
-const emit = defineEmits<{ filterTag: [tag: string] }>()
+const emit = defineEmits<{
+  filterTag: [tag: string]
+  /** カーソルが指す Item が変わった。分割表示で右ペインを追従させる。 */
+  select: [item: ItemDto | null]
+  /** 詳細を開こうとした。分割表示なら親が遷移せずに扱う。 */
+  open: [item: ItemDto]
+}>()
 
 const list = useItemList({
   status: () => props.status,
@@ -47,9 +53,23 @@ const tagFocusRemoval = ref(false)
 const recurrenceOpen = ref(false)
 const actionTarget = ref<ItemDto | null>(null)
 
+/**
+ * 詳細を開く。分割表示かどうかは親が決めるので、ここでは通知だけする。
+ *
+ * カーソルも合わせる。合わせないと、分割表示で右ペインに出したものと
+ * キーボード操作の対象がずれる。
+ */
 function open(item: ItemDto) {
-  navigateTo(`/items/${item.id}`)
+  list.focusItem(item.id)
+  emit('open', item)
 }
+
+// カーソルの移動を親へ伝える。右ペインをカーソルに追従させるため。
+watch(
+  () => list.cursorItem.value,
+  (item) => emit('select', item),
+  { immediate: true },
+)
 
 /**
  * ショートカット定義（docs/08-todo-management.md 8.4）。
@@ -253,7 +273,11 @@ async function fromSheet(action: () => Promise<void>) {
   await action()
 }
 
-defineExpose({ create: list.create, refresh: list.refresh })
+defineExpose({
+  create: list.create,
+  refresh: list.refresh,
+  focusItem: list.focusItem,
+})
 </script>
 
 <template>
@@ -310,7 +334,7 @@ defineExpose({ create: list.create, refresh: list.refresh })
           :item="item"
           :focused="index === list.cursor.value"
           :selected="list.selectedIds.value.has(item.id)"
-          @focus="list.cursor.value = index"
+          @focus="list.focusItem(item.id)"
           @select="list.toggleSelect(item.id)"
           @complete="toggleComplete(item)"
           @open="open(item)"

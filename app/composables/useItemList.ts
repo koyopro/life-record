@@ -64,8 +64,20 @@ export function useItemList(options: Options) {
 
   // --- カーソルと選択 -------------------------------------------------
 
-  const cursor = ref(0)
+  /**
+   * カーソルが指している Item の id。
+   *
+   * 位置（index）ではなく id で持つ。重要度を変えるなどして並び順が
+   * 変わったとき、位置で持っていると同じ位置が別の Item を指してしまう。
+   */
+  const focusedId = ref<string | null>(null)
   const selectedIds = ref<Set<string>>(new Set())
+
+  /** 表示上のカーソル位置。focusedId から導く。 */
+  const cursor = computed(() => {
+    const index = items.value.findIndex((item) => item.id === focusedId.value)
+    return index >= 0 ? index : 0
+  })
 
   const cursorItem = computed<ItemDto | null>(
     () => items.value[cursor.value] ?? null,
@@ -79,24 +91,33 @@ export function useItemList(options: Options) {
     return cursorItem.value ? [cursorItem.value] : []
   })
 
-  watch(items, (list) => {
-    // 件数が減ったときにカーソルが範囲外へ出ないようにする
-    if (cursor.value > list.length - 1) cursor.value = Math.max(0, list.length - 1)
-    // 一覧から消えたものは選択からも外す
-    const alive = new Set(list.map((item) => item.id))
-    const next = new Set([...selectedIds.value].filter((id) => alive.has(id)))
-    if (next.size !== selectedIds.value.size) selectedIds.value = next
-  })
+  watch(
+    items,
+    (list) => {
+      // 指していた Item が一覧から消えたら、同じ位置にあるものへ移す
+      const stillThere = list.some((item) => item.id === focusedId.value)
+      if (!stillThere) {
+        const fallback = Math.min(cursor.value, Math.max(0, list.length - 1))
+        focusedId.value = list[fallback]?.id ?? null
+      }
+
+      // 一覧から消えたものは選択からも外す
+      const alive = new Set(list.map((item) => item.id))
+      const next = new Set([...selectedIds.value].filter((id) => alive.has(id)))
+      if (next.size !== selectedIds.value.size) selectedIds.value = next
+    },
+    { immediate: true },
+  )
 
   function moveCursor(delta: number) {
-    if (items.value.length === 0) return
-    const next = cursor.value + delta
-    cursor.value = Math.min(Math.max(next, 0), items.value.length - 1)
+    const list = items.value
+    if (list.length === 0) return
+    const next = Math.min(Math.max(cursor.value + delta, 0), list.length - 1)
+    focusedId.value = list[next]?.id ?? null
   }
 
   function focusItem(id: string) {
-    const index = items.value.findIndex((item) => item.id === id)
-    if (index >= 0) cursor.value = index
+    if (items.value.some((item) => item.id === id)) focusedId.value = id
   }
 
   function toggleSelect(id?: string) {
