@@ -19,7 +19,7 @@ const emit = defineEmits<{
 <template>
   <!--
     スマートフォンではキーボードショートカットが使えないため、
-    長押しから同じ操作へ到達できるようにする（docs/08-todo-management.md 8.3）。
+    長押しから同じ操作へ到達できるようにする（docs/08-todo-management.md 8.4）。
   -->
   <div class="overlay" @click.self="emit('close')">
     <div class="sheet" role="dialog" aria-modal="true" :aria-label="item.title">

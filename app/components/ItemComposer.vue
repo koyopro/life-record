@@ -31,7 +31,7 @@ const textarea = ref<HTMLTextAreaElement | null>(null)
 const canSubmit = computed(() => text.value.trim().length > 0)
 
 /**
- * 入力中のプレビュー（docs/08-todo-management.md 8.4）。
+ * 入力中のプレビュー（docs/08-todo-management.md 8.5）。
  *
  * サーバーと同じパーサを使うため、表示と保存結果が食い違わない。
  */

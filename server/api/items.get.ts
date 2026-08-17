@@ -1,6 +1,16 @@
-import { and, eq, exists, inArray, notExists, type SQL } from 'drizzle-orm'
+import {
+  and,
+  eq,
+  exists,
+  isNotNull,
+  lte,
+  ne,
+  notExists,
+  type SQL,
+} from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { itemTags, items, tags } from '~~/server/db/schema'
+import { endOfAppDay } from '~~/server/utils/date'
 import { assertUuid, orderByFor, toItemDtos } from '~~/server/utils/items'
 import {
   isItemStatus,
@@ -21,6 +31,18 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
       throw createError({ statusCode: 400, message: '不正な status です' })
     }
     conditions.push(eq(items.status, status))
+  }
+
+  // 「今日」リスト: 期限が今日の終わりまでに来ているもの。
+  // 期限なしは対象外（いつやるか決まっていないため）。
+  if (query.dueUntil === 'today') {
+    conditions.push(isNotNull(items.dueAt))
+    conditions.push(lte(items.dueAt, endOfAppDay()))
+  }
+
+  // 未完了のみ。「今日やること」の一覧に完了済みが混じると邪魔になる。
+  if (query.open === 'true') {
+    conditions.push(ne(items.status, 'closed'))
   }
 
   const db = useDb()

@@ -21,6 +21,9 @@ export function orderByFor(sort: SortKey): SQL[] {
   switch (sort) {
     case 'priority':
       return [priorityAsc, dueAsc, asc(items.createdAt)]
+    case 'priorityDueDesc':
+      // 「今日」リスト用。期限切れが下、今日が上に来る
+      return [priorityAsc, desc(items.dueAt), asc(items.createdAt)]
     case 'due':
       return [dueAsc, priorityAsc, asc(items.createdAt)]
     case 'created':

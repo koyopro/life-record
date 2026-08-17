@@ -77,7 +77,7 @@ TODO・タスクを表す。
 ### due_at と due_has_time
 
 時刻の指定がない期限は、`due_at` にその日の 23:59 を入れ、`due_has_time` を false にする。
-表示は日付のみとし、期限切れの判定も日付単位で行う（[08-todo-management.md](08-todo-management.md) 8.4）。
+表示は日付のみとし、期限切れの判定も日付単位で行う（[08-todo-management.md](08-todo-management.md) 8.5）。
 
 ### priority
 

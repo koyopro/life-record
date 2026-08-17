@@ -6,7 +6,7 @@ import { isItemStatus, isPriority, type ItemDetailDto } from '~~/shared/types/it
 
 /**
  * 削除した Item を、DELETE が返したスナップショットから復元する。
- * Undo（`u`）専用（docs/08-todo-management.md 8.3）。
+ * Undo（`u`）専用（docs/08-todo-management.md 8.4）。
  *
  * 元と同じ id で作り直すため、他の画面が保持している参照がそのまま生きる。
  */

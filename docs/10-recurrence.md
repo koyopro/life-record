@@ -147,7 +147,7 @@ every day until 12/31   → FREQ=DAILY;UNTIL=20261231T000000Z
 
 - 元の `due_at` が時刻を持つ場合は、その時刻を引き継ぐ
 - 持たない場合は、期限日の終わり（23:59）として扱う
-- タイムゾーンは Asia/Tokyo 固定（[08-todo-management.md](08-todo-management.md) 8.4）
+- タイムゾーンは Asia/Tokyo 固定（[08-todo-management.md](08-todo-management.md) 8.5）
 
 ---
 
@@ -204,7 +204,7 @@ Inbox は未整理の一時置き場であり、繰り返しで生成された�
 
 ## 10.7 SmartAdd の `*`
 
-[08-todo-management.md](08-todo-management.md) 8.4 で予約としていた `*` を、繰り返しとして解釈する。
+[08-todo-management.md](08-todo-management.md) 8.5 で予約としていた `*` を、繰り返しとして解釈する。
 
 ```text
 入力:  ゴミを出す ^火曜 *every week !3
@@ -237,7 +237,7 @@ RTM と同様に自然言語で書けるようにする。日本語・英語の�
 
 ### キーボードショートカット
 
-[08-todo-management.md](08-todo-management.md) 8.3 の表に以下を追加する。
+[08-todo-management.md](08-todo-management.md) 8.4 の表に以下を追加する。
 
 | キー | 操作 |
 |---|---|

@@ -5,6 +5,7 @@ import {
   SORT_LABELS,
   type ItemDto,
   type ItemStatus,
+  type SortKey,
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 
@@ -17,6 +18,12 @@ const props = defineProps<{
   tag?: string
   /** タグが付いていない Item だけに絞るか。 */
   untagged?: boolean
+  /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
+  dueUntilToday?: boolean
+  /** 未完了のものだけに絞るか。 */
+  openOnly?: boolean
+  /** 既定のソート軸。 */
+  defaultSort?: SortKey
   emptyMessage: string
 }>()
 
@@ -26,8 +33,11 @@ const list = useItemList({
   status: () => props.status,
   tag: () => props.tag,
   untagged: () => Boolean(props.untagged),
+  dueUntilToday: () => Boolean(props.dueUntilToday),
+  openOnly: () => Boolean(props.openOnly),
   sortStorageKey: props.storageKey,
-  defaultSort: props.status === 'inbox' ? 'created' : 'priority',
+  defaultSort:
+    props.defaultSort ?? (props.status === 'inbox' ? 'created' : 'priority'),
 })
 
 const helpOpen = ref(false)
@@ -42,7 +52,7 @@ function open(item: ItemDto) {
 }
 
 /**
- * ショートカット定義（docs/08-todo-management.md 8.3）。
+ * ショートカット定義（docs/08-todo-management.md 8.4）。
  * ヘルプ（`?`）はこの配列から生成する。
  */
 const shortcuts = computed<Shortcut[]>(() => [

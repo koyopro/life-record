@@ -22,7 +22,7 @@ interface Body {
  * Item を作成する。
  *
  * 1行目を SmartAdd として解釈し、2行目以降があれば作成日の Section を
- * 同時に作る（docs/07-open-questions.md Q7、docs/08-todo-management.md 8.4）。
+ * 同時に作る（docs/07-open-questions.md Q7、docs/08-todo-management.md 8.5）。
  */
 export default defineEventHandler(async (event): Promise<ItemDto> => {
   const payload = await readBody<Body>(event)

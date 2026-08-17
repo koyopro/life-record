@@ -6,7 +6,7 @@ import { assertUuid, toItemDtos } from '~~/server/utils/items'
 import { createNextOccurrence } from '~~/server/utils/recurrence'
 import type { ItemDto } from '~~/shared/types/item'
 
-/** 複数選択（`x`）した Item への一括操作（docs/08-todo-management.md 8.3）。 */
+/** 複数選択（`x`）した Item への一括操作（docs/08-todo-management.md 8.4）。 */
 const MAX_BULK_SIZE = 500
 
 interface Body {

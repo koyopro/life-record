@@ -5,7 +5,7 @@ import type { Recurrence } from '../types/recurrence'
 import { parseRecurrence } from './recurrence'
 
 /**
- * SmartAdd（docs/08-todo-management.md 8.4）。
+ * SmartAdd（docs/08-todo-management.md 8.5）。
  *
  * 1行のテキストから、タイトル・期限・重要度をまとめて解釈する。
  * サーバー（作成時）とクライアント（入力中のプレビュー）で同じ結果に

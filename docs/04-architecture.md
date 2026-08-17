@@ -71,7 +71,8 @@ Vercel 上での API 実装・ルーティング・型共有が一体化され�
 
 | 画面 | 内容 |
 |---|---|
-| Inbox | 未整理 Item の一覧。最初に開く画面 |
+| 今日 | 期限が今日まで／期限切れの未完了タスク |
+| Inbox | 未整理 Item の一覧 |
 | Item 一覧 | status 別・期限順の一覧 |
 | Item 詳細 | Item のメタデータと、紐づく Section の時系列 |
 | Item 追加 | スマートフォンからの最速入力に最適化 |
@@ -91,7 +92,7 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 
 | メソッド | パス | 内容 |
 |---|---|---|
-| GET | `/api/items` | Item 一覧（`status` / `tag` / `untagged` フィルタ、`sort` でソート軸指定） |
+| GET | `/api/items` | Item 一覧（`status` / `tag` / `untagged` / `dueUntil` / `open` / `series` フィルタ、`sort` でソート軸指定） |
 | POST | `/api/items` | Item 作成。1行目を SmartAdd として解釈し、2行目以降は Section にする |
 | PATCH | `/api/items` | 複数選択した Item への一括更新 |
 | GET | `/api/items/:id` | Item 詳細（Section・タグを含む） |

@@ -109,7 +109,7 @@ RTM に倣い、**大文字小文字を区別しない**。
 
 ### キーボードショートカット
 
-[08-todo-management.md](08-todo-management.md) 8.3 の表に以下を追加する。RTM の割り当てに準拠。
+[08-todo-management.md](08-todo-management.md) 8.4 の表に以下を追加する。RTM の割り当てに準拠。
 
 | キー | 操作 |
 |---|---|
@@ -134,7 +134,7 @@ RTM に倣い、**大文字小文字を区別しない**。
 
 ## 9.4 SmartAdd の `#`
 
-[08-todo-management.md](08-todo-management.md) 8.4 で予約としていた `#` を、タグとして解釈するようにする。
+[08-todo-management.md](08-todo-management.md) 8.5 で予約としていた `#` を、タグとして解釈するようにする。
 
 ```text
 入力:  牛乳を買う #買い物 !2

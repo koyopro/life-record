@@ -1,0 +1,72 @@
+<script setup lang="ts">
+const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null)
+
+useHead({ title: '今日' })
+
+const today = computed(() =>
+  new Intl.DateTimeFormat('ja-JP', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+    timeZone: 'Asia/Tokyo',
+  }).format(new Date()),
+)
+
+async function add(text: string) {
+  await listView.value?.create(text)
+}
+</script>
+
+<template>
+  <div class="page">
+    <header class="head">
+      <h1 class="head__title">今日</h1>
+      <span class="head__date">{{ today }}</span>
+    </header>
+
+    <ItemComposer
+      :multiline="false"
+      placeholder="今日やることを追加（例: 請求書を出す ^今日 !1）"
+      @submit="add"
+    />
+
+    <!--
+      期限が今日までに来ている未完了タスクだけを出す。
+      「今日やること」の一覧なので、期限なし・完了済み・未来のものは含めない。
+    -->
+    <ItemListView
+      ref="listView"
+      status="all"
+      due-until-today
+      open-only
+      default-sort="priorityDueDesc"
+      storage-key="sort:today"
+      show-sort
+      empty-message="今日やることはありません。"
+    />
+  </div>
+</template>
+
+<style scoped>
+.page {
+  display: grid;
+  gap: 1rem;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+}
+
+.head__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.head__date {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+</style>

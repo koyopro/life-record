@@ -16,6 +16,10 @@ interface Options {
   tag?: MaybeRefOrGetter<string | undefined>
   /** タグが付いていない Item だけに絞るか。 */
   untagged?: MaybeRefOrGetter<boolean>
+  /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
+  dueUntilToday?: MaybeRefOrGetter<boolean>
+  /** 未完了のものだけに絞るか。 */
+  openOnly?: MaybeRefOrGetter<boolean>
   /** ソート軸を localStorage に覚えるためのキー。画面ごとに分ける。 */
   sortStorageKey: string
   defaultSort?: SortKey
@@ -24,7 +28,7 @@ interface Options {
 /**
  * 一覧の取得・カーソル・複数選択・編集操作をまとめたもの。
  *
- * キーボード操作（docs/08-todo-management.md 8.3）は「選択中のタスク」に
+ * キーボード操作（docs/08-todo-management.md 8.4）は「選択中のタスク」に
  * 対して働くため、カーソルと選択の状態をデータと同じ場所で持つ。
  */
 export function useItemList(options: Options) {
@@ -32,6 +36,12 @@ export function useItemList(options: Options) {
   const tag = computed(() => toValue(options.tag ?? undefined))
   const untagged = computed(() =>
     toValue(options.untagged ?? false) ? 'true' : undefined,
+  )
+  const dueUntil = computed(() =>
+    toValue(options.dueUntilToday ?? false) ? 'today' : undefined,
+  )
+  const open = computed(() =>
+    toValue(options.openOnly ?? false) ? 'true' : undefined,
   )
   const sort = ref<SortKey>(options.defaultSort ?? 'priority')
   const undoStack = useUndo()
@@ -46,7 +56,7 @@ export function useItemList(options: Options) {
     error,
     refresh,
   } = useFetch<ItemDto[]>('/api/items', {
-    query: { status, sort, tag, untagged },
+    query: { status, sort, tag, untagged, dueUntil, open },
     default: () => [],
   })
 

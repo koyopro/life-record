@@ -26,7 +26,7 @@ const recurrenceLabel = computed(() => {
   return describeRecurrence({ rule: recurrenceRule, basis: recurrenceBasis })
 })
 
-// --- タッチ操作（docs/08-todo-management.md 8.3） -----------------------
+// --- タッチ操作（docs/08-todo-management.md 8.4） -----------------------
 // PC のショートカットに相当する操作を、スマートフォンでも行えるようにする。
 
 const SWIPE_THRESHOLD = 72

@@ -2,6 +2,7 @@
   <div class="shell">
     <header class="shell__header">
       <nav class="nav">
+        <NuxtLink to="/today" class="nav__link">今日</NuxtLink>
         <NuxtLink to="/" class="nav__link">Inbox</NuxtLink>
         <NuxtLink to="/items" class="nav__link">タスク</NuxtLink>
       </nav>

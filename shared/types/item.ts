@@ -27,11 +27,19 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 }
 
 /** ソート軸（docs/08-todo-management.md 8.2）。 */
-export const SORT_KEYS = ['priority', 'due', 'created', 'title'] as const
+export const SORT_KEYS = [
+  'priority',
+  'priorityDueDesc',
+  'due',
+  'created',
+  'title',
+] as const
 export type SortKey = (typeof SORT_KEYS)[number]
 
 export const SORT_LABELS: Record<SortKey, string> = {
   priority: '重要度順',
+  // 「今日」リストの既定。期限が近い（新しい）ものから並べる
+  priorityDueDesc: '重要度順（期限は新しい順）',
   due: '期限日順',
   created: '追加日順',
   title: 'タイトル順',

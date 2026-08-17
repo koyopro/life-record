@@ -1,6 +1,6 @@
 /**
  * アプリケーション全体のタイムゾーン。
- * 個人利用のため固定とする（docs/08-todo-management.md 8.4）。
+ * 個人利用のため固定とする（docs/08-todo-management.md 8.5）。
  */
 export const APP_TIME_ZONE = 'Asia/Tokyo'
 
@@ -20,4 +20,15 @@ const dateFormatter = new Intl.DateTimeFormat('en-CA', {
 export function toAppDate(at: Date = new Date()): string {
   // en-CA は YYYY-MM-DD 形式を返す
   return dateFormatter.format(at)
+}
+
+/**
+ * その日の終わり（23:59:59.999）を、アプリのタイムゾーンで返す。
+ *
+ * 「期限が今日まで」の絞り込みに使う。実行環境のタイムゾーンに
+ * 依存しないよう、オフセットを明示して組み立てる。
+ * Asia/Tokyo はサマータイムがないため +09:00 固定でよい。
+ */
+export function endOfAppDay(at: Date = new Date()): Date {
+  return new Date(`${toAppDate(at)}T23:59:59.999+09:00`)
 }

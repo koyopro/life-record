@@ -24,7 +24,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * 単一キーのショートカットを登録する（docs/08-todo-management.md 8.3）。
+ * 単一キーのショートカットを登録する（docs/08-todo-management.md 8.4）。
  *
  * ヘルプ（`?`）は、渡された定義そのものから生成する。
  * 実装とヘルプがずれないようにするため、一覧を別に持たない。

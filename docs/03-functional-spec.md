@@ -41,6 +41,7 @@ Item 自体は本文を持たないため、「思いついた内容を書き留
 以下の切り口で一覧できるようにする。
 
 - status 別（特に Inbox）
+- **今日**（期限が今日まで／期限切れの未完了。[08-todo-management.md](08-todo-management.md) 8.3）
 - 重要度順 → 期限日順（既定。[08-todo-management.md](08-todo-management.md) 8.2）
 - 期限日順（`due_at` 昇順、期限なしは末尾）
 - 最終更新順

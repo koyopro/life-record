@@ -8,7 +8,7 @@ export interface UndoEntry {
 const MAX_DEPTH = 20
 
 /**
- * 直前の操作を取り消すためのスタック（docs/08-todo-management.md 8.3）。
+ * 直前の操作を取り消すためのスタック（docs/08-todo-management.md 8.4）。
  *
  * 破壊的操作は必ずここに積み、`u` で戻せるようにする。
  */
