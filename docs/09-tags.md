@@ -1,0 +1,181 @@
+# 09. タグ分類
+
+Item を横断的に分類する手段。[07-open-questions.md](07-open-questions.md) Q6 の結論として **タグを採用する**。
+
+Remember The Milk のタグと同等の使い勝手を目指す。
+
+---
+
+## 9.1 なぜタグか
+
+Q6 では「タグ」「プロジェクト（1対多）」「ラベル文字列」を比較した。タグを採用する理由は以下。
+
+- 1つの Item が複数の観点に属することが実際に多い（例: 「買い物」かつ「急ぎ」）
+- プロジェクト（1対多）だと、どちらか一方を選ばされる
+- RTM ですでにタグを使っており、移行時に運用がそのまま持ち込める
+
+なお `status` は「進行状態」、タグは「内容による分類」であり、役割が異なる。両者は併存する。
+
+---
+
+## 9.2 データモデル
+
+正規化したタグテーブルと中間テーブルを持つ。
+
+### tags
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| id | UUID | Yes | タグID |
+| name | text | Yes | タグ名。正規化済み。一意 |
+| created_at | timestamptz | Yes | 作成日時 |
+
+### item_tags
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| item_id | UUID | Yes | Item |
+| tag_id | UUID | Yes | タグ |
+
+主キーは `(item_id, tag_id)`。同じタグを同じ Item に二重に付けられない。
+
+### 正規化しない案を採らない理由
+
+`items.tags text[]` に配列で持つ案もあるが、以下の理由で採らない。
+
+- タグ名の一括リネームができない（表記ゆれの修正が手作業になる）
+- タグ一覧・件数の取得が煩雑になる
+- 個人利用の規模では JOIN のコストが問題にならない
+
+### タグ名の正規化
+
+RTM に倣い、**大文字小文字を区別しない**。
+
+- 前後の空白を除去する
+- 小文字に変換して保存する
+- 空白・カンマ・`#` は含められない（SmartAdd の区切りと衝突するため）
+- 長さは 50 文字までとする
+
+```text
+"買い物" → "買い物"
+"Shopping" → "shopping"
+"  急ぎ  " → "急ぎ"
+```
+
+### 参照されなくなったタグ
+
+最後の `item_tags` が消えた時点で、そのタグ自体も削除する。
+使っていないタグが候補一覧に残り続けると、選択のノイズになるため。
+
+---
+
+## 9.3 機能
+
+### 基本操作
+
+- Item にタグを付ける / 外す
+- タグで Item を絞り込む
+- タグ一覧の表示（Item 件数つき）
+- タグ名のリネーム（全 Item に反映される）
+- タグの削除（全 Item から外れる）
+
+### 絞り込み
+
+| 条件 | 内容 |
+|---|---|
+| 単一タグ | そのタグが付いた Item |
+| 複数タグ (AND) | 指定した全タグが付いた Item |
+| 複数タグ (OR) | いずれかのタグが付いた Item |
+| タグなし | タグが1つも付いていない Item |
+
+初期実装では **単一タグ** と **タグなし** を対象とし、AND / OR は実際に必要になってから追加する。
+
+`status` によるフィルタと組み合わせられるようにする（例: タグ「買い物」かつ `backlog`）。
+
+### 入力
+
+- Item 詳細・一覧から、タグ入力欄で追加する
+- 入力中は既存タグを候補表示する（前方一致）
+- 新しいタグ名を入力した場合はその場で作成する
+- SmartAdd の `#` でも指定できる（9.4）
+
+### キーボードショートカット
+
+[08-todo-management.md](08-todo-management.md) 8.3 の表に以下を追加する。RTM の割り当てに準拠。
+
+| キー | 操作 |
+|---|---|
+| `t` | 選択中のタスクにタグを追加 |
+| `Shift` + `t` | 選択中のタスクからタグを外す |
+
+複数選択している場合は、選択中の全タスクに適用する。
+
+---
+
+## 9.4 SmartAdd の `#`
+
+[08-todo-management.md](08-todo-management.md) 8.4 で予約としていた `#` を、タグとして解釈するようにする。
+
+```text
+入力:  牛乳を買う #買い物 !2
+結果:  title    = "牛乳を買う"
+       tags     = ["買い物"]
+       priority = 2
+```
+
+- `#` の直後から、空白までをタグ名として扱う
+- 複数指定できる（`#買い物 #急ぎ`）
+- 存在しないタグ名なら、その場で作成する
+- タグ名に使えない文字（空白・カンマ）が来たらそこで区切る
+
+> **注意:** RTM では `#` がリストとタグの両方に使われるが、このサービスにはリストの概念がない。
+> `#` は常にタグとして解釈する。
+
+---
+
+## 9.5 DDL
+
+```sql
+CREATE TABLE tags (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT tags_name_unique UNIQUE (name),
+  CONSTRAINT tags_name_not_blank CHECK (length(btrim(name)) > 0),
+  CONSTRAINT tags_name_length CHECK (length(name) <= 50)
+);
+
+CREATE TABLE item_tags (
+  item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  tag_id  UUID NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
+  PRIMARY KEY (item_id, tag_id)
+);
+
+-- タグから Item を引く経路（item_id が先頭の主キーでは効かない）
+CREATE INDEX item_tags_tag_id_idx
+  ON item_tags (tag_id);
+```
+
+Item の削除・タグの削除は、いずれも `ON DELETE CASCADE` で中間テーブルが片付く。
+
+---
+
+## 9.6 実装スコープ
+
+[06-roadmap.md](06-roadmap.md) Milestone 4 として実装する。
+
+- [ ] `tags` / `item_tags` の追加（マイグレーション）
+- [ ] タグ名の正規化ロジック（サーバー・クライアントで共有）
+- [ ] Item にタグを付ける / 外す API
+- [ ] タグ一覧 API（Item 件数つき）
+- [ ] タグのリネーム / 削除 API
+- [ ] 参照が0になったタグの削除
+- [ ] Item 一覧のタグ絞り込み（単一タグ / タグなし）
+- [ ] タグ入力欄と候補表示
+- [ ] Item カードへのタグ表示
+- [ ] ショートカット `t` / `Shift` + `t`
+- [ ] SmartAdd の `#` 対応
+
+### 完了条件
+
+RTM で使っているタグ運用を、そのまま持ち込めること。

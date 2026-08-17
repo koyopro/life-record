@@ -11,17 +11,19 @@
 - **Section** — Item について、特定の日に行った作業や考えを記録する文章単位
 - **Diary** — カレンダーベースの1日1ページの日記
 
+加えて、Item を分類するための **Tag** を持つ（[09-tags.md](09-tags.md)）。
+
 Item と Diary は役割が異なるため、共通の汎用エンティティには統合しない。
 一方、**Item 自体には本文を持たせず**、日付付きの Section を積み重ねて Item の記録を構成する。
 
 ## 2.2 ER構造
 
 ```text
-Item
-  │
-  │ 1:N
-  ▼
-Section
+Tag ──N:N── Item
+              │
+              │ 1:N
+              ▼
+            Section
 
 Diary
   （date を主キーとして 1日1件）
@@ -52,8 +54,13 @@ TODO・タスクを表す。
 | status | enum | Yes | `inbox` / `backlog` / `in_progress` / `closed` |
 | priority | smallint | No | 重要度。1（高） / 2（中） / 3（低）。NULL は重要度なし |
 | due_at | timestamptz | No | 期限。作業日とは別概念 |
+| recurrence_rule | text | No | 繰り返し規則（RRULE 形式）。NULL なら繰り返しなし |
+| recurrence_basis | enum | No | `due`（every） / `completion`（after） |
+| series_id | UUID | No | 同じ繰り返しから生まれた Item 群の識別子 |
 | created_at | timestamptz | Yes | 作成日時 |
 | updated_at | timestamptz | Yes | 更新日時 |
+
+繰り返し関連の3カラムの詳細は [10-recurrence.md](10-recurrence.md) を参照。
 
 ### status
 
@@ -139,7 +146,32 @@ Markdown を想定する。本文中に画像を埋め込めるようにする�
 
 ---
 
-## 2.5 Diary
+## 2.5 Tag / ItemTag
+
+Item を横断的に分類するためのタグ。詳細は [09-tags.md](09-tags.md)。
+
+### tags
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| id | UUID | Yes | タグID |
+| name | text | Yes | タグ名（小文字に正規化・一意） |
+| created_at | timestamptz | Yes | 作成日時 |
+
+### item_tags
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| item_id | UUID | Yes | Item |
+| tag_id | UUID | Yes | タグ |
+
+主キーは `(item_id, tag_id)`。
+
+`status` は「進行状態」、タグは「内容による分類」であり、役割が異なる。両者は併存する。
+
+---
+
+## 2.6 Diary
 
 カレンダーベースの1日1ページの日記。
 
@@ -164,7 +196,7 @@ Diary は Section に分割せず、1日分の文章を直接 `body` として�
 
 ---
 
-## 2.6 Diary と Item の相互ナビゲーション
+## 2.7 Diary と Item の相互ナビゲーション
 
 Diary と Section を直接関連付ける中間テーブルは不要。同じ `date` を持つことを利用する。
 
@@ -214,7 +246,7 @@ Diary.date
 
 ---
 
-## 2.7 検索対象
+## 2.8 検索対象
 
 検索対象となる文章は2種類。加えて Item のタイトルも対象とする。
 
@@ -244,7 +276,7 @@ DB設計のテーブル構成を検討した。
 
 ---
 
-## 2.8 設計上の重要な考え方
+## 2.9 設計上の重要な考え方
 
 ### 1. Item に body を持たせない
 
@@ -278,7 +310,10 @@ Diary と Item を直接紐付ける中間テーブルは基本的に不要。
 
 ---
 
-## 2.9 DDL（PostgreSQL / Neon 想定）
+## 2.10 DDL（PostgreSQL / Neon 想定）
+
+最終的な全体像を示す。実際のマイグレーションはマイルストーンごとに分割する
+（Milestone 2 時点で適用済みなのは `items` / `sections` / `diaries` のみ）。
 
 ```sql
 CREATE TYPE item_status AS ENUM (
@@ -288,14 +323,24 @@ CREATE TYPE item_status AS ENUM (
   'closed'
 );
 
+CREATE TYPE recurrence_basis AS ENUM ('due', 'completion');
+
 CREATE TABLE items (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title      TEXT NOT NULL,
-  status     item_status NOT NULL DEFAULT 'inbox',
-  priority   SMALLINT CHECK (priority BETWEEN 1 AND 3),
-  due_at     TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title            TEXT NOT NULL,
+  status           item_status NOT NULL DEFAULT 'inbox',
+  priority         SMALLINT CHECK (priority BETWEEN 1 AND 3),
+  due_at           TIMESTAMPTZ,
+  recurrence_rule  TEXT,
+  recurrence_basis recurrence_basis,
+  series_id        UUID,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ルールがあるなら basis も必ずある
+  CONSTRAINT items_recurrence_complete CHECK (
+    (recurrence_rule IS NULL AND recurrence_basis IS NULL)
+    OR (recurrence_rule IS NOT NULL AND recurrence_basis IS NOT NULL)
+  )
 );
 
 CREATE INDEX items_status_idx
@@ -304,6 +349,29 @@ CREATE INDEX items_status_idx
 -- 既定のソート（重要度順 → 期限日順）に対応
 CREATE INDEX items_priority_due_idx
   ON items (priority ASC NULLS LAST, due_at ASC NULLS LAST);
+
+-- 系列の過去オカレンスを辿る経路
+CREATE INDEX items_series_id_idx
+  ON items (series_id);
+
+CREATE TABLE tags (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT tags_name_unique UNIQUE (name),
+  CONSTRAINT tags_name_not_blank CHECK (length(btrim(name)) > 0),
+  CONSTRAINT tags_name_length CHECK (length(name) <= 50)
+);
+
+CREATE TABLE item_tags (
+  item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  tag_id  UUID NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
+  PRIMARY KEY (item_id, tag_id)
+);
+
+-- タグから Item を引く経路（item_id が先頭の主キーでは効かない）
+CREATE INDEX item_tags_tag_id_idx
+  ON item_tags (tag_id);
 
 CREATE TABLE sections (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -334,17 +402,19 @@ CREATE TABLE diaries (
 - `gen_random_uuid()` は PostgreSQL 13 以降で標準利用できる（Neon は対応済み）。
 - `updated_at` の自動更新はアプリケーション側で行うか、トリガーを設ける。方式は未確定。
 - 個人利用前提のため、初期段階では `user_id` を持たせない（[07-open-questions.md](07-open-questions.md) 参照）。
+- `series_id` に外部キー制約は付けない。系列の起点となった Item が削除されても、
+  残りのオカレンスは履歴として残したいため（[10-recurrence.md](10-recurrence.md) 10.8）。
 
 ---
 
-## 2.10 将来的に検討できること
+## 2.11 将来的に検討できること
 
 - Section に時刻を持たせる（`started_at` など）
 - Section の body を Markdown ではなくリッチテキスト / ブロック構造で保存する
 - 全文検索インデックスを作り、Diary と Section を横断検索する
 - Diary 上で、その日に作業した Item を自動表示する
 - Item 上で、そのItemに関連する Diary へのリンクを日付ごとに表示する
-- Item の分類手段（タグ・プロジェクト等）の導入 → [07-open-questions.md](07-open-questions.md)
+- タグの階層化・タググループ
 - 画像メタデータ管理テーブルの導入 → [07-open-questions.md](07-open-questions.md)
 
 現時点では、**Item / Section / Diary を別々の概念として保ち、Diary と Section は日付で疎結合に関連付ける**構造を基本案とする。

@@ -14,6 +14,8 @@
 | [06-roadmap.md](06-roadmap.md) | マイルストーンと実装順序 |
 | [07-open-questions.md](07-open-questions.md) | 未確定事項・検討が必要な論点 |
 | [08-todo-management.md](08-todo-management.md) | TODO管理（RTM相当のソート / ショートカット / SmartAdd） |
+| [09-tags.md](09-tags.md) | タグ分類 |
+| [10-recurrence.md](10-recurrence.md) | 繰り返しタスク（RTM の every / after） |
 
 ## 基本コンセプト
 
@@ -24,6 +26,7 @@
 - **Diary** — カレンダーベースの1日1ページの日記
 
 Diary と Section は直接紐付けず、**日付を介して疎結合に関連付ける**。
+Item は **Tag** で横断的に分類し、**繰り返し**にも対応する（いずれも Remember The Milk 相当）。
 
 ## 開発の進め方
 

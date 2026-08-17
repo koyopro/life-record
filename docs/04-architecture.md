@@ -94,11 +94,15 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | GET | `/api/memos` | クイックメモ一覧（Item + 作成日の Section） |
 | POST | `/api/memos` | クイックメモ作成（Item と Section を1トランザクションで作る） |
 | DELETE | `/api/memos/:id` | クイックメモ削除（Section は CASCADE） |
-| GET | `/api/items` | Item 一覧（`status` フィルタ、`sort` でソート軸指定） |
+| GET | `/api/items` | Item 一覧（`status` / `tag` フィルタ、`sort` でソート軸指定） |
 | POST | `/api/items` | Item 作成（SmartAdd のパースを含む） |
-| GET | `/api/items/:id` | Item 詳細（Section を含む） |
-| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / due_at） |
+| GET | `/api/items/:id` | Item 詳細（Section・タグを含む） |
+| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / due_at / 繰り返し） |
 | POST | `/api/items/parse` | SmartAdd の入力プレビュー用パース（副作用なし） |
+| PUT | `/api/items/:id/tags` | Item のタグを設定 |
+| GET | `/api/tags` | タグ一覧（Item 件数つき） |
+| PATCH | `/api/tags/:id` | タグのリネーム |
+| DELETE | `/api/tags/:id` | タグの削除 |
 | DELETE | `/api/items/:id` | Item 削除 |
 | POST | `/api/sections` | Section 作成 |
 | PATCH | `/api/sections/:id` | Section 更新 |
