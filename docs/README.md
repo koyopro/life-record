@@ -13,6 +13,7 @@
 | [05-operations.md](05-operations.md) | 非機能要件・バックアップ・長期運用 |
 | [06-roadmap.md](06-roadmap.md) | マイルストーンと実装順序 |
 | [07-open-questions.md](07-open-questions.md) | 未確定事項・検討が必要な論点 |
+| [08-todo-management.md](08-todo-management.md) | TODO管理（RTM相当のソート / ショートカット / SmartAdd） |
 
 ## 基本コンセプト
 
@@ -23,6 +24,11 @@
 - **Diary** — カレンダーベースの1日1ページの日記
 
 Diary と Section は直接紐付けず、**日付を介して疎結合に関連付ける**。
+
+## 開発の進め方
+
+まず「スマートフォンから一時的なメモを投げ込める」部分だけを作り、日常利用を開始する。
+その後、Remember The Milk 相当の TODO 管理機能を載せる。詳細は [06-roadmap.md](06-roadmap.md)。
 
 ## 技術構成（想定）
 

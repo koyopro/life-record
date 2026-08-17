@@ -9,11 +9,13 @@
 - Item の作成
 - Item の一覧表示
 - Item の詳細表示
-- Item の編集（タイトル・期限）
+- Item の編集（タイトル・期限・重要度）
 - Item の削除
 - status の変更
 
 `type` の管理機能は持たない（Item に `type` カラムを持たせないため）。
+
+RTM 相当のソート・キーボードショートカット・SmartAdd については [08-todo-management.md](08-todo-management.md) を参照。
 
 ### 作成
 
@@ -37,10 +39,11 @@ Item 自体は本文を持たないため、「思いついた内容を書き留
 以下の切り口で一覧できるようにする。
 
 - status 別（特に Inbox）
-- 期限順（`due_at` 昇順、期限なしは末尾）
+- 重要度順 → 期限日順（既定。[08-todo-management.md](08-todo-management.md) 8.2）
+- 期限日順（`due_at` 昇順、期限なしは末尾）
 - 最終更新順
 
-初期実装では **Inbox 一覧** と **status 別一覧** を最低限のスコープとする。
+初期実装では **Inbox 一覧** を最低限のスコープとする。
 
 ### 詳細表示
 

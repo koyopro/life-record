@@ -50,6 +50,7 @@ TODO・タスクを表す。
 | id | UUID | Yes | Item ID |
 | title | text | Yes | TODOのタイトル |
 | status | enum | Yes | `inbox` / `backlog` / `in_progress` / `closed` |
+| priority | smallint | No | 重要度。1（高） / 2（中） / 3（低）。NULL は重要度なし |
 | due_at | timestamptz | No | 期限。作業日とは別概念 |
 | created_at | timestamptz | Yes | 作成日時 |
 | updated_at | timestamptz | Yes | 更新日時 |
@@ -64,6 +65,22 @@ TODO・タスクを表す。
 | `closed` | 完了 |
 
 `inbox` は「未整理の一時置き場」として扱う。運用上は、整理後に随時空にしていくことを想定する。
+
+### priority
+
+Remember The Milk に倣い、**値が小さいほど重要度が高い**。
+
+| 値 | 意味 |
+|---|---|
+| 1 | 高 |
+| 2 | 中 |
+| 3 | 低 |
+| NULL | 重要度なし |
+
+一覧の既定のソートは「重要度順 → 期限日順」とし、NULL は末尾に置く。
+詳細は [08-todo-management.md](08-todo-management.md) を参照。
+
+このカラムは Milestone 3 で追加する。Milestone 2（クイックメモ）の時点では存在しない。
 
 ### type カラムについて
 
@@ -275,6 +292,7 @@ CREATE TABLE items (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title      TEXT NOT NULL,
   status     item_status NOT NULL DEFAULT 'inbox',
+  priority   SMALLINT CHECK (priority BETWEEN 1 AND 3),
   due_at     TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -282,6 +300,10 @@ CREATE TABLE items (
 
 CREATE INDEX items_status_idx
   ON items(status);
+
+-- 既定のソート（重要度順 → 期限日順）に対応
+CREATE INDEX items_priority_due_idx
+  ON items (priority ASC NULLS LAST, due_at ASC NULLS LAST);
 
 CREATE TABLE sections (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),

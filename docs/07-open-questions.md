@@ -122,6 +122,9 @@ Milestone 2 の日常利用を通じて、Inbox の整理に分類軸が要る�
 
 **先に決めない。** 実運用で必要性が確認されてから導入する（[06-roadmap.md](06-roadmap.md) Milestone 9）。
 
+なお、SmartAdd の `#`（RTM ではリスト / タグ）はこの結論が出るまで実装しない。
+それまで `#` は**予約記号として解釈せず、タイトルの一部として残す**（[08-todo-management.md](08-todo-management.md) 8.4）。
+
 ---
 
 ## Q7. Item の本文（クイックメモとの整合）

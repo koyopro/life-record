@@ -97,10 +97,11 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 
 | メソッド | パス | 内容 |
 |---|---|---|
-| GET | `/api/items` | Item 一覧（status 等でフィルタ） |
-| POST | `/api/items` | Item 作成 |
+| GET | `/api/items` | Item 一覧（`status` フィルタ、`sort` でソート軸指定） |
+| POST | `/api/items` | Item 作成（SmartAdd のパースを含む） |
 | GET | `/api/items/:id` | Item 詳細（Section を含む） |
-| PATCH | `/api/items/:id` | Item 更新（タイトル / status / due_at） |
+| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / due_at） |
+| POST | `/api/items/parse` | SmartAdd の入力プレビュー用パース（副作用なし） |
 | DELETE | `/api/items/:id` | Item 削除 |
 | POST | `/api/sections` | Section 作成 |
 | PATCH | `/api/sections/:id` | Section 更新 |
