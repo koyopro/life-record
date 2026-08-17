@@ -8,6 +8,7 @@ const emit = defineEmits<{
   priority: [value: 1 | 2 | 3 | null]
   due: []
   tags: []
+  recurrence: []
   postpone: []
   open: []
   remove: []
@@ -57,6 +58,9 @@ const emit = defineEmits<{
       </button>
       <button type="button" class="sheet__action" @click="emit('tags')">
         タグを変更
+      </button>
+      <button type="button" class="sheet__action" @click="emit('recurrence')">
+        繰り返しを設定
       </button>
       <button type="button" class="sheet__action" @click="emit('open')">
         詳細を開く

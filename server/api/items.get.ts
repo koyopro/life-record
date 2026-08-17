@@ -1,7 +1,7 @@
 import { and, eq, exists, inArray, notExists, type SQL } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { itemTags, items, tags } from '~~/server/db/schema'
-import { orderByFor, toItemDtos } from '~~/server/utils/items'
+import { assertUuid, orderByFor, toItemDtos } from '~~/server/utils/items'
 import {
   isItemStatus,
   isSortKey,
@@ -24,6 +24,11 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
   }
 
   const db = useDb()
+
+  // 繰り返しの系列。過去のオカレンスを辿るのに使う。
+  if (query.series !== undefined) {
+    conditions.push(eq(items.seriesId, assertUuid(query.series, '系列ID')))
+  }
 
   // タグ絞り込み。EXISTS で引くことで、JOIN による行の重複を避ける。
   if (query.tag !== undefined) {

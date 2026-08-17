@@ -7,6 +7,7 @@ import {
   type Priority,
   type SortKey,
 } from '~~/shared/types/item'
+import type { Recurrence } from '~~/shared/types/recurrence'
 
 interface Options {
   /** 対象の status。'all' なら絞り込まない。 */
@@ -175,6 +176,16 @@ export function useItemList(options: Options) {
   async function setPriority(priority: Priority | null) {
     const label = priority ? `重要度を${priority}にした` : '重要度を外した'
     await applyPatch({ priority }, label)
+  }
+
+  async function setRecurrence(recurrence: Recurrence | null) {
+    await applyPatch(
+      {
+        recurrenceRule: recurrence?.rule ?? null,
+        recurrenceBasis: recurrence?.basis ?? null,
+      },
+      recurrence ? '繰り返しを設定した' : '繰り返しをやめた',
+    )
   }
 
   async function setDue(dueAt: Date | null, hasTime = false) {
@@ -376,6 +387,7 @@ export function useItemList(options: Options) {
     setStatus,
     setPriority,
     setDue,
+    setRecurrence,
     postpone,
     remove,
     applyTags,

@@ -73,6 +73,9 @@ export function toItemDto(
     dueHasTime: item.dueHasTime,
     body,
     tags,
+    recurrenceRule: item.recurrenceRule,
+    recurrenceBasis: item.recurrenceBasis,
+    seriesId: item.seriesId,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   }

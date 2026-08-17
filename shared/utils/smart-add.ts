@@ -1,6 +1,8 @@
 import * as chrono from 'chrono-node'
 import { isPriority, type Priority } from '../types/item'
 import { normalizeTagName } from '../types/tag'
+import type { Recurrence } from '../types/recurrence'
+import { parseRecurrence } from './recurrence'
 
 /**
  * SmartAdd（docs/08-todo-management.md 8.4）。
@@ -18,6 +20,8 @@ export interface SmartAddResult {
   priority: Priority | null
   /** 正規化済みのタグ名。 */
   tags: string[]
+  /** 繰り返し。指定がなければ null。 */
+  recurrence: Recurrence | null
   /** 解釈できなかった記法。UI で警告として出す。 */
   warnings: string[]
 }
@@ -27,9 +31,9 @@ export interface SmartAddResult {
  *
  * 解釈せずタイトルの一部として残す。後から対応を追加しても、
  * 過去データの解釈が変わらないようにするため。
- * `*` は Milestone 5 で対応する。
+ * `@`（場所）と `=`（時間見積もり）は用途がないため対応しない。
  */
-const RESERVED_SYMBOLS = ['*', '@', '=']
+const RESERVED_SYMBOLS = ['@', '=']
 
 /** 日付表現の終わりを示す記号。ここまでを chrono に渡す。 */
 const TOKEN_BOUNDARY = /[!#*@=]/
@@ -49,6 +53,9 @@ export function parseSmartAdd(
   const tagResult = extractTags(rest, warnings)
   rest = tagResult.rest
 
+  const recurrenceResult = extractRecurrence(rest, warnings)
+  rest = recurrenceResult.rest
+
   const dueResult = extractDue(rest, referenceDate, warnings)
   rest = dueResult.rest
 
@@ -60,7 +67,40 @@ export function parseSmartAdd(
     dueHasTime: dueResult.dueHasTime,
     priority: priorityResult.priority,
     tags: tagResult.tags,
+    recurrence: recurrenceResult.recurrence,
     warnings,
+  }
+}
+
+/**
+ * `*every week` のような繰り返し指定を取り出す（docs/10-recurrence.md 10.7）。
+ *
+ * 日付表現と違い、間に空白を含む（`every 2 weeks`）ため、
+ * 次の記号または文字列の末尾までをまとめて渡す。
+ */
+function extractRecurrence(input: string, warnings: string[]) {
+  const star = input.indexOf('*')
+  if (star === -1) return { rest: input, recurrence: null }
+
+  const after = input.slice(star + 1)
+  const boundary = after.search(/[!^#@=]/)
+  const candidate = (boundary === -1 ? after : after.slice(0, boundary)).trim()
+
+  if (!candidate) {
+    warnings.push('* の後ろに繰り返しが書かれていません')
+    return { rest: removeAt(input, star, 1), recurrence: null }
+  }
+
+  const recurrence = parseRecurrence(candidate)
+  if (!recurrence) {
+    warnings.push(`「${candidate}」を繰り返しとして解釈できませんでした`)
+    return { rest: removeAt(input, star, 1), recurrence: null }
+  }
+
+  const consumed = boundary === -1 ? after.length : boundary
+  return {
+    rest: removeAt(input, star, 1 + consumed),
+    recurrence,
   }
 }
 

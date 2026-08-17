@@ -17,6 +17,7 @@ import { relations, sql } from 'drizzle-orm'
 // drizzle-kit は Nuxt のエイリアスを解決しないため相対パスで参照する
 import { ITEM_STATUSES } from '../../shared/types/item'
 import { TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
+import { RECURRENCE_BASES } from '../../shared/types/recurrence'
 
 /**
  * データモデルの定義は docs/02-data-model.md を正とする。
@@ -24,6 +25,8 @@ import { TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
  */
 
 export const itemStatus = pgEnum('item_status', ITEM_STATUSES)
+
+export const recurrenceBasis = pgEnum('recurrence_basis', RECURRENCE_BASES)
 
 /** TODO・タスクそのもの。本文は持たず、記録は Section 側に積み重ねる。 */
 export const items = pgTable(
@@ -41,6 +44,15 @@ export const items = pgTable(
      * false のとき due_at は当日の 23:59 を指し、UI では日付のみを表示する。
      */
     dueHasTime: boolean('due_has_time').notNull().default(false),
+    /**
+     * 繰り返し規則（RFC 5545 の RRULE）。NULL なら繰り返しなし。
+     * 詳細は docs/10-recurrence.md。
+     */
+    recurrenceRule: text('recurrence_rule'),
+    /** `due`（毎〜: 期限起点） / `completion`（〜後: 完了日起点）。 */
+    recurrenceBasis: recurrenceBasis('recurrence_basis'),
+    /** 同じ繰り返しから生まれた Item 群の識別子。起点 Item の id を入れる。 */
+    seriesId: uuid('series_id'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -56,6 +68,16 @@ export const items = pgTable(
       sql`${t.dueAt} ASC NULLS LAST`,
     ),
     check('items_priority_range', sql`${t.priority} BETWEEN 1 AND 3`),
+    // 系列の過去オカレンスを辿る経路。
+    // series_id に外部キーは張らない。起点 Item が削除されても、
+    // 残りのオカレンスは履歴として残したいため（docs/10-recurrence.md 10.8）。
+    index('items_series_id_idx').on(t.seriesId),
+    // ルールがあるなら basis も必ずある
+    check(
+      'items_recurrence_complete',
+      sql`(${t.recurrenceRule} IS NULL AND ${t.recurrenceBasis} IS NULL)
+          OR (${t.recurrenceRule} IS NOT NULL AND ${t.recurrenceBasis} IS NOT NULL)`,
+    ),
   ],
 )
 

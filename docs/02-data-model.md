@@ -54,6 +54,7 @@ TODO・タスクを表す。
 | status | enum | Yes | `inbox` / `backlog` / `in_progress` / `closed` |
 | priority | smallint | No | 重要度。1（高） / 2（中） / 3（低）。NULL は重要度なし |
 | due_at | timestamptz | No | 期限。作業日とは別概念 |
+| due_has_time | boolean | Yes | 期限に時刻の指定があるか。false なら日付のみ |
 | recurrence_rule | text | No | 繰り返し規則（RRULE 形式）。NULL なら繰り返しなし |
 | recurrence_basis | enum | No | `due`（every） / `completion`（after） |
 | series_id | UUID | No | 同じ繰り返しから生まれた Item 群の識別子 |
@@ -73,6 +74,11 @@ TODO・タスクを表す。
 
 `inbox` は「未整理の一時置き場」として扱う。運用上は、整理後に随時空にしていくことを想定する。
 
+### due_at と due_has_time
+
+時刻の指定がない期限は、`due_at` にその日の 23:59 を入れ、`due_has_time` を false にする。
+表示は日付のみとし、期限切れの判定も日付単位で行う（[08-todo-management.md](08-todo-management.md) 8.4）。
+
 ### priority
 
 Remember The Milk に倣い、**値が小さいほど重要度が高い**。
@@ -87,7 +93,7 @@ Remember The Milk に倣い、**値が小さいほど重要度が高い**。
 一覧の既定のソートは「重要度順 → 期限日順」とし、NULL は末尾に置く。
 詳細は [08-todo-management.md](08-todo-management.md) を参照。
 
-カラム自体は初期スキーマに含める（マイグレーションを分けない）。実際に使い始めるのは Milestone 3。
+カラム自体は初期スキーマに含めた。実際に使い始めたのは Milestone 3。
 
 ### type カラムについて
 
@@ -312,8 +318,8 @@ Diary と Item を直接紐付ける中間テーブルは基本的に不要。
 
 ## 2.10 DDL（PostgreSQL / Neon 想定）
 
-最終的な全体像を示す。実際のマイグレーションはマイルストーンごとに分割する
-（Milestone 2 時点で適用済みなのは `items` / `sections` / `diaries` のみ）。
+最終的な全体像を示す。実際のマイグレーションは `drizzle/` にマイルストーンごとに
+分かれて入っており、スキーマ定義は `server/db/schema.ts` にある。
 
 ```sql
 CREATE TYPE item_status AS ENUM (
@@ -331,6 +337,7 @@ CREATE TABLE items (
   status           item_status NOT NULL DEFAULT 'inbox',
   priority         SMALLINT CHECK (priority BETWEEN 1 AND 3),
   due_at           TIMESTAMPTZ,
+  due_has_time     BOOLEAN NOT NULL DEFAULT false,
   recurrence_rule  TEXT,
   recurrence_basis recurrence_basis,
   series_id        UUID,

@@ -1,3 +1,5 @@
+import type { RecurrenceBasis } from './recurrence'
+
 export const ITEM_STATUSES = [
   'inbox',
   'backlog',
@@ -48,6 +50,11 @@ export interface ItemDto {
   body: string | null
   /** 付いているタグ名。正規化済み・名前順。 */
   tags: string[]
+  /** 繰り返し規則（RRULE）。null なら繰り返しなし。 */
+  recurrenceRule: string | null
+  recurrenceBasis: RecurrenceBasis | null
+  /** 同じ繰り返しから生まれた Item 群の識別子。 */
+  seriesId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -72,6 +79,8 @@ export interface ItemPatch {
   priority?: Priority | null
   dueAt?: string | null
   dueHasTime?: boolean
+  recurrenceRule?: string | null
+  recurrenceBasis?: RecurrenceBasis | null
 }
 
 export function isItemStatus(value: unknown): value is ItemStatus {

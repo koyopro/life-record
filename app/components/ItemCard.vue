@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PRIORITY_LABELS, type ItemDto } from '~~/shared/types/item'
+import { describeRecurrence } from '~~/shared/utils/recurrence'
 
 const props = defineProps<{
   item: ItemDto
@@ -18,6 +19,12 @@ const emit = defineEmits<{
 
 const due = computed(() => formatDue(props.item))
 const done = computed(() => props.item.status === 'closed')
+
+const recurrenceLabel = computed(() => {
+  const { recurrenceRule, recurrenceBasis } = props.item
+  if (!recurrenceRule || !recurrenceBasis) return null
+  return describeRecurrence({ rule: recurrenceRule, basis: recurrenceBasis })
+})
 
 // --- タッチ操作（docs/08-todo-management.md 8.3） -----------------------
 // PC のショートカットに相当する操作を、スマートフォンでも行えるようにする。
@@ -119,9 +126,13 @@ function onTouchEnd() {
       </button>
       <p v-if="item.body" class="card__body">{{ item.body }}</p>
       <div
-        v-if="item.priority || due.state !== 'none' || item.tags.length"
+        v-if="item.priority || due.state !== 'none' || item.tags.length || recurrenceLabel"
         class="card__meta"
       >
+        <span v-if="recurrenceLabel" class="card__recurrence" :title="recurrenceLabel">
+          <span aria-hidden="true">↻</span>
+          <span class="card__recurrence-text">{{ recurrenceLabel }}</span>
+        </span>
         <span
           v-if="item.priority"
           class="card__priority"
@@ -296,6 +307,24 @@ function onTouchEnd() {
 .card__due--today {
   color: var(--accent);
   font-weight: 600;
+}
+
+.card__recurrence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+}
+
+.card__recurrence-text {
+  /* 狭い画面ではアイコンだけにする */
+  display: none;
+}
+
+@media (min-width: 26rem) {
+  .card__recurrence-text {
+    display: inline;
+  }
 }
 
 .card__tag {

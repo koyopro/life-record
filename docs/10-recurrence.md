@@ -97,6 +97,18 @@ every day until 12/31   → FREQ=DAILY;UNTIL=20261231T000000Z
 
 生成すべき次回が終了条件を超えた場合、次の Item を作らずに系列を終える。
 
+#### COUNT は自前で数える
+
+**`COUNT` の判定は rrule ライブラリに任せられない。**
+
+各オカレンスは自分の期限を起点に次回を計算するため、`DTSTART` が毎回動く。
+ライブラリに `COUNT` を渡すと、その動いた起点から数え直してしまい、
+何回繰り返しても終わらない（実装時に実際にそうなった）。
+
+そのため `COUNT` はライブラリに渡さず、**同じ `series_id` を持つ Item の件数**と
+突き合わせて判定する。`UNTIL` は絶対日時なので起点が動いても影響を受けず、
+そのままライブラリに任せてよい。
+
 ---
 
 ## 10.4 次回期限の計算
@@ -111,7 +123,6 @@ every day until 12/31   → FREQ=DAILY;UNTIL=20261231T000000Z
 ```
 
 **期限が設定されていない場合**は完了日時を起点にする（起点が他にないため）。
-UI では、繰り返しを設定する際に期限の入力を促す。
 
 **次回期限が過去になる場合**は、未来になるまで進める。
 
@@ -266,21 +277,21 @@ CREATE INDEX items_series_id_idx
 
 [06-roadmap.md](06-roadmap.md) Milestone 5 として実装する。
 
-- [ ] `recurrence_rule` / `recurrence_basis` / `series_id` の追加（マイグレーション）
-- [ ] RRULE のパースと次回発生日の計算
-- [ ] 自然言語（日本語・英語）→ RRULE の変換
-- [ ] RRULE → 自然文の表示
-- [ ] 完了時に次回オカレンスを生成する処理
-  - [ ] basis = due（過去日になる場合は未来まで進める）
-  - [ ] basis = completion
-  - [ ] title / priority / tags の引き継ぎ
-  - [ ] 終了条件（COUNT / UNTIL）の判定
-- [ ] Item 詳細での繰り返し設定UI
-- [ ] 一覧での繰り返しアイコン表示
-- [ ] 系列の過去オカレンスを辿るUI
-- [ ] 繰り返しの停止
-- [ ] SmartAdd の `*` 対応
-- [ ] ショートカット `r`
+- [x] `recurrence_rule` / `recurrence_basis` / `series_id` の追加（マイグレーション）
+- [x] RRULE のパースと次回発生日の計算
+- [x] 自然言語（日本語・英語）→ RRULE の変換
+- [x] RRULE → 自然文の表示
+- [x] 完了時に次回オカレンスを生成する処理
+  - [x] basis = due（過去日になる場合は未来まで進める）
+  - [x] basis = completion
+  - [x] title / priority / tags の引き継ぎ
+  - [x] 終了条件（COUNT / UNTIL）の判定
+- [x] Item 詳細での繰り返し設定UI
+- [x] 一覧での繰り返しアイコン表示
+- [x] 系列の過去オカレンスを辿るUI
+- [x] 繰り返しの停止
+- [x] SmartAdd の `*` 対応
+- [x] ショートカット `r`
 
 ### 完了条件
 

@@ -6,6 +6,7 @@ import {
   type ItemDto,
   type ItemStatus,
 } from '~~/shared/types/item'
+import type { Recurrence } from '~~/shared/types/recurrence'
 
 const props = defineProps<{
   status: ItemStatus | 'all'
@@ -33,6 +34,7 @@ const helpOpen = ref(false)
 const dueOpen = ref(false)
 const tagOpen = ref(false)
 const tagFocusRemoval = ref(false)
+const recurrenceOpen = ref(false)
 const actionTarget = ref<ItemDto | null>(null)
 
 function open(item: ItemDto) {
@@ -132,6 +134,14 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => openTags(true),
   },
   {
+    keys: ['r'],
+    label: '繰り返しを設定',
+    group: '編集',
+    run: () => {
+      if (list.targets.value.length > 0) recurrenceOpen.value = true
+    },
+  },
+  {
     keys: ['Delete', 'Backspace'],
     display: 'Delete',
     label: '削除',
@@ -161,10 +171,17 @@ const shortcuts = computed<Shortcut[]>(() => [
     group: 'その他',
     allowInInput: true,
     run: () => {
-      if (helpOpen.value || dueOpen.value || tagOpen.value || actionTarget.value) {
+      if (
+        helpOpen.value ||
+        dueOpen.value ||
+        tagOpen.value ||
+        recurrenceOpen.value ||
+        actionTarget.value
+      ) {
         helpOpen.value = false
         dueOpen.value = false
         tagOpen.value = false
+        recurrenceOpen.value = false
         actionTarget.value = null
         return
       }
@@ -200,6 +217,20 @@ function openTags(focusRemoval: boolean) {
 async function applyTags(changes: { add: string[]; remove: string[] }) {
   tagOpen.value = false
   await list.applyTags(changes.add, changes.remove)
+}
+
+/** 単一選択なら現在の設定を初期値に入れる。 */
+const currentRecurrence = computed(() => {
+  const targets = list.targets.value
+  if (targets.length !== 1) return null
+  const target = targets[0]!
+  if (!target.recurrenceRule || !target.recurrenceBasis) return null
+  return { rule: target.recurrenceRule, basis: target.recurrenceBasis }
+})
+
+async function applyRecurrence(recurrence: Recurrence | null) {
+  recurrenceOpen.value = false
+  await list.setRecurrence(recurrence)
 }
 
 async function fromSheet(action: () => Promise<void>) {
@@ -288,6 +319,14 @@ defineExpose({ create: list.create, refresh: list.refresh })
       @close="dueOpen = false"
     />
 
+    <RecurrenceDialog
+      v-if="recurrenceOpen"
+      :count="list.targets.value.length"
+      :current="currentRecurrence"
+      @submit="applyRecurrence"
+      @close="recurrenceOpen = false"
+    />
+
     <TagDialog
       v-if="tagOpen"
       :items="list.targets.value"
@@ -303,6 +342,14 @@ defineExpose({ create: list.create, refresh: list.refresh })
       @complete="fromSheet(() => toggleComplete(actionTarget!))"
       @priority="(value) => fromSheet(() => list.setPriority(value))"
       @postpone="fromSheet(() => list.postpone())"
+      @recurrence="
+        () => {
+          actionTarget && list.focusItem(actionTarget.id)
+          actionTarget = null
+          list.clearSelection()
+          recurrenceOpen = true
+        }
+      "
       @tags="
         () => {
           actionTarget && list.focusItem(actionTarget.id)

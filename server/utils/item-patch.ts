@@ -1,4 +1,6 @@
 import { isItemStatus, isPriority, type ItemPatch } from '~~/shared/types/item'
+import { isRecurrenceBasis, type RecurrenceBasis } from '~~/shared/types/recurrence'
+import { isValidRule } from '~~/shared/utils/recurrence'
 import { TITLE_MAX_LENGTH } from '~~/shared/utils/text'
 
 export interface ItemUpdateValues {
@@ -7,6 +9,8 @@ export interface ItemUpdateValues {
   priority?: number | null
   dueAt?: Date | null
   dueHasTime?: boolean
+  recurrenceRule?: string | null
+  recurrenceBasis?: RecurrenceBasis | null
   updatedAt: Date
 }
 
@@ -76,6 +80,33 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
       values.dueAt = date
     } else {
       throw createError({ statusCode: 400, message: '不正な期限です' })
+    }
+  }
+
+  // 繰り返しは rule と basis をひとまとまりで扱う。
+  // DB の CHECK 制約と同じく、片方だけの状態を作らせない。
+  if ('recurrenceRule' in input || 'recurrenceBasis' in input) {
+    const rule = input.recurrenceRule
+    const basis = input.recurrenceBasis
+
+    if (rule === null || rule === undefined) {
+      values.recurrenceRule = null
+      values.recurrenceBasis = null
+    } else {
+      if (typeof rule !== 'string' || !isValidRule(rule)) {
+        throw createError({
+          statusCode: 400,
+          message: '繰り返しの規則が不正です',
+        })
+      }
+      if (!isRecurrenceBasis(basis)) {
+        throw createError({
+          statusCode: 400,
+          message: '繰り返しの起点が不正です',
+        })
+      }
+      values.recurrenceRule = rule
+      values.recurrenceBasis = basis
     }
   }
 

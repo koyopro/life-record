@@ -10,6 +10,8 @@ import {
   type Priority,
   type SectionDto,
 } from '~~/shared/types/item'
+import type { Recurrence } from '~~/shared/types/recurrence'
+import { describeRecurrence } from '~~/shared/utils/recurrence'
 
 const route = useRoute()
 const id = computed(() => String(route.params.id))
@@ -105,7 +107,41 @@ async function patch(values: Record<string, unknown>) {
 
 const dueOpen = ref(false)
 const tagOpen = ref(false)
+const recurrenceOpen = ref(false)
 const tagList = useTags()
+
+// --- 繰り返し ----------------------------------------------------------
+
+const recurrence = computed<Recurrence | null>(() => {
+  const value = item.value
+  if (!value?.recurrenceRule || !value.recurrenceBasis) return null
+  return { rule: value.recurrenceRule, basis: value.recurrenceBasis }
+})
+
+const recurrenceLabel = computed(() =>
+  recurrence.value ? describeRecurrence(recurrence.value) : null,
+)
+
+async function applyRecurrence(value: Recurrence | null) {
+  recurrenceOpen.value = false
+  await patch({
+    recurrenceRule: value?.rule ?? null,
+    recurrenceBasis: value?.basis ?? null,
+  })
+}
+
+/** 同じ繰り返しから生まれた過去のオカレンス。 */
+const { data: series } = await useFetch<ItemDetailDto[]>('/api/items', {
+  query: { series: computed(() => item.value?.seriesId ?? undefined), sort: 'due' },
+  default: () => [],
+  immediate: Boolean(item.value?.seriesId),
+})
+
+const pastOccurrences = computed(() =>
+  (series.value ?? [])
+    .filter((entry) => entry.id !== id.value)
+    .sort((a, b) => (a.dueAt ?? '') > (b.dueAt ?? '') ? -1 : 1),
+)
 
 async function applyTags(changes: { add: string[]; remove: string[] }) {
   tagOpen.value = false
@@ -258,6 +294,23 @@ async function removeSection(section: SectionDto) {
         </div>
 
         <div class="meta__row">
+          <span class="meta__label">繰り返し</span>
+          <div class="meta__values">
+            <button type="button" class="chip" @click="recurrenceOpen = true">
+              {{ recurrenceLabel ?? '設定する' }}
+            </button>
+            <button
+              v-if="recurrence"
+              type="button"
+              class="chip chip--quiet"
+              @click="applyRecurrence(null)"
+            >
+              やめる
+            </button>
+          </div>
+        </div>
+
+        <div class="meta__row">
           <span class="meta__label">期限</span>
           <div class="meta__values">
             <button type="button" class="chip" @click="dueOpen = true">
@@ -294,6 +347,20 @@ async function removeSection(section: SectionDto) {
         </p>
       </section>
 
+      <section v-if="pastOccurrences.length" class="series">
+        <h2 class="series__title">この繰り返しの過去分</h2>
+        <ul class="series__list">
+          <li v-for="past in pastOccurrences" :key="past.id">
+            <NuxtLink class="series__item" :to="`/items/${past.id}`">
+              <span class="series__due">
+                {{ past.dueAt ? new Date(past.dueAt).toLocaleDateString('ja-JP') : '期限なし' }}
+              </span>
+              <span class="series__status">{{ STATUS_LABELS[past.status] }}</span>
+            </NuxtLink>
+          </li>
+        </ul>
+      </section>
+
       <section v-if="sections.length > 1" class="log">
         <h2 class="log__title">これまでの作業記録</h2>
         <ItemSectionEditor
@@ -320,6 +387,14 @@ async function removeSection(section: SectionDto) {
       </div>
 
       <DueDialog v-if="dueOpen" :count="1" @submit="applyDue" @close="dueOpen = false" />
+
+      <RecurrenceDialog
+        v-if="recurrenceOpen"
+        :count="1"
+        :current="recurrence"
+        @submit="applyRecurrence"
+        @close="recurrenceOpen = false"
+      />
 
       <TagDialog
         v-if="tagOpen"
@@ -476,9 +551,49 @@ async function removeSection(section: SectionDto) {
   border-color: var(--accent);
 }
 
-.log {
+.log,
+.series {
   display: grid;
   gap: 0.5rem;
+}
+
+.series__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.series__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.series__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  min-height: 2.5rem;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.series__due {
+  font-variant-numeric: tabular-nums;
+}
+
+.series__status {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
 }
 
 .page__actions {

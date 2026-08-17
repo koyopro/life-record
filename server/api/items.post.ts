@@ -68,6 +68,8 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
         priority: parsed.priority,
         dueAt: parsed.dueAt,
         dueHasTime: parsed.dueHasTime,
+        recurrenceRule: parsed.recurrence?.rule ?? null,
+        recurrenceBasis: parsed.recurrence?.basis ?? null,
       })
       .returning()
 

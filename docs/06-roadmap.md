@@ -147,21 +147,21 @@ RTM で使っているタグ運用を、そのまま持ち込めること。
 
 RTM の every / after 両方の繰り返しに対応する。詳細仕様は [10-recurrence.md](10-recurrence.md)。
 
-- [ ] `recurrence_rule` / `recurrence_basis` / `series_id` の追加（マイグレーション）
-- [ ] RRULE のパースと次回発生日の計算
-- [ ] 自然言語（日本語・英語）→ RRULE の変換
-- [ ] RRULE → 自然文の表示
-- [ ] 完了時に次回オカレンスを生成する処理
-  - [ ] basis = due（過去日になる場合は未来まで進める）
-  - [ ] basis = completion
-  - [ ] title / priority / tags の引き継ぎ
-  - [ ] 終了条件（COUNT / UNTIL）の判定
-- [ ] Item 詳細での繰り返し設定UI
-- [ ] 一覧での繰り返しアイコン表示
-- [ ] 系列の過去オカレンスを辿るUI
-- [ ] 繰り返しの停止
-- [ ] SmartAdd の `*` 対応
-- [ ] ショートカット `r`
+- [x] `recurrence_rule` / `recurrence_basis` / `series_id` の追加（マイグレーション）
+- [x] RRULE のパースと次回発生日の計算
+- [x] 自然言語（日本語・英語）→ RRULE の変換
+- [x] RRULE → 自然文の表示
+- [x] 完了時に次回オカレンスを生成する処理
+  - [x] basis = due（過去日になる場合は未来まで進める）
+  - [x] basis = completion
+  - [x] title / priority / tags の引き継ぎ
+  - [x] 終了条件（COUNT / UNTIL）の判定
+- [x] Item 詳細での繰り返し設定UI
+- [x] 一覧での繰り返しアイコン表示
+- [x] 系列の過去オカレンスを辿るUI
+- [x] 繰り返しの停止
+- [x] SmartAdd の `*` 対応
+- [x] ショートカット `r`
 
 ### 完了条件
 
