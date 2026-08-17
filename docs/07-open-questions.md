@@ -7,25 +7,32 @@
 - データ構造は [02-data-model.md](02-data-model.md) を正とする
 - Item に `type` カラムは持たせない
 - 構成は Vercel + Neon + Vue.js + TypeScript + S3
+- フロントエンドは **Nuxt 4**（Q1 決定済み）
+- DBアクセスは **Drizzle ORM**（Q2 決定済み）
+- 認証は **Vercel の Deployment Protection**（Q3 決定済み。アプリ側の実装なし）
+- 開発中の DB は **Docker のローカル PostgreSQL**。Neon への接続は後回し
 
 ---
 
 ## Q1. フロントエンド構成（Vite + Vue SPA / Nuxt）
 
-Vue.js を使うことは確定。その上での構成が未確定。
+> **決定: Nuxt 4 を採用する。**
+
+Vue.js を使うことは確定していた。その上での構成として以下を比較した。
 
 | 案 | 構成 | 長所 | 短所 |
 |---|---|---|---|
 | A | Vite + Vue 3 (SPA) + Vercel Functions | 構成が薄い。フロントとAPIの責務が明確 | API とフロントで型共有の仕組みを自前で用意する必要がある |
 | B | Nuxt 3/4 + Nitro server routes | Vercel との親和性が高い。API・ルーティング・型共有が一体 | フレームワークの学習・追従コスト。SSR は個人用途では過剰 |
 
-**現時点の推奨: B（Nuxt）** — 個人開発で書く総量が減るため。
-
-→ Milestone 1 で確定させる。
+B を採用。個人開発で書く総量が減り、画面・API・型定義が1プロジェクトで完結するため。
 
 ---
 
 ## Q2. DBアクセス方式
+
+> **決定: Drizzle ORM + `@neondatabase/serverless` を採用する。**
+> 開発中はローカル PostgreSQL に対して `node-postgres` ドライバで接続する。
 
 | 案 | 長所 | 短所 |
 |---|---|---|
@@ -33,15 +40,21 @@ Vue.js を使うことは確定。その上での構成が未確定。
 | Prisma | 機能が豊富。マイグレーション管理が強い | バンドルサイズが大きく、サーバーレスでは重くなりがち |
 | 生SQL + `@neondatabase/serverless` | 依存が最小。移行が最も容易 | 型付けとマイグレーションを自前で管理する必要がある |
 
-**現時点の推奨: Drizzle ORM + `@neondatabase/serverless`**
+Drizzle を採用。型がスキーマから導出でき、生成物が軽く、SQL に近いため移行時の負担が小さい。
 
-通常の `pg` による TCP コネクションプールは、Vercel Functions のライフサイクルと相性が悪いため避ける。
-
-→ Milestone 1 で確定させる。
+本番の Vercel Functions では、通常の `pg` による TCP コネクションプールはライフサイクルと相性が悪いため避け、
+`@neondatabase/serverless` を使う。ローカル開発では通常の `pg` ドライバを使い、`DATABASE_URL` で切り替える。
 
 ---
 
 ## Q3. 認証方式
+
+> **決定: Vercel の Deployment Protection を使う。アプリケーション側に認証は実装しない。**
+>
+> **要確認（デプロイ前のブロッカー）:** Vercel の Deployment Protection は、
+> Hobby プランでは Preview デプロイのみが対象で、**Production の保護には Pro プランが必要**な可能性がある。
+> 公開前に必ずプラン側の対応範囲を確認すること。Production を保護できない場合は、
+> 下表の別案（パスワード + セッションCookie / Google OAuth）へ切り替える。
 
 個人利用・単一ユーザー前提。過剰な仕組みは不要だが、インターネット公開である以上、必ず必要。
 
@@ -52,11 +65,9 @@ Vue.js を使うことは確定。その上での構成が未確定。
 | Vercel の Deployment Protection | 実装ゼロ | Hobby プランでは Preview のみ等の制約があり、Production の保護には有料プランが必要 |
 | Cloudflare Access 等の外部認可レイヤ | 実装ゼロ | 構成に別ベンダーが増える |
 
-**現時点の推奨: Google OAuth（自分のアカウント1つのみ許可）** — パスワードを自分で保持しなくてよく、スマートフォンからのログインも楽なため。
+Deployment Protection を採用。アプリ側の実装がゼロで済み、個人利用には十分なため。
 
 初期段階では DB に `user_id` を持たせない。将来マルチユーザー化する場合は全テーブルに追加する。
-
-→ Milestone 1 で確定、Milestone 2 で実装。
 
 ---
 

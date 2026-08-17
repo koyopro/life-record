@@ -55,21 +55,15 @@
 
 ## 4.3 フロントエンド
 
-### フレームワーク構成（未確定）
+### フレームワーク構成
 
-Vue.js を使うことは確定。その上での構成として2案ある。
+**Nuxt 4 + Nitro server routes** を採用する（[07-open-questions.md](07-open-questions.md) Q1）。
 
-| 案 | 構成 | 特徴 |
-|---|---|---|
-| A | Vite + Vue 3 (SPA) + Vercel Functions | 構成が単純。フロントとAPIが明確に分離される |
-| B | Nuxt 3/4 + Nitro (server routes) | Vercel との親和性が高く、API も同一プロジェクトで完結。SSR による初期表示の速さ |
-
-**推奨は B（Nuxt）。** Vercel 上での API 実装・ルーティング・型共有が一体化され、個人開発の総量が減るため。
-ただし、個人用途で SSR の必要性は低く、A のほうが構成としては薄い。この選択は [07-open-questions.md](07-open-questions.md) で確定させる。
+Vercel 上での API 実装・ルーティング・型共有が一体化され、個人開発で書く総量が減るため。
 
 ### 状態管理・ルーティング
 
-- ルーティング: Vue Router（Nuxt 採用時はファイルベースルーティング）
+- ルーティング: Nuxt のファイルベースルーティング
 - 状態管理: Pinia。ただし規模が小さいうちは composable のみで足りる可能性が高い
 - スタイル: 未確定（Tailwind CSS 等）
 
@@ -89,7 +83,7 @@ Vue.js を使うことは確定。その上での構成として2案ある。
 
 ### 方式
 
-Vercel の Functions（Nuxt 採用時は Nitro の server routes）で REST 的な API を実装する。
+Nitro の server routes（`server/api/`）で REST 的な API を実装する。Vercel 上では Functions として動作する。
 
 GraphQL や tRPC は、個人用途に対して構成が重くなるため採用しない。
 
@@ -117,19 +111,23 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 
 ### DB アクセス
 
-Neon への接続は、サーバーレス環境を考慮して以下のいずれかを用いる。
+**Drizzle ORM** を採用する（[07-open-questions.md](07-open-questions.md) Q2）。
+TypeScript の型がスキーマから導出でき、生成物が軽く、SQL に近いため移行時の負担が小さい。
 
-- `@neondatabase/serverless`（HTTP / WebSocket 経由。コネクション枯渇の心配が少ない）
-- Drizzle ORM または Prisma（Neon の serverless driver 経由）
+ドライバは環境で使い分ける。
 
-**推奨は Drizzle ORM + `@neondatabase/serverless`。** TypeScript の型がスキーマから導出でき、生成物が軽く、SQL に近いため移行時の負担が小さい。
+| 環境 | ドライバ | 理由 |
+|---|---|---|
+| 本番 (Vercel) | `@neondatabase/serverless` | HTTP 経由。サーバーレスでコネクションが枯渇しない |
+| ローカル開発 | `pg` (node-postgres) | Docker のローカル PostgreSQL に TCP 接続する |
 
-通常の `pg` による TCP コネクションプールは、Vercel Functions のライフサイクルと相性が悪いため避ける。
+通常の `pg` による TCP コネクションプールは Vercel Functions のライフサイクルと相性が悪いため、本番では使わない。
+`DATABASE_URL` のホスト名で判定して切り替える。
 
 ### マイグレーション
 
-SQL ファイルベースのマイグレーションをリポジトリで管理する（Drizzle Kit 等）。
-DDL は [02-data-model.md](02-data-model.md) を参照。
+Drizzle Kit で SQL ファイルベースのマイグレーションを生成し、リポジトリで管理する。
+スキーマ定義は `server/db/schema.ts`、生成物は `drizzle/`。DDL は [02-data-model.md](02-data-model.md) を参照。
 
 ## 4.5 画像 / S3
 
@@ -165,7 +163,8 @@ IAM ユーザーを作成し、対象バケットへの最小権限（`s3:PutObj
 | `S3_BUCKET` | バケット名 |
 | `AWS_ACCESS_KEY_ID` | S3 用 IAM アクセスキー |
 | `AWS_SECRET_ACCESS_KEY` | S3 用 IAM シークレット |
-| （認証関連） | 認証方式の確定後に定義する |
+
+認証は Vercel の Deployment Protection で行うため、アプリケーション用の認証関連の環境変数は持たない。
 
 Vercel のプロジェクト設定で管理し、リポジトリにはコミットしない。
 
@@ -173,8 +172,8 @@ Vercel のプロジェクト設定で管理し、リポジトリにはコミッ�
 
 | 環境 | 用途 |
 |---|---|
-| ローカル | 開発。Neon のブランチ機能で開発用DBを分離する |
-| Production | 本番（Vercel の production デプロイ） |
+| ローカル | 開発。Docker Compose のローカル PostgreSQL を使う（`docker compose up -d`） |
+| Production | 本番（Vercel の production デプロイ + Neon） |
 
 個人用途のため Staging 環境は設けない。Vercel の Preview デプロイで代替する。
 

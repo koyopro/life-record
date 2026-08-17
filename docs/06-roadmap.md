@@ -23,14 +23,15 @@
 
 技術スタックの大枠は決定済み（Vercel + Neon + Vue.js + TypeScript + S3）。残りを確定させる。
 
-- [ ] フロントエンド構成を確定（Vite + Vue SPA / Nuxt）→ [07-open-questions.md](07-open-questions.md) Q1
-- [ ] DBアクセス方式を確定（Drizzle / Prisma / 生SQL）→ Q2
-- [ ] 認証方式を確定 → Q3
-- [ ] Neon プロジェクト作成・開発用ブランチ作成
+- [x] フロントエンド構成を確定 → **Nuxt 4**（[07-open-questions.md](07-open-questions.md) Q1）
+- [x] DBアクセス方式を確定 → **Drizzle ORM**（Q2）
+- [x] 認証方式を確定 → **Vercel Deployment Protection**（Q3）
+- [x] ローカル開発用 PostgreSQL を用意（Docker Compose）
+- [x] Nuxt プロジェクトを作成
+- [x] DBスキーマ定義とマイグレーションの仕組みを導入 → [02-data-model.md](02-data-model.md)
+- [ ] Neon プロジェクト作成
 - [ ] Vercel プロジェクト作成・Neon 連携
-- [ ] DBスキーマ（DDL）を適用 → [02-data-model.md](02-data-model.md)
-- [ ] マイグレーション管理の仕組みを導入
-- [ ] ローカル開発環境を構築
+- [ ] Deployment Protection が Production に効くかプランを確認 → Q3
 - [ ] 最初のデプロイを通す（疎通確認）
 
 ---
@@ -62,7 +63,8 @@ Item.status  = inbox
   - [ ] 楽観的UI更新（送信完了を待たずに一覧へ反映）
 - [ ] Inbox 一覧画面（新しい順のカード表示）
 - [ ] メモの削除
-- [ ] 認証（ログイン・セッション・全APIの保護）
+
+認証は Vercel の Deployment Protection に任せるため、アプリ側の実装は不要。
 
 ### スコープ外（Milestone 3 以降で実装）
 
