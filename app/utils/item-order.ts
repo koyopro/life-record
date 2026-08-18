@@ -7,7 +7,7 @@ import type { ItemDto, SortKey } from '~~/shared/types/item'
  * クライアントでも作る。追加や重要度の変更を応答を待たずに反映するとき、
  * 正しい位置へ置くために要る。ここがずれていると、取り直しのたびに行が飛ぶ。
  */
-export function sortItems(items: ItemDto[], sort: SortKey): ItemDto[] {
+export function sortItems<T extends ItemDto>(items: T[], sort: SortKey): T[] {
   return [...items].sort(comparatorFor(sort))
 }
 

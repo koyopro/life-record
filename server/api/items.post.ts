@@ -1,7 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { itemTags, items, sections } from '~~/server/db/schema'
 import { toAppDate, todayDueAt } from '~~/shared/utils/date'
-import { assertUuid, toItemDto } from '~~/server/utils/items'
+import { assertUuid, toItemDto, toItemDtos } from '~~/server/utils/items'
 import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, type ItemDto, type ItemStatus } from '~~/shared/types/item'
 import { parseSmartAdd } from '~~/shared/utils/smart-add'
@@ -66,12 +67,28 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
       : 'inbox'
 
   const db = useDb()
+  const id = payload?.id !== undefined ? assertUuid(payload.id) : undefined
 
   return await db.transaction(async (tx) => {
+    /*
+     * 同じ id で二度届いたら、作らずに今あるものを返す（冪等）。
+     *
+     * オフライン中の操作を送るとき、「サーバーでは成功したが応答を
+     * 受け取れなかった」場合に同じ内容を送り直す。ここで弾かないと
+     * 二重登録になる（docs/12-offline.md 12.6）。
+     */
+    if (id) {
+      const [existing] = await tx.select().from(items).where(eq(items.id, id))
+      if (existing) {
+        const [dto] = await toItemDtos(tx, [existing])
+        return dto!
+      }
+    }
+
     const [item] = await tx
       .insert(items)
       .values({
-        id: payload?.id !== undefined ? assertUuid(payload.id) : undefined,
+        id,
         title: parsed.title,
         status,
         priority: parsed.priority,

@@ -1,6 +1,7 @@
+import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { itemTags, items, sections } from '~~/server/db/schema'
-import { assertUuid, toItemDto } from '~~/server/utils/items'
+import { assertUuid, toItemDto, toItemDtos } from '~~/server/utils/items'
 import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, isPriority, type ItemDetailDto } from '~~/shared/types/item'
 
@@ -27,6 +28,16 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
 
   return await db.transaction(async (tx) => {
+    /*
+     * すでに戻っているなら、そのまま返す（冪等）。
+     * オフライン同期では同じ復元が二度届くことがある（docs/12-offline.md 12.6）。
+     */
+    const [existing] = await tx.select().from(items).where(eq(items.id, id))
+    if (existing) {
+      const [dto] = await toItemDtos(tx, [existing])
+      return dto!
+    }
+
     const [restored] = await tx
       .insert(items)
       .values({
