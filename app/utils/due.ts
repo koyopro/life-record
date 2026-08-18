@@ -43,8 +43,10 @@ export function formatDue(item: ItemDto, now = new Date()): DueDisplay {
 
   if (isOverdue) {
     const overdueDays = diff < 0 ? -diff : 0
-    const suffix = overdueDays > 0 ? `（${overdueDays}日前）` : ''
-    return { label: `期限切れ${suffix}`, state: 'overdue' }
+    if (overdueDays === 0) return { label: `今日${time}`, state: 'overdue' }
+    if (overdueDays === 1) return { label: '昨日', state: 'overdue' }
+    if (overdueDays <= 7) return { label: `${overdueDays}日前`, state: 'overdue' }
+    return { label: formatAbsoluteDate(due, now), state: 'overdue' }
   }
 
   if (diff === 0) return { label: `今日${time}`, state: 'today' }
@@ -53,11 +55,14 @@ export function formatDue(item: ItemDto, now = new Date()): DueDisplay {
     return { label: `${WEEKDAYS[due.getDay()]}曜${time}`, state: 'soon' }
   }
 
+  return { label: `${formatAbsoluteDate(due, now)}${time}`, state: 'later' }
+}
+
+function formatAbsoluteDate(due: Date, now: Date): string {
   const sameYear = due.getFullYear() === now.getFullYear()
-  const date = sameYear
+  return sameYear
     ? `${due.getMonth() + 1}月${due.getDate()}日`
     : `${due.getFullYear()}年${due.getMonth() + 1}月${due.getDate()}日`
-  return { label: `${date}${time}`, state: 'later' }
 }
 
 /**
