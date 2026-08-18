@@ -580,7 +580,8 @@ function onTab(event: KeyboardEvent) {
   const prefix = activePrefix.value
 
   if (event.shiftKey) {
-    if (!/^[ \t]/.test(prefix)) return
+    // 全角スペースでの字下げも半角と同じく1段として外せるようにする（indentOf と揃える）
+    if (!/^[ \t　]/.test(prefix)) return
     replaceActivePrefix(prefix.slice(1))
     return
   }

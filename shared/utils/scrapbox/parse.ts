@@ -126,15 +126,17 @@ export function dropPrefixUnit(prefix: string): string {
 }
 
 /**
- * 行頭の空白の数。タブも1段として数える。
+ * 行頭の空白の数。タブ・全角スペースも1段として数える。
  *
+ * 全角スペースは、スマートフォンの日本語入力で変換候補を確定する際などに
+ * 半角のつもりで入ってしまいやすいため、同じ字下げとして扱う。
  * Scrapbox では行頭の空白が階層を表すため、保存時に正規化してはならない。
  */
 export function indentOf(line: string): number {
   let count = 0
   while (count < line.length) {
     const char = line[count]
-    if (char !== ' ' && char !== '\t') break
+    if (char !== ' ' && char !== '\t' && char !== '　') break
     count++
   }
   return count
