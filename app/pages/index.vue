@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// 一覧の右側に詳細を並べるため、コンテナを広く使う
+definePageMeta({ wide: true })
+
 const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null)
 
 useHead({ title: 'Inbox' })

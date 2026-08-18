@@ -27,13 +27,10 @@ const props = defineProps<{
   emptyMessage: string
 }>()
 
-const emit = defineEmits<{
-  filterTag: [tag: string]
-  /** カーソルが指す Item が変わった。分割表示で右ペインを追従させる。 */
-  select: [item: ItemDto | null]
-  /** 詳細を開こうとした。分割表示なら親が遷移せずに扱う。 */
-  open: [item: ItemDto]
-}>()
+const emit = defineEmits<{ filterTag: [tag: string] }>()
+
+const route = useRoute()
+const router = useRouter()
 
 const list = useItemList({
   status: () => props.status,
@@ -53,23 +50,71 @@ const tagFocusRemoval = ref(false)
 const recurrenceOpen = ref(false)
 const actionTarget = ref<ItemDto | null>(null)
 
+// --- 分割表示（docs/03-functional-spec.md 3.1） ---------------------------
+//
+// 画面が広ければ、一覧を左に残したまま右側に詳細を出す。
+// すべての一覧で同じ挙動にしたいので、ここに置いて共通化する。
+
+const split = useSplitLayout()
+
 /**
- * 詳細を開く。分割表示かどうかは親が決めるので、ここでは通知だけする。
+ * カーソル以外から明示的に選んだ Item。
  *
- * カーソルも合わせる。合わせないと、分割表示で右ペインに出したものと
+ * 系列の過去オカレンスなど、いま表示している一覧に含まれないものを
+ * 出す場合があるため、カーソルとは別に持つ。
+ */
+const pinnedId = ref<string | null>(
+  typeof route.query.selected === 'string' ? route.query.selected : null,
+)
+
+const selectedId = computed(() =>
+  split.value ? (pinnedId.value ?? list.cursorItem.value?.id ?? null) : null,
+)
+
+// カーソルが実際に動いたら、明示的な選択は解除してカーソルに追従させる。
+// 再取得のたびに解除すると、編集の直後に別のタスクへ飛んでしまう。
+watch(
+  () => list.cursorItem.value?.id,
+  (id, previous) => {
+    if (id && previous && id !== previous) pinnedId.value = null
+  },
+)
+
+// 選択を URL に残す。再読み込みや共有で同じ状態に戻せるようにする。
+// 履歴を汚さないよう replace を使う。
+watch(selectedId, (id) => {
+  const next = id ?? undefined
+  if (route.query.selected === next) return
+  const query = { ...route.query, selected: next }
+  if (!next) delete query.selected
+  router.replace({ query })
+})
+
+/**
+ * 詳細を開く。広い画面では右ペインに出し、狭い画面では詳細画面へ遷移する。
+ *
+ * カーソルも合わせる。合わせないと、右ペインに出したものと
  * キーボード操作の対象がずれる。
  */
 function open(item: ItemDto) {
   list.focusItem(item.id)
-  emit('open', item)
+  if (split.value) {
+    pinnedId.value = item.id
+    return
+  }
+  navigateTo(`/items/${item.id}`)
 }
 
-// カーソルの移動を親へ伝える。右ペインをカーソルに追従させるため。
-watch(
-  () => list.cursorItem.value,
-  (item) => emit('select', item),
-  { immediate: true },
-)
+function onDetailRemoved(id: string) {
+  if (pinnedId.value === id) pinnedId.value = null
+  void list.refresh()
+}
+
+/** 右ペインで系列の別オカレンスを選んだとき。一覧にあればカーソルも合わせる。 */
+function onSelectSeries(id: string) {
+  pinnedId.value = id
+  list.focusItem(id)
+}
 
 /**
  * ショートカット定義（docs/08-todo-management.md 8.4）。
@@ -281,8 +326,9 @@ defineExpose({
 </script>
 
 <template>
-  <div class="list">
-    <div class="list__bar">
+  <div class="split" :class="{ 'split--active': selectedId }">
+    <div class="list">
+      <div class="list__bar">
       <div class="list__status" role="status">
         <span v-if="list.selectedIds.value.size" class="list__selected">
           {{ list.selectedIds.value.size }}件を選択中
@@ -291,58 +337,71 @@ defineExpose({
       </div>
 
       <div class="list__controls">
-        <label v-if="showSort" class="list__sort">
-          <span class="list__sort-label">並び</span>
-          <select v-model="list.sort.value" class="list__sort-select">
-            <option v-for="key in SORT_KEYS" :key="key" :value="key">
-              {{ SORT_LABELS[key] }}
-            </option>
-          </select>
-        </label>
-        <button
-          type="button"
-          class="list__help"
-          aria-label="キーボードショートカット"
-          @click="helpOpen = true"
-        >
-          ?
-        </button>
+          <label v-if="showSort" class="list__sort">
+            <span class="list__sort-label">並び</span>
+            <select v-model="list.sort.value" class="list__sort-select">
+              <option v-for="key in SORT_KEYS" :key="key" :value="key">
+                {{ SORT_LABELS[key] }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="list__help"
+            aria-label="キーボードショートカット"
+            @click="helpOpen = true"
+          >
+            ?
+          </button>
+        </div>
       </div>
+
+      <p v-if="list.errorMessage.value" class="list__error" role="alert">
+        {{ list.errorMessage.value }}
+      </p>
+      <p v-if="list.error.value" class="list__error" role="alert">
+        一覧を読み込めませんでした
+      </p>
+
+      <p
+        v-else-if="list.loading.value && !list.items.value.length"
+        class="list__placeholder"
+      >
+        読み込み中…
+      </p>
+
+      <p v-else-if="!list.items.value.length" class="list__placeholder">
+        {{ emptyMessage }}
+      </p>
+
+      <ul v-else class="list__items">
+        <li v-for="(item, index) in list.items.value" :key="item.id">
+          <ItemCard
+            :item="item"
+            :focused="index === list.cursor.value"
+            :selected="list.selectedIds.value.has(item.id)"
+            @focus="list.focusItem(item.id)"
+            @select="list.toggleSelect(item.id)"
+            @complete="toggleComplete(item)"
+            @open="open(item)"
+            @longpress="actionTarget = item"
+            @filter-tag="(tag) => emit('filterTag', tag)"
+          />
+        </li>
+      </ul>
     </div>
 
-    <p v-if="list.errorMessage.value" class="list__error" role="alert">
-      {{ list.errorMessage.value }}
-    </p>
-    <p v-if="list.error.value" class="list__error" role="alert">
-      一覧を読み込めませんでした
-    </p>
-
-    <p
-      v-else-if="list.loading.value && !list.items.value.length"
-      class="list__placeholder"
-    >
-      読み込み中…
-    </p>
-
-    <p v-else-if="!list.items.value.length" class="list__placeholder">
-      {{ emptyMessage }}
-    </p>
-
-    <ul v-else class="list__items">
-      <li v-for="(item, index) in list.items.value" :key="item.id">
-        <ItemCard
-          :item="item"
-          :focused="index === list.cursor.value"
-          :selected="list.selectedIds.value.has(item.id)"
-          @focus="list.focusItem(item.id)"
-          @select="list.toggleSelect(item.id)"
-          @complete="toggleComplete(item)"
-          @open="open(item)"
-          @longpress="actionTarget = item"
-          @filter-tag="(tag) => emit('filterTag', tag)"
-        />
-      </li>
-    </ul>
+    <aside v-if="selectedId" class="split__detail">
+      <!-- id が変わったら作り直す。前のタスクの編集状態を持ち越さないため -->
+      <ItemDetail
+        :key="selectedId"
+        :item-id="selectedId"
+        embedded
+        @removed="onDetailRemoved"
+        @changed="list.refresh()"
+        @select-series="onSelectSeries"
+      />
+    </aside>
 
     <ShortcutHelp v-if="helpOpen" :groups="groups" @close="helpOpen = false" />
 
@@ -407,7 +466,41 @@ defineExpose({
 </template>
 
 <style scoped>
+/*
+ * 一覧と詳細の分割。詳細が出ていないときは、読みやすい幅に収める。
+ * すべての一覧で同じ挙動にするため、ここで完結させる。
+ */
+.split {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 40rem;
+}
+
+@media (min-width: 60rem) {
+  .split--active {
+    max-width: none;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  /* 詳細は別スクロール。長い本文を読んでも一覧の位置が動かない */
+  .split--active .split__detail {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    padding-right: 0.25rem;
+  }
+}
+
+.split__detail {
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 1.5rem;
+}
+
 .list {
+  min-width: 0;
   display: grid;
   gap: 0.625rem;
 }

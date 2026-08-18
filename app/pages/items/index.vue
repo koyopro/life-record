@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  STATUS_LABELS,
-  isItemStatus,
-  type ItemDto,
-  type ItemStatus,
-} from '~~/shared/types/item'
+import { STATUS_LABELS, isItemStatus, type ItemStatus } from '~~/shared/types/item'
 import { normalizeTagName } from '~~/shared/types/tag'
 
 // 一覧の右側に詳細を並べるため、この画面だけコンテナを広く使う
@@ -35,84 +30,16 @@ const tag = computed<string | undefined>(() => {
 
 const untagged = computed(() => route.query.untagged === 'true')
 
-interface ListViewExposed {
-  create: (text: string) => Promise<boolean>
-  refresh: () => Promise<void>
-  focusItem: (id: string) => void
-}
-
-const listView = ref<ListViewExposed | null>(null)
+const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null)
 
 useHead({ title: 'タスク' })
 
-// --- 分割表示 -----------------------------------------------------------
-//
-// 画面が広ければ、一覧を左に残したまま右側に詳細を出す。
-// 狭い画面では従来どおり詳細画面へ遷移する。
-
-const split = useSplitLayout()
-
-/**
- * カーソルが指している Item。
- *
- * 画面幅にかかわらず持っておく。`split` はマウント後に確定するため、
- * ここで幅を判定すると初回の選択を取りこぼす。
- */
-const cursorId = ref<string | null>(null)
-
-/** 系列リンクなど、カーソル以外から明示的に選んだもの。 */
-const pinnedId = ref<string | null>(
-  typeof route.query.selected === 'string' ? route.query.selected : null,
-)
-
-const selectedId = computed(() =>
-  split.value ? (pinnedId.value ?? cursorId.value) : null,
-)
-
-function onSelect(item: ItemDto | null) {
-  const previous = cursorId.value
-  cursorId.value = item?.id ?? null
-
-  // カーソルが実際に動いたときだけ、明示的な選択を解除する。
-  // 再取得のたびに解除すると、編集の直後に別のタスクへ飛んでしまう。
-  if (previous && item && previous !== item.id) {
-    pinnedId.value = null
-  }
-}
-
-function onOpen(item: ItemDto) {
-  if (split.value) {
-    pinnedId.value = item.id
-    return
-  }
-  navigateTo(`/items/${item.id}`)
-}
-
-// 選択を URL に残す。再読み込みや共有で同じ状態に戻せるようにする。
-// 履歴を汚さないよう replace を使う。
-watch(selectedId, (id) => {
-  const next = id ?? undefined
-  if (route.query.selected === next) return
-  setQuery({ selected: next })
-})
-
-function onRemoved(id: string) {
-  if (pinnedId.value === id) pinnedId.value = null
-  void listView.value?.refresh()
-}
-
-function onChanged() {
-  void listView.value?.refresh()
-}
-
-/** 右ペインで系列の別オカレンスを選んだとき。一覧にあればカーソルも合わせる。 */
-function onSelectSeries(id: string) {
-  pinnedId.value = id
-  listView.value?.focusItem(id)
-}
-
 function setQuery(patch: Record<string, string | undefined>) {
+  // 絞り込みが変わったら選択を解除する。
+  // 前の絞り込みで選んでいたタスクが、新しい一覧に無いまま残るのを避ける。
+  const clearSelected = ['status', 'tag', 'untagged'].some((key) => key in patch)
   const query = { ...route.query, ...patch }
+  if (clearSelected) delete query.selected
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined) delete query[key]
   }
@@ -193,39 +120,21 @@ async function add(text: string) {
       @submit="add"
     />
 
-    <div class="split" :class="{ 'split--active': split && selectedId }">
-      <div class="split__list">
-        <ItemListView
-          :key="listKey"
-          ref="listView"
-          :status="status"
-          :tag="tag"
-          :untagged="untagged"
-          storage-key="sort:items"
-          show-sort
-          :empty-message="
-            tag || untagged
-              ? 'この絞り込みに該当するタスクはありません。'
-              : '該当するタスクはありません。'
-          "
-          @filter-tag="selectTag"
-          @select="onSelect"
-          @open="onOpen"
-        />
-      </div>
-
-      <aside v-if="split && selectedId" class="split__detail">
-        <!-- id が変わったら作り直す。前のタスクの編集状態を持ち越さないため -->
-        <ItemDetail
-          :key="selectedId"
-          :item-id="selectedId"
-          embedded
-          @removed="onRemoved"
-          @changed="onChanged"
-          @select-series="onSelectSeries"
-        />
-      </aside>
-    </div>
+    <ItemListView
+      :key="listKey"
+      ref="listView"
+      :status="status"
+      :tag="tag"
+      :untagged="untagged"
+      storage-key="sort:items"
+      show-sort
+      :empty-message="
+        tag || untagged
+          ? 'この絞り込みに該当するタスクはありません。'
+          : '該当するタスクはありません。'
+      "
+      @filter-tag="selectTag"
+    />
   </div>
 </template>
 
@@ -233,38 +142,6 @@ async function add(text: string) {
 .page {
   display: grid;
   gap: 1rem;
-}
-
-.split {
-  display: grid;
-  gap: 1.5rem;
-}
-
-/* 一覧と詳細を並べる。詳細側はスクロールを分けて、
-   長い本文を読んでも一覧の位置が動かないようにする。 */
-@media (min-width: 60rem) {
-  .split--active {
-    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .split--active .split__detail {
-    position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 2rem);
-    overflow-y: auto;
-    padding-right: 0.25rem;
-  }
-}
-
-.split__list {
-  min-width: 0;
-}
-
-.split__detail {
-  min-width: 0;
-  border-left: 1px solid var(--border);
-  padding-left: 1.5rem;
 }
 
 .tabs,
