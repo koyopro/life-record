@@ -258,12 +258,21 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 
 ## Milestone 10: 長期運用対応
 
-- [ ] `pg_dump` による定期バックアップ
-- [ ] バックアップの実行方式を確定 → [07-open-questions.md](07-open-questions.md) Q5
-- [ ] S3 バックアップ / 複製方針の実装
-- [ ] データエクスポート機能（JSON / テキスト）
-- [ ] 復元手順の確認と文書化
-- [ ] 定期的なバックアップ確認の運用を決める
+- [x] バックアップの実行方式を確定 → [07-open-questions.md](07-open-questions.md) Q5
+- [x] `pg_dump` による定期バックアップ（`.github/workflows/backup.yml`）
+- [x] データエクスポート機能（`/api/export` / `?format=text`）
+- [x] 復元手順の文書化 → [05-operations.md](05-operations.md) 5.4
+- [x] 定期的なバックアップ確認の運用を決める（四半期に1度、復元まで通す）
+
+### 残っている作業（AWS / GitHub の設定）
+
+- [ ] バックアップ用の S3 バケット作成（**画像用とは別にする**）
+- [ ] GitHub Secrets の登録（`DATABASE_URL` / `BACKUP_S3_BUCKET` /
+      `BACKUP_AWS_REGION` / `BACKUP_AWS_ACCESS_KEY_ID` /
+      `BACKUP_AWS_SECRET_ACCESS_KEY`）
+- [ ] 画像バケットのバージョニング有効化・別リージョンへの複製
+- [ ] **復元を1度通す**（[05-operations.md](05-operations.md) 5.4）。
+      取れているだけでは意味がないため
 
 ---
 

@@ -1,0 +1,57 @@
+# DB の定期バックアップ（docs/05-operations.md 5.2 / 07-open-questions.md Q5）
+#
+# Neon の Point-in-Time Restore とは別に、自分で持ち出せる形の
+# ダンプを残す。プラットフォーム側の機能だけに依存しないため。
+#
+# 必要な Secrets:
+#   DATABASE_URL            Neon の接続文字列（読み取りができればよい）
+#   BACKUP_S3_BUCKET        ダンプの置き場所。画像用とは別のバケットにする
+#   BACKUP_AWS_REGION
+#   BACKUP_AWS_ACCESS_KEY_ID
+#   BACKUP_AWS_SECRET_ACCESS_KEY
+name: backup
+
+on:
+  schedule:
+    # 毎日 03:00 JST（UTC 18:00）
+    - cron: '0 18 * * *'
+  # 復元の練習や、取れているかの確認のために手でも回せるようにする
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PostgreSQL クライアントを入れる
+        # Neon のバージョンに合わせる。古い pg_dump では接続を拒否される
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: ダンプを取る
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # -Fc（カスタム形式）で取る。pg_restore で部分復元ができる
+          pg_dump --format=custom --no-owner --no-acl \
+            --file="datalake-$(date -u +%Y%m%d).dump" "$DATABASE_URL"
+
+      - name: S3 へ置く
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.BACKUP_AWS_REGION }}
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+        run: |
+          set -euo pipefail
+          aws s3 cp "datalake-$(date -u +%Y%m%d).dump" \
+            "s3://$BUCKET/db/datalake-$(date -u +%Y%m%d).dump"
+
+      - name: 取れたことを残す
+        # 失敗に気づけるようにする。通知は GitHub の
+        # 「Actions が失敗したらメール」に任せる
+        run: echo "backup ok $(date -u +%Y-%m-%dT%H:%M:%SZ)"

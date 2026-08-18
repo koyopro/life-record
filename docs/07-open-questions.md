@@ -117,15 +117,25 @@ CloudFront は、必要になってから足せる（本文を書き換えずに
 
 ## Q5. バックアップの実行方式
 
+> **決定: GitHub Actions で毎日 `pg_dump` を取り、S3 へ置く。**
+> 定義は `.github/workflows/backup.yml`。
+
 | 案 | 長所 | 短所 |
 |---|---|---|
 | GitHub Actions で `pg_dump` → S3 | 実行環境の制約が少ない。ログが残る | GitHub への依存 |
 | Vercel Cron | 構成が増えない | Function の実行時間制限がある。`pg_dump` バイナリの利用が難しい |
 | 手元のマシンで手動 / cron | 依存が最小 | 実行忘れが起きる |
 
-**現時点の推奨: GitHub Actions で定期的に `pg_dump` を取得し、S3（DBとは別ベンダー）へ保存する。**
+GitHub Actions を採用した。Vercel Cron は Function の実行時間制限があり、
+`pg_dump` のバイナリも置きにくい。手元の cron は実行忘れに気づけない。
 
-→ Milestone 8 で確定させる。
+**ダンプの置き場所は、画像用とは別のバケットにする。** 同じ鍵で
+両方に触れると、片方の事故がもう片方に及ぶため。
+
+- `pg_dump --format=custom` で取る。`pg_restore` で部分復元ができる
+- `workflow_dispatch` を付けて手でも回せるようにする。
+  復元の練習と、取れているかの確認のため
+- 失敗の通知は GitHub の「Actions が失敗したらメール」に任せる
 
 ---
 

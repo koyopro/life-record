@@ -30,9 +30,21 @@
 - ライフサイクルルールで自動削除しない（長期保持が目的のため）
 - 別リージョンまたは別ストレージへの複製を検討する
 
-### 実行方法（未確定）
+### 実行方法
 
-Vercel Cron や GitHub Actions での定期実行が候補。方式は [07-open-questions.md](07-open-questions.md)。
+**GitHub Actions で毎日 `pg_dump` を取り、S3 へ置く**（[07-open-questions.md](07-open-questions.md) Q5）。
+定義は `.github/workflows/backup.yml`。
+
+```text
+毎日 03:00 JST
+  → pg_dump --format=custom
+  → s3://<バックアップ用バケット>/db/datalake-YYYYMMDD.dump
+```
+
+**ダンプの置き場所は、画像用とは別のバケットにする。**
+同じ鍵で両方に触れると、片方の事故がもう片方に及ぶため。
+
+必要な Secrets は workflow のコメントに書いてある。
 
 ## 5.3 エクスポート
 
@@ -48,15 +60,56 @@ Vercel Cron や GitHub Actions での定期実行が候補。方式は [07-open-
 日付ごとのファイル群として書き出せば、そのまま読める形で持ち出せる。
 Scrapbox へ取り込む場合も、記法をそろえてあるため変換がほぼ不要。
 
-エクスポート機能自体は後期マイルストーンで実装する。それまでは `pg_dump` で代替する。
+### エンドポイント
+
+| URL | 形式 |
+|---|---|
+| `/api/export` | JSON。構造をそのまま。読み込み直せる |
+| `/api/export?format=text` | プレーンテキスト。日付ごとに読める形 |
+
+どちらもブラウザで開けばファイルとして落ちる。
+画像は本文に `/images/<ID>.<拡張子>` として残るだけなので、
+実体はバケットごとコピーする（`aws s3 sync`）。
 
 ## 5.4 復元
 
 バックアップは、**復元できることを確認して初めて意味を持つ**。
 
-- 新規 Neon ブランチにダンプをリストアする手順を確認しておく
-- 手順を [06-roadmap.md](06-roadmap.md) の Milestone 7 で文書化する
-- 定期的にバックアップが実際に取得できているかを確認する
+### 手順
+
+新規の Neon ブランチへ復元し、本番に触れずに中身を確かめる。
+
+```bash
+# 1. Neon で新しいブランチを作り、その接続文字列を控える
+# 2. S3 からダンプを取ってくる
+aws s3 cp s3://<バックアップ用バケット>/db/datalake-YYYYMMDD.dump .
+
+# 3. 復元する（--clean は付けない。空のブランチに入れるため）
+pg_restore --no-owner --no-acl --dbname "<復元先の接続文字列>" \
+  datalake-YYYYMMDD.dump
+
+# 4. 中身を確かめる
+psql "<復元先の接続文字列>" \
+  -c 'SELECT count(*) FROM items' \
+  -c 'SELECT count(*) FROM sections' \
+  -c 'SELECT count(*) FROM diaries'
+```
+
+画像は S3 のバケットをまるごと同期して確認する。
+
+```bash
+aws s3 sync s3://<画像用バケット>/images ./images-restore
+```
+
+### 確認の運用
+
+**四半期に1度、上の手順を実際に通す。**
+バックアップが壊れていることに気づけるのは、復元したときだけなので。
+
+- GitHub Actions のログで、毎日ダンプが取れていることを確認する
+  （失敗すれば GitHub からメールが来る）
+- 復元まで通したら、確認した日を Item として残す
+  （繰り返し設定 `*every 3 months` で回す）
 
 ## 5.5 可用性・パフォーマンス
 

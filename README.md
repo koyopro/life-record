@@ -76,6 +76,18 @@ docs/                 仕様書
 本番で使うには AWS 側の設定が要る。手順は
 [docs/06-roadmap.md](docs/06-roadmap.md) Milestone 8 を参照。
 
+## バックアップとエクスポート
+
+DB は GitHub Actions で毎日 `pg_dump` を取り、S3 へ置く
+（`.github/workflows/backup.yml`）。手元へ取り出したいときは以下。
+
+| URL | 形式 |
+|---|---|
+| `/api/export` | JSON |
+| `/api/export?format=text` | プレーンテキスト |
+
+復元手順は [docs/05-operations.md](docs/05-operations.md) 5.4。
+
 ## 認証
 
 Vercel の Deployment Protection でサイト全体を保護する方針のため、アプリケーション側には認証を実装していない。
