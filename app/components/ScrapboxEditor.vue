@@ -42,8 +42,18 @@ function commit(lines: string[]) {
   model.value = lines.join('\n')
 }
 
-async function activate(index: number, caret: 'start' | 'end' | number = 'end') {
-  const lines = rawLines.value
+/**
+ * 行を編集状態にする。
+ *
+ * 行を書き換えた直後に呼ぶ場合は、その配列を `lines` で渡すこと。
+ * `model` は親へ伝わってから戻ってくるため、直後に読み直すと
+ * 更新前の内容を拾い、別の行を編集してしまう。
+ */
+async function activate(
+  index: number,
+  caret: 'start' | 'end' | number = 'end',
+  lines: string[] = rawLines.value,
+) {
   const target = Math.min(Math.max(index, 0), lines.length - 1)
   activeIndex.value = target
   activeText.value = lines[target] ?? ''
@@ -83,13 +93,19 @@ function onInput(event?: Event) {
     const inserted = activeText.value.split('\n')
     lines.splice(index, 1, ...inserted)
     commit(lines)
-    void activate(index + inserted.length - 1)
+    void activate(index + inserted.length - 1, 'end', lines)
     return
   }
 
   lines[index] = activeText.value
   commit(lines)
   resize()
+}
+
+/** キャレット位置だけを動かす。行の入れ替えを伴わない操作で使う。 */
+async function setCaret(position: number) {
+  await nextTick()
+  input.value?.setSelectionRange(position, position)
 }
 
 /** 折り返しに合わせて高さを合わせる。 */
@@ -125,7 +141,7 @@ function onEnter(event: KeyboardEvent) {
   const lines = [...rawLines.value]
   lines.splice(index, 1, before, indent + after)
   commit(lines)
-  void activate(index + 1, indent.length)
+  void activate(index + 1, indent.length, lines)
 }
 
 function onBackspace(event: KeyboardEvent) {
@@ -140,7 +156,7 @@ function onBackspace(event: KeyboardEvent) {
   const previous = lines[index - 1] ?? ''
   lines.splice(index - 1, 2, previous + activeText.value)
   commit(lines)
-  void activate(index - 1, previous.length)
+  void activate(index - 1, previous.length, lines)
 }
 
 function onArrow(event: KeyboardEvent, delta: -1 | 1) {
@@ -171,13 +187,13 @@ function onTab(event: KeyboardEvent) {
     if (!/^[ \t]/.test(activeText.value)) return
     activeText.value = activeText.value.slice(1)
     onInput()
-    void activate(index, Math.max(caret - 1, 0))
+    setCaret(Math.max(caret - 1, 0))
     return
   }
 
   activeText.value = ` ${activeText.value}`
   onInput()
-  void activate(index, caret + 1)
+  setCaret(caret + 1)
 }
 
 /** 表示側のリンクを押したときは編集に切り替えない。 */
@@ -187,10 +203,25 @@ function onLineClick(event: MouseEvent, index: number) {
   void activate(index)
 }
 
-// 外から本文が入れ替わったとき（別画面での更新など）は編集を解除する
+/**
+ * 外から本文が入れ替わったとき（別画面での更新など）に追随する。
+ *
+ * 編集そのものは切らない。書いている途中に解除されると、
+ * 打ちかけの入力が行き場を失うため、内容だけ合わせ直す。
+ */
 watch(model, () => {
-  if (activeIndex.value === null) return
-  if (rawLines.value[activeIndex.value] !== activeText.value) deactivate()
+  const index = activeIndex.value
+  if (index === null) return
+
+  const lines = rawLines.value
+  if (index > lines.length - 1) {
+    // 行そのものが無くなったときだけ諦める
+    deactivate()
+    return
+  }
+
+  const current = lines[index] ?? ''
+  if (current !== activeText.value) activeText.value = current
 })
 
 defineExpose({

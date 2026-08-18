@@ -92,7 +92,21 @@ function focusBody() {
   bodyEditor.value?.focus()
 }
 
-defineExpose({ focusBody })
+/** 一覧のショートカット（`r` / `u` / `y`）から各欄へ移るために公開する。 */
+const titleInput = ref<HTMLTextAreaElement | null>(null)
+const urlInput = ref<HTMLInputElement | null>(null)
+
+function focusEnd(el: HTMLTextAreaElement | HTMLInputElement | null) {
+  if (!el) return
+  el.focus()
+  el.setSelectionRange(el.value.length, el.value.length)
+}
+
+defineExpose({
+  focusBody,
+  focusTitle: () => focusEnd(titleInput.value),
+  focusUrl: () => focusEnd(urlInput.value),
+})
 const createdSectionId = ref<string | null>(null)
 
 const bodySave = useAutosave({
@@ -317,6 +331,7 @@ async function removeSection(section: SectionDto) {
       <header class="head">
         <!-- タイトルもボタンなしで保存する -->
         <textarea
+          ref="titleInput"
           v-model="title"
           class="head__title"
           rows="1"
@@ -388,6 +403,7 @@ async function removeSection(section: SectionDto) {
             <span class="meta__save">{{ SAVE_STATE_LABELS[urlSave.state.value] }}</span>
           </span>
           <input
+            ref="urlInput"
             v-model="url"
             class="meta__url"
             type="url"

@@ -100,7 +100,7 @@ Remember The Milk に倣い、**値が小さいほど重要度が高い**。
 
 タスクに関連する URL を1つだけ持つ。本文にもリンクは書けるが、
 **一覧から直接開きたいもの**は属性として分けて持つ
-（一覧で `Shift` + `u` から開く。[08-todo-management.md](08-todo-management.md) 8.4）。
+（一覧で `u` で変更、`Shift` + `u` で開く。[08-todo-management.md](08-todo-management.md) 8.4）。
 
 `http://` `https://` のみを保存する。別タブで開く先なので、
 `javascript:` などは保存の時点で弾く。

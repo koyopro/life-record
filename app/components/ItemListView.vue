@@ -116,15 +116,21 @@ function open(item: ItemDto) {
   navigateTo(`/items/${item.id}`)
 }
 
-const detail = ref<{ focusBody: () => void } | null>(null)
+interface DetailExposed {
+  focusTitle: () => void
+  focusUrl: () => void
+  focusBody: () => void
+}
+
+const detail = ref<DetailExposed | null>(null)
 
 /**
- * 本文へフォーカスする（`y`）。
+ * 詳細の指定した欄へフォーカスする（`r` / `u` / `y`）。
  *
- * 右ペインが出ていればその本文へ。出ていない狭い画面では、
- * 本文を書ける場所が詳細画面しかないのでそちらへ移動する。
+ * 右ペインが出ていればその欄へ。出ていない狭い画面では、
+ * 編集できる場所が詳細画面しかないのでそちらへ移動する。
  */
-async function focusBody() {
+async function focusDetail(field: 'Title' | 'Url' | 'Body') {
   const target = list.cursorItem.value
   if (!target) return
 
@@ -135,7 +141,7 @@ async function focusBody() {
 
   pinnedId.value = target.id
   await nextTick()
-  detail.value?.focusBody()
+  detail.value?.[`focus${field}`]()
 }
 
 /**
@@ -211,8 +217,9 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.moveCursor(-1),
   },
   {
-    keys: ['Enter'],
-    label: '詳細を開く',
+    keys: ['o', 'Enter'],
+    display: 'o',
+    label: 'タスクを開く',
     group: '移動',
     run: () => {
       const target = list.cursorItem.value
@@ -220,8 +227,8 @@ const shortcuts = computed<Shortcut[]>(() => [
     },
   },
   {
-    keys: ['x'],
-    label: '選択 / 選択解除',
+    keys: ['i'],
+    label: 'タスクを選択',
     group: '選択',
     run: () => list.toggleSelect(),
   },
@@ -233,73 +240,78 @@ const shortcuts = computed<Shortcut[]>(() => [
   },
   {
     keys: ['d'],
-    label: '期限を設定',
+    label: '期日を変更',
     group: '編集',
     run: () => {
       if (list.targets.value.length > 0) dueOpen.value = true
     },
   },
   {
-    keys: ['p'],
-    label: '期限を1日延ばす',
+    keys: ['p', 'P'],
+    display: 'p',
+    label: '延期（1日）',
     group: '編集',
     run: () => list.postpone(),
   },
   {
     keys: ['1'],
-    label: '重要度を高くする',
+    label: '優先度を1に設定',
     group: '編集',
     run: () => list.setPriority(1),
   },
   {
     keys: ['2'],
-    label: '重要度を中にする',
+    label: '優先度を2に設定',
     group: '編集',
     run: () => list.setPriority(2),
   },
   {
     keys: ['3'],
-    label: '重要度を低くする',
+    label: '優先度を3に設定',
     group: '編集',
     run: () => list.setPriority(3),
   },
   {
     keys: ['4'],
-    label: '重要度を外す',
+    label: '優先度を設定しない',
     group: '編集',
     run: () => list.setPriority(null),
   },
   {
-    keys: ['t'],
-    label: 'タグを追加',
+    keys: ['s'],
+    label: 'タグを変更',
     group: '編集',
     run: () => openTags(false),
   },
   {
-    keys: ['T'],
-    display: 't',
-    shift: true,
-    label: 'タグを外す',
+    keys: ['r'],
+    label: '名称を変更',
     group: '編集',
-    run: () => openTags(true),
+    run: () => focusDetail('Title'),
+  },
+  {
+    keys: ['u'],
+    label: 'URL を変更',
+    group: '編集',
+    run: () => focusDetail('Url'),
   },
   {
     keys: ['y'],
-    label: '本文にフォーカス',
+    label: 'ノートを追加（本文）',
     group: '編集',
-    run: () => focusBody(),
+    run: () => focusDetail('Body'),
   },
   {
     keys: ['U'],
     display: 'u',
     shift: true,
-    label: 'URL を別タブで開く',
+    label: 'URL を開く',
     group: 'その他',
     run: () => openUrl(),
   },
   {
-    keys: ['r'],
-    label: '繰り返しを設定',
+    keys: ['f'],
+    label: 'くり返し設定を変更',
     group: '編集',
     run: () => {
       if (list.targets.value.length > 0) recurrenceOpen.value = true
@@ -313,8 +325,8 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.remove(),
   },
   {
-    keys: ['u'],
-    label: '直前の操作を取り消す',
+    keys: ['z'],
+    label: '元に戻す',
     group: 'その他',
     run: () => list.undo(),
   },
