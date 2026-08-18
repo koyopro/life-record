@@ -129,7 +129,10 @@ onMounted(() => {
 
     <div class="composer__actions">
       <span class="composer__hint">
-        {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度
+        {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度 #タグ
+        <span v-if="!parsed?.dueAt" class="composer__default">
+          ・ 期限は今日
+        </span>
       </span>
       <button type="submit" class="composer__submit" :disabled="!canSubmit">
         追加
@@ -202,6 +205,11 @@ onMounted(() => {
 .composer__hint {
   color: var(--text-muted);
   font-size: 0.8125rem;
+}
+
+/* 期限を書かなかったときに何が入るかを、送信前に見せる */
+.composer__default {
+  color: var(--accent);
 }
 
 /* タッチ主体の端末ではショートカットが使えないので隠す */

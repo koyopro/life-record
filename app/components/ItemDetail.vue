@@ -66,6 +66,18 @@ const sections = computed<SectionDto[]>(() => item.value?.sections ?? [])
 const primarySection = computed<SectionDto | null>(() => sections.value[0] ?? null)
 
 const body = ref(primarySection.value?.body ?? '')
+const bodyInput = ref<HTMLTextAreaElement | null>(null)
+
+/** 本文へフォーカスする。一覧の `y` から呼ばれる。 */
+function focusBody() {
+  const el = bodyInput.value
+  if (!el) return
+  el.focus()
+  // 続きから書けるよう末尾へ寄せる
+  el.setSelectionRange(el.value.length, el.value.length)
+}
+
+defineExpose({ focusBody })
 const createdSectionId = ref<string | null>(null)
 
 const bodySave = useAutosave({
@@ -385,6 +397,7 @@ async function removeSection(section: SectionDto) {
           </span>
         </div>
         <textarea
+          ref="bodyInput"
           v-model="body"
           class="body__input"
           rows="6"

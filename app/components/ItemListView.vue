@@ -8,16 +8,13 @@ import {
   type SortKey,
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
+import { normalizeTagName } from '~~/shared/types/tag'
 
 const props = defineProps<{
   status: ItemStatus | 'all'
   storageKey: string
   /** 並べ替えを操作させるか。Inbox は追加順で十分なので隠す。 */
   showSort?: boolean
-  /** 絞り込むタグ名。 */
-  tag?: string
-  /** タグが付いていない Item だけに絞るか。 */
-  untagged?: boolean
   /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
   dueUntilToday?: boolean
   /** 未完了のものだけに絞るか。 */
@@ -27,15 +24,28 @@ const props = defineProps<{
   emptyMessage: string
 }>()
 
-const emit = defineEmits<{ filterTag: [tag: string] }>()
-
 const route = useRoute()
 const router = useRouter()
 
+// --- タグでの絞り込み（docs/09-tags.md 9.3） -----------------------------
+//
+// どの一覧でも同じように使えるよう、ここで持つ。
+// 状態は URL に置き、再読み込みや共有で同じ絞り込みに戻せるようにする。
+
+const { tags: allTags } = useTags()
+
+const tag = computed<string | undefined>(() => {
+  const value = route.query.tag
+  if (typeof value !== 'string') return undefined
+  return normalizeTagName(value) ?? undefined
+})
+
+const untagged = computed(() => route.query.untagged === 'true')
+
 const list = useItemList({
   status: () => props.status,
-  tag: () => props.tag,
-  untagged: () => Boolean(props.untagged),
+  tag: () => tag.value,
+  untagged: () => untagged.value,
   dueUntilToday: () => Boolean(props.dueUntilToday),
   openOnly: () => Boolean(props.openOnly),
   sortStorageKey: props.storageKey,
@@ -105,6 +115,28 @@ function open(item: ItemDto) {
   navigateTo(`/items/${item.id}`)
 }
 
+const detail = ref<{ focusBody: () => void } | null>(null)
+
+/**
+ * 本文へフォーカスする（`y`）。
+ *
+ * 右ペインが出ていればその本文へ。出ていない狭い画面では、
+ * 本文を書ける場所が詳細画面しかないのでそちらへ移動する。
+ */
+async function focusBody() {
+  const target = list.cursorItem.value
+  if (!target) return
+
+  if (!split.value) {
+    await navigateTo(`/items/${target.id}`)
+    return
+  }
+
+  pinnedId.value = target.id
+  await nextTick()
+  detail.value?.focusBody()
+}
+
 function onDetailRemoved(id: string) {
   if (pinnedId.value === id) pinnedId.value = null
   void list.refresh()
@@ -114,6 +146,32 @@ function onDetailRemoved(id: string) {
 function onSelectSeries(id: string) {
   pinnedId.value = id
   list.focusItem(id)
+}
+
+function setFilter(patch: { tag?: string; untagged?: string }) {
+  const query: Record<string, unknown> = { ...route.query, ...patch }
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined) delete query[key]
+  }
+  // 絞り込みが変われば一覧の中身も変わるので、選択は持ち越さない
+  delete query.selected
+  pinnedId.value = null
+  router.replace({ query: query as Record<string, string> })
+}
+
+/** 同じタグをもう一度押したら解除する。 */
+function selectTag(name: string) {
+  setFilter({
+    tag: tag.value === name ? undefined : name,
+    untagged: undefined,
+  })
+}
+
+function toggleUntagged() {
+  setFilter({
+    untagged: untagged.value ? undefined : 'true',
+    tag: undefined,
+  })
 }
 
 /**
@@ -207,6 +265,12 @@ const shortcuts = computed<Shortcut[]>(() => [
     label: 'タグを外す',
     group: '編集',
     run: () => openTags(true),
+  },
+  {
+    keys: ['y'],
+    label: '本文にフォーカス',
+    group: '編集',
+    run: () => focusBody(),
   },
   {
     keys: ['r'],
@@ -328,6 +392,30 @@ defineExpose({
 <template>
   <div class="split" :class="{ 'split--active': selectedId }">
     <div class="list">
+      <nav v-if="allTags.length" class="tags" aria-label="タグで絞り込む">
+        <button
+          type="button"
+          class="tags__item"
+          :class="{ 'tags__item--active': untagged }"
+          :aria-pressed="untagged"
+          @click="toggleUntagged"
+        >
+          タグなし
+        </button>
+        <button
+          v-for="entry in allTags"
+          :key="entry.id"
+          type="button"
+          class="tags__item"
+          :class="{ 'tags__item--active': tag === entry.name }"
+          :aria-pressed="tag === entry.name"
+          @click="selectTag(entry.name)"
+        >
+          #{{ entry.name }}
+          <span class="tags__count">{{ entry.count }}</span>
+        </button>
+      </nav>
+
       <div class="list__bar">
       <div class="list__status" role="status">
         <span v-if="list.selectedIds.value.size" class="list__selected">
@@ -385,7 +473,7 @@ defineExpose({
             @complete="toggleComplete(item)"
             @open="open(item)"
             @longpress="actionTarget = item"
-            @filter-tag="(tag) => emit('filterTag', tag)"
+            @filter-tag="selectTag"
           />
         </li>
       </ul>
@@ -395,6 +483,7 @@ defineExpose({
       <!-- id が変わったら作り直す。前のタスクの編集状態を持ち越さないため -->
       <ItemDetail
         :key="selectedId"
+        ref="detail"
         :item-id="selectedId"
         embedded
         @removed="onDetailRemoved"
@@ -503,6 +592,42 @@ defineExpose({
   min-width: 0;
   display: grid;
   gap: 0.625rem;
+}
+
+.tags {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  /* 横スクロールはしてよいが、スクロールバーは出さない */
+  scrollbar-width: none;
+}
+
+.tags::-webkit-scrollbar {
+  display: none;
+}
+
+.tags__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  min-height: 2.25rem;
+  padding: 0 0.375rem;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+.tags__item--active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tags__count {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 
 .list__bar {

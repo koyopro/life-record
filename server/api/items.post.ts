@@ -1,6 +1,6 @@
 import { useDb } from '~~/server/db'
 import { itemTags, items, sections } from '~~/server/db/schema'
-import { toAppDate } from '~~/server/utils/date'
+import { toAppDate, todayDueAt } from '~~/server/utils/date'
 import { toItemDto } from '~~/server/utils/items'
 import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, type ItemDto, type ItemStatus } from '~~/shared/types/item'
@@ -66,8 +66,10 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
         title: parsed.title,
         status,
         priority: parsed.priority,
-        dueAt: parsed.dueAt,
-        dueHasTime: parsed.dueHasTime,
+        // 期限の指定がなければ今日にする。
+        // 追加したタスクが「今日」リストに出ないまま埋もれるのを避ける。
+        dueAt: parsed.dueAt ?? todayDueAt(),
+        dueHasTime: parsed.dueAt ? parsed.dueHasTime : false,
         recurrenceRule: parsed.recurrence?.rule ?? null,
         recurrenceBasis: parsed.recurrence?.basis ?? null,
       })
