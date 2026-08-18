@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { escapeHtml, renderScrapbox } from '~~/shared/utils/scrapbox/render'
+import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
+import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 
 /**
- * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md）。
+ * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
  *
- * Scrapbox と同じく、**記法を含むプレーンテキストを直接編集する**。
- * 編集していない間は記法を解釈した表示にし、クリックすると元のテキストに戻る。
+ * Scrapbox と同じく **行単位** で表示を切り替える。
+ * - カーソルのある行 … 記法をそのままのテキストとして編集する
+ * - それ以外の行     … 記法を解釈した表示
+ *
  * 保存されるのは常に入力したままのテキスト。
  */
 const model = defineModel<string>({ required: true })
@@ -14,144 +17,285 @@ const props = withDefaults(
   defineProps<{
     placeholder?: string
     ariaLabel?: string
-    minRows?: number
   }>(),
-  { placeholder: '', ariaLabel: '本文', minRows: 6 },
+  { placeholder: '', ariaLabel: '本文' },
 )
 
-const editing = ref(false)
-const textarea = ref<HTMLTextAreaElement | null>(null)
+/** 行の配列。空文字でも1行として扱う。 */
+const rawLines = computed(() => model.value.replace(/\r\n?/g, '\n').split('\n'))
+const parsed = computed(() => parseScrapbox(model.value))
 
-const html = computed(() => renderScrapbox(model.value))
+const activeIndex = ref<number | null>(null)
+const activeText = ref('')
+/**
+ * 編集中の行の入力欄。
+ *
+ * `v-for` の中に置いた `ref` は配列になるため、関数 ref で直接受け取る。
+ */
+const input = ref<HTMLTextAreaElement | null>(null)
+function setInput(el: unknown) {
+  input.value = el instanceof HTMLTextAreaElement ? el : null
+}
+
 const isEmpty = computed(() => !model.value.trim())
-const placeholderHtml = computed(
-  () => `<p class="sb-line">${escapeHtml(props.placeholder || '本文を書く')}</p>`,
-)
 
-async function startEditing(atEnd = false) {
-  editing.value = true
+function commit(lines: string[]) {
+  model.value = lines.join('\n')
+}
+
+async function activate(index: number, caret: 'start' | 'end' | number = 'end') {
+  const lines = rawLines.value
+  const target = Math.min(Math.max(index, 0), lines.length - 1)
+  activeIndex.value = target
+  activeText.value = lines[target] ?? ''
+
   await nextTick()
-  const el = textarea.value
+  const el = input.value
   if (!el) return
   el.focus()
-  if (atEnd) el.setSelectionRange(el.value.length, el.value.length)
+  const position =
+    caret === 'end' ? el.value.length : caret === 'start' ? 0 : caret
+  el.setSelectionRange(position, position)
+  resize()
 }
 
-function stopEditing() {
-  editing.value = false
+function deactivate() {
+  activeIndex.value = null
 }
 
-/** 表示部分のリンクを押したときは、編集に切り替えない。 */
-function onPreviewClick(event: MouseEvent) {
+/** 入力中の行を model に反映する。 */
+function onInput() {
+  const index = activeIndex.value
+  if (index === null) return
+  const lines = [...rawLines.value]
+
+  // 貼り付けで改行が入ることがあるので、その場合は行を分ける
+  if (activeText.value.includes('\n')) {
+    const inserted = activeText.value.split('\n')
+    lines.splice(index, 1, ...inserted)
+    commit(lines)
+    void activate(index + inserted.length - 1)
+    return
+  }
+
+  lines[index] = activeText.value
+  commit(lines)
+  resize()
+}
+
+/** 折り返しに合わせて高さを合わせる。 */
+function resize() {
+  const el = input.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+// --- キー操作 -----------------------------------------------------------
+//
+// 日本語入力の変換中は Enter などを横取りしない。変換の確定が
+// 行の分割として扱われてしまうため。
+
+const composing = ref(false)
+
+function onEnter(event: KeyboardEvent) {
+  if (composing.value) return
+  event.preventDefault()
+
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+
+  const caret = el.selectionStart ?? activeText.value.length
+  const before = activeText.value.slice(0, caret)
+  const after = activeText.value.slice(caret)
+
+  // Scrapbox と同じく、改行したら前の行の字下げを引き継ぐ
+  const indent = /^[ \t]*/.exec(before)?.[0] ?? ''
+
+  const lines = [...rawLines.value]
+  lines.splice(index, 1, before, indent + after)
+  commit(lines)
+  void activate(index + 1, indent.length)
+}
+
+function onBackspace(event: KeyboardEvent) {
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+  if (el.selectionStart !== 0 || el.selectionEnd !== 0) return
+  if (index === 0) return
+
+  event.preventDefault()
+  const lines = [...rawLines.value]
+  const previous = lines[index - 1] ?? ''
+  lines.splice(index - 1, 2, previous + activeText.value)
+  commit(lines)
+  void activate(index - 1, previous.length)
+}
+
+function onArrow(event: KeyboardEvent, delta: -1 | 1) {
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+
+  // 行内を移動できるうちは、行をまたがない
+  if (delta === -1 && el.selectionStart !== 0) return
+  if (delta === 1 && el.selectionStart !== el.value.length) return
+
+  const next = index + delta
+  if (next < 0 || next >= rawLines.value.length) return
+
+  event.preventDefault()
+  void activate(next, delta === -1 ? 'end' : 'start')
+}
+
+/** 字下げを1段変える。Scrapbox では字下げが箇条書きの階層になる。 */
+function onTab(event: KeyboardEvent) {
+  const index = activeIndex.value
+  if (index === null) return
+  event.preventDefault()
+
+  const caret = input.value?.selectionStart ?? 0
+
+  if (event.shiftKey) {
+    if (!/^[ \t]/.test(activeText.value)) return
+    activeText.value = activeText.value.slice(1)
+    onInput()
+    void activate(index, Math.max(caret - 1, 0))
+    return
+  }
+
+  activeText.value = ` ${activeText.value}`
+  onInput()
+  void activate(index, caret + 1)
+}
+
+/** 表示側のリンクを押したときは編集に切り替えない。 */
+function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
   if (target?.closest('a')) return
-  void startEditing()
+  void activate(index)
 }
 
-defineExpose({ focus: () => startEditing(true) })
+// 外から本文が入れ替わったとき（別画面での更新など）は編集を解除する
+watch(model, () => {
+  if (activeIndex.value === null) return
+  if (rawLines.value[activeIndex.value] !== activeText.value) deactivate()
+})
+
+defineExpose({
+  focus: () => activate(rawLines.value.length - 1),
+})
 </script>
 
 <template>
-  <div class="editor">
-    <textarea
-      v-if="editing"
-      ref="textarea"
-      v-model="model"
-      class="editor__input"
-      :rows="props.minRows"
-      :placeholder="props.placeholder"
-      :aria-label="props.ariaLabel"
-      @blur="stopEditing"
-      @keydown.esc.prevent="stopEditing"
-    />
+  <div class="editor" :aria-label="props.ariaLabel">
+    <button
+      v-if="isEmpty && activeIndex === null"
+      type="button"
+      class="editor__start"
+      @click="activate(0)"
+    >
+      {{ props.placeholder || '本文を書く' }}
+    </button>
 
-    <!--
-      空でも同じ要素で描画する。中身によって要素の種類を変えると、
-      本文が非同期に届く分割表示でハイドレーションがずれる。
+    <template v-else>
+      <template v-for="(line, index) in parsed" :key="index">
+        <!-- カーソルのある行は、記法をそのままのテキストとして編集する -->
+        <div v-if="index === activeIndex" class="editor__editing">
+          <textarea
+            :ref="setInput"
+            v-model="activeText"
+            class="editor__input"
+            rows="1"
+            :aria-label="`${props.ariaLabel} ${index + 1}行目`"
+            @input="onInput"
+            @blur="deactivate"
+            @compositionstart="composing = true"
+            @compositionend="composing = false"
+            @keydown.enter="onEnter"
+            @keydown.backspace="onBackspace"
+            @keydown.up="onArrow($event, -1)"
+            @keydown.down="onArrow($event, 1)"
+            @keydown.tab="onTab"
+            @keydown.esc.prevent="deactivate"
+          />
+        </div>
 
-      renderScrapbox は入力を全てエスケープしてから組み立てるため、
-      ここで v-html を使ってよい（docs/11-scrapbox-notation.md 11.9）。
-    -->
-    <div
-      v-else
-      class="editor__preview"
-      :class="{ 'editor__preview--empty': isEmpty }"
-      :aria-label="props.ariaLabel"
-      role="button"
-      tabindex="0"
-      @click="onPreviewClick"
-      @keydown.enter.prevent="startEditing(true)"
-      v-html="isEmpty ? placeholderHtml : html"
-    />
+        <!--
+          renderLine は入力を全てエスケープしてから組み立てるため、
+          ここで v-html を使ってよい（docs/11-scrapbox-notation.md 11.9）。
+        -->
+        <div
+          v-else
+          :class="lineClass(line)"
+          :style="{ '--sb-indent': line.indent }"
+          @click="onLineClick($event, index)"
+          v-html="renderLine(line)"
+        />
+      </template>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .editor {
-  display: grid;
-}
-
-.editor__input {
-  font: inherit;
-  width: 100%;
-  resize: vertical;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 0.75rem;
-  outline: none;
-  line-height: 1.7;
-  /* 記法をそのまま扱うので、等幅寄りのほうが桁が読みやすい */
-  font-variant-ligatures: none;
-  tab-size: 2;
-}
-
-.editor__preview {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.75rem;
   min-height: 9rem;
   line-height: 1.7;
-  text-align: left;
   cursor: text;
-  color: inherit;
-  font: inherit;
   overflow-wrap: anywhere;
 }
 
-.editor__preview--empty {
+.editor__start {
+  background: transparent;
+  border: 0;
+  padding: 0;
   color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: text;
 }
 
-.editor__preview:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.editor__editing {
+  /* 編集中の行だけ、記法がそのまま見えていると分かるようにする */
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 4px;
+}
+
+.editor__input {
+  font: inherit;
+  width: 100%;
+  display: block;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  outline: none;
+  padding: 0;
+  line-height: inherit;
+  tab-size: 2;
 }
 
 /* --- Scrapbox 記法の見た目 --- */
 
-.editor__preview :deep(.sb-line) {
-  margin: 0;
-  /* 空行を潰さずに保つ */
+.editor :deep(.sb-line) {
+  /* 字下げ1段ぶん。行頭の空白の数がそのまま階層になる */
+  padding-left: calc(var(--sb-indent, 0) * 1.25rem);
+  position: relative;
   min-height: 1.7em;
 }
 
-.editor__preview :deep(.sb-list) {
-  list-style: none;
-  margin: 0;
-  padding-left: 1.25rem;
-}
-
-.editor__preview :deep(.sb-list > li) {
-  position: relative;
-}
-
-.editor__preview :deep(.sb-list > li)::before {
+/* 字下げされた行は箇条書きとして中黒を出す */
+.editor :deep(.sb-line--indented)::before {
   content: '';
   position: absolute;
-  left: -0.875rem;
+  left: calc(var(--sb-indent, 0) * 1.25rem - 0.75rem);
   top: 0.75em;
   width: 0.3125rem;
   height: 0.3125rem;
@@ -159,65 +303,99 @@ defineExpose({ focus: () => startEditing(true) })
   background: var(--text-muted);
 }
 
+.editor :deep(.sb-line--quote) {
+  border-left: 3px solid var(--border);
+  padding-left: calc(var(--sb-indent, 0) * 1.25rem + 0.625rem);
+  color: var(--text-muted);
+}
+
+/* コードブロックは行が連なって1つの箱に見えるようにする */
+.editor :deep(.sb-line--code-header),
+.editor :deep(.sb-line--code-body) {
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.editor :deep(.sb-line--code-header) {
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+.editor :deep(.sb-line--code-last) {
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.editor :deep(.sb-line--code-header)::before,
+.editor :deep(.sb-line--code-body)::before {
+  content: none;
+}
+
+.editor :deep(.sb-code__name) {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.editor :deep(.sb-code__text) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+  white-space: pre;
+}
+
 /*
  * Scrapbox に見出し記法はなく、`*` の数で文字が大きく・太くなる。
  * `[/ 斜体]` や `[- 打ち消し]` は太字にしない。
  */
-.editor__preview :deep([class*='sb-deco--level']) {
+.editor :deep([class*='sb-deco--level']) {
   font-weight: 700;
 }
 
-.editor__preview :deep(.sb-deco--level1) {
+.editor :deep(.sb-deco--level1) {
   font-size: 1.05em;
 }
-.editor__preview :deep(.sb-deco--level2) {
+.editor :deep(.sb-deco--level2) {
   font-size: 1.2em;
 }
-.editor__preview :deep(.sb-deco--level3) {
+.editor :deep(.sb-deco--level3) {
   font-size: 1.4em;
 }
-.editor__preview :deep(.sb-deco--level4) {
+.editor :deep(.sb-deco--level4) {
   font-size: 1.6em;
 }
-.editor__preview :deep(.sb-deco--level5) {
+.editor :deep(.sb-deco--level5) {
   font-size: 1.8em;
 }
-.editor__preview :deep(.sb-deco--level6) {
+.editor :deep(.sb-deco--level6) {
   font-size: 2em;
 }
 
-.editor__preview :deep(.sb-deco--italic) {
+.editor :deep(.sb-deco--italic) {
   font-style: italic;
 }
-.editor__preview :deep(.sb-deco--strike) {
+.editor :deep(.sb-deco--strike) {
   text-decoration: line-through;
 }
-.editor__preview :deep(.sb-deco--underline) {
+.editor :deep(.sb-deco--underline) {
   text-decoration: underline;
 }
 
-.editor__preview :deep(.sb-link) {
+.editor :deep(.sb-link) {
   color: var(--accent);
 }
 
-.editor__preview :deep(.sb-page-link) {
+.editor :deep(.sb-page-link) {
   color: var(--accent);
   border-bottom: 1px dotted currentcolor;
 }
 
-.editor__preview :deep(.sb-hashtag) {
+.editor :deep(.sb-hashtag) {
   color: var(--accent);
 }
 
-.editor__preview :deep(.sb-quote) {
-  margin: 0;
-  padding-left: 0.75rem;
-  border-left: 3px solid var(--border);
-  color: var(--text-muted);
-  display: grid;
-}
-
-.editor__preview :deep(.sb-code-inline) {
+.editor :deep(.sb-code-inline) {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.9em;
   background: var(--bg);
@@ -226,38 +404,12 @@ defineExpose({ focus: () => startEditing(true) })
   padding: 0.0625rem 0.25rem;
 }
 
-.editor__preview :deep(.sb-code) {
-  margin: 0.375rem 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.editor__preview :deep(.sb-code__name) {
-  padding: 0.25rem 0.625rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.editor__preview :deep(.sb-code pre) {
-  margin: 0;
-  padding: 0.625rem;
-  overflow-x: auto;
-}
-
-.editor__preview :deep(.sb-code code) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.875rem;
-}
-
-.editor__preview :deep(.sb-image) {
+.editor :deep(.sb-image) {
   max-width: 100%;
   border-radius: 8px;
 }
 
-.editor__preview :deep(.sb-image--large) {
+.editor :deep(.sb-image--large) {
   width: 100%;
 }
 </style>

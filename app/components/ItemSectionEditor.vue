@@ -52,7 +52,7 @@ const dateLabel = computed(() => {
     <ScrapboxEditor
       v-model="body"
       :aria-label="`${dateLabel} の作業記録`"
-      :min-rows="4"
+      
     />
     <p v-if="errorMessage" class="section__error" role="alert">
       {{ errorMessage }}

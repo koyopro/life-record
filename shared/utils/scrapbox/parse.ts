@@ -1,10 +1,13 @@
-import type { Block, Inline } from './types'
+import type { Line, Inline } from './types'
 
 /**
  * Scrapbox 記法のパーサ（docs/11-scrapbox-notation.md）。
  *
  * 記法は Scrapbox 公式ヘルプに合わせている。Markdown には寄せない。
  * 未対応の記法は、そのままのテキストとして扱う。
+ *
+ * **入力の1行が、必ず結果の1要素に対応する。** カーソルのある行だけを
+ * テキスト表示に戻すため、行と表示がずれてはいけない。
  */
 
 /** 画像として扱う拡張子。 */
@@ -31,64 +34,65 @@ const DECORATION_PATTERN = new RegExp(`^([${DECORATION_SYMBOLS}]+)\\s+([\\s\\S]+
 const URL_PATTERN = /^https?:\/\/\S+$/i
 const BARE_URL_PATTERN = /https?:\/\/[^\s\]]+/
 
-export function parseScrapbox(input: string): Block[] {
-  const lines = input.replace(/\r\n?/g, '\n').split('\n')
-  const blocks: Block[] = []
+export function parseScrapbox(input: string): Line[] {
+  const rawLines = input.replace(/\r\n?/g, '\n').split('\n')
+  const lines: Line[] = []
 
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]!
+  /** コードブロックの中にいる間、その基準となる字下げ。 */
+  let codeIndent: number | null = null
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i]!
     const indent = indentOf(raw)
     const content = raw.slice(indent)
 
-    if (!content.trim()) {
-      blocks.push({ type: 'blank' })
-      continue
+    // コードブロックの中: 基準より深い行、または空行が続く限り
+    if (codeIndent !== null) {
+      const inBlock = !content.trim() || indent > codeIndent
+      if (inBlock) {
+        const nextRaw = rawLines[i + 1]
+        const nextIsBody =
+          nextRaw !== undefined &&
+          (!nextRaw.slice(indentOf(nextRaw)).trim() ||
+            indentOf(nextRaw) > codeIndent)
+        lines.push({
+          type: 'codeBody',
+          indent: codeIndent,
+          raw,
+          text: raw.slice(Math.min(codeIndent + 1, indent)),
+          last: !nextIsBody,
+        })
+        continue
+      }
+      codeIndent = null
     }
 
-    // コードブロック: `code:名前` の次から、1段以上深い行が中身
     const codeMatch = /^code:(.*)$/.exec(content)
     if (codeMatch) {
-      const body: string[] = []
-      let j = i + 1
-      while (j < lines.length) {
-        const next = lines[j]!
-        // 空行はコードブロックの一部として扱う（中身の空行を保つため）
-        if (!next.trim()) {
-          body.push('')
-          j++
-          continue
-        }
-        if (indentOf(next) <= indent) break
-        body.push(next.slice(indent + 1))
-        j++
-      }
-      // 末尾の空行はコードブロックの外に出す
-      while (body.length > 0 && body.at(-1) === '') body.pop()
-
-      blocks.push({
-        type: 'code',
+      codeIndent = indent
+      lines.push({
+        type: 'codeHeader',
         indent,
+        raw,
         name: codeMatch[1]!.trim(),
-        code: body.join('\n'),
       })
-      i = i + body.length
       continue
     }
 
-    // 引用: 行頭の `>`
     if (content.startsWith('>')) {
-      blocks.push({
+      lines.push({
         type: 'quote',
         indent,
+        raw,
         nodes: parseInline(content.slice(1).replace(/^ /, '')),
       })
       continue
     }
 
-    blocks.push({ type: 'line', indent, nodes: parseInline(content) })
+    lines.push({ type: 'text', indent, raw, nodes: parseInline(content) })
   }
 
-  return blocks
+  return lines
 }
 
 /**

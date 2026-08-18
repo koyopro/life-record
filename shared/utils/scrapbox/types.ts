@@ -4,35 +4,43 @@
  * 記法 → AST → HTML の順に変換する。文字列置換だけで HTML を作ると、
  * 記法が組み合わさったとき（`[* 強調 [https://example.com リンク]]` など）に
  * 破綻するため、必ずこの中間表現を挟む。
+ *
+ * **1行 = 1要素** で持つ。カーソルのある行だけをテキストに戻すため、
+ * 行と表示が1対1で対応している必要がある。
  */
 
-/** 行単位のブロック。 */
-export type Block = QuoteBlock | CodeBlock | LineBlock | BlankBlock
+export type Line = TextLine | QuoteLine | CodeHeaderLine | CodeBodyLine
 
-export interface LineBlock {
-  type: 'line'
-  /** 行頭の空白の深さ。0 なら箇条書きではない。 */
+interface LineBase {
+  /** 行頭の空白の数。箇条書きの階層になる。 */
   indent: number
+  /** 元の行そのまま。編集に切り替えるときに使う。 */
+  raw: string
+}
+
+export interface TextLine extends LineBase {
+  type: 'text'
   nodes: Inline[]
 }
 
-export interface QuoteBlock {
+export interface QuoteLine extends LineBase {
   type: 'quote'
-  indent: number
   nodes: Inline[]
 }
 
-export interface CodeBlock {
-  type: 'code'
-  indent: number
-  /** `code:` の後ろ。ファイル名または言語名。 */
+/** `code:ファイル名` の行。 */
+export interface CodeHeaderLine extends LineBase {
+  type: 'codeHeader'
   name: string
-  /** 中身。行頭の共通インデントは取り除いてある。 */
-  code: string
 }
 
-export interface BlankBlock {
-  type: 'blank'
+/** コードブロックの中身の行。記法として解釈しない。 */
+export interface CodeBodyLine extends LineBase {
+  type: 'codeBody'
+  /** 表示する内容。コードブロックの基準までインデントを詰めてある。 */
+  text: string
+  /** ブロックの最後の行か。見た目をまとめるために使う。 */
+  last: boolean
 }
 
 /** 行の中身。 */

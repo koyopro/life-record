@@ -1,8 +1,5 @@
 import { parseScrapbox } from './parse'
-import type { Block, Inline } from './types'
-
-/** 字下げを持つブロック。箇条書きの入れ子を組むときに使う。 */
-type IndentedBlock = Exclude<Block, { type: 'blank' }>
+import type { Inline, Line } from './types'
 
 /**
  * AST から HTML を作る（docs/11-scrapbox-notation.md）。
@@ -35,103 +32,49 @@ function safeUrl(value: string): string | null {
   return null
 }
 
+/** 全行をまとめて描画する（読み取り専用の表示向け）。 */
 export function renderScrapbox(input: string): string {
-  return renderBlocks(parseScrapbox(input))
-}
-
-export function renderBlocks(blocks: Block[]): string {
-  const html: string[] = []
-
-  let i = 0
-  while (i < blocks.length) {
-    const block = blocks[i]!
-
-    if (block.type === 'blank') {
-      i++
-      continue
-    }
-
-    // 続く引用行はひとつの枠にまとめる。
-    // Scrapbox では各行に `>` を書くが、見た目は1つの引用として扱いたい。
-    if (block.type === 'quote' && block.indent === 0) {
-      const lines: string[] = []
-      while (i < blocks.length) {
-        const next = blocks[i]!
-        if (next.type !== 'quote' || next.indent !== 0) break
-        lines.push(`<span class="sb-quote__line">${renderInline(next.nodes)}</span>`)
-        i++
-      }
-      html.push(`<blockquote class="sb-quote">${lines.join('')}</blockquote>`)
-      continue
-    }
-
-    // 字下げされた行が続く範囲を、ひとまとまりの箇条書きとして扱う
-    if (block.indent > 0) {
-      const group: IndentedBlock[] = []
-      while (i < blocks.length) {
-        const next = blocks[i]!
-        if (next.type === 'blank' || next.indent === 0) break
-        group.push(next)
-        i++
-      }
-      html.push(renderList(group, 1))
-      continue
-    }
-
-    html.push(renderBlock(block))
-    i++
-  }
-
-  return html.join('\n')
+  return parseScrapbox(input)
+    .map((line) => `<div class="${lineClass(line)}"${indentStyle(line)}>${renderLine(line)}</div>`)
+    .join('')
 }
 
 /**
- * 字下げの深さに応じて `<ul>` を入れ子にする。
+ * 1行分の中身を HTML にする。
  *
- * Scrapbox では行頭の空白の数がそのまま階層になる。
+ * 行の外側（`div` と字下げ）は呼び出し側が組み立てる。カーソルのある行だけを
+ * テキスト入力に差し替えるとき、外枠を共通にしておくと見た目がずれない。
  */
-function renderList(blocks: IndentedBlock[], depth: number): string {
-  const items: string[] = []
-
-  let i = 0
-  while (i < blocks.length) {
-    const block = blocks[i]!
-    const own = renderBlock(block)
-
-    // 自分より深い行は、この項目の子として入れ子にする
-    const children: IndentedBlock[] = []
-    let j = i + 1
-    while (j < blocks.length && blocks[j]!.indent > block.indent) {
-      children.push(blocks[j]!)
-      j++
-    }
-
-    const nested = children.length > 0 ? renderList(children, depth + 1) : ''
-    items.push(`<li>${own}${nested}</li>`)
-    i = j
-  }
-
-  return `<ul class="sb-list">${items.join('')}</ul>`
-}
-
-function renderBlock(block: Block): string {
-  switch (block.type) {
-    case 'blank':
-      return ''
-    case 'code':
-      return renderCode(block.name, block.code)
+export function renderLine(line: Line): string {
+  switch (line.type) {
+    case 'codeHeader':
+      return `<span class="sb-code__name">${escapeHtml(line.name || 'code')}</span>`
+    case 'codeBody':
+      return `<code class="sb-code__text">${escapeHtml(line.text) || '&nbsp;'}</code>`
     case 'quote':
-      return `<blockquote class="sb-quote">${renderInline(block.nodes)}</blockquote>`
-    case 'line':
-      return `<p class="sb-line">${renderInline(block.nodes)}</p>`
+    case 'text': {
+      const html = renderInline(line.nodes)
+      // 空行の高さを保つ
+      return html || '&nbsp;'
+    }
   }
 }
 
-function renderCode(name: string, code: string): string {
-  const label = name
-    ? `<figcaption class="sb-code__name">${escapeHtml(name)}</figcaption>`
-    : ''
-  return `<figure class="sb-code">${label}<pre><code>${escapeHtml(code)}</code></pre></figure>`
+/** 行の外枠に付けるクラス。 */
+export function lineClass(line: Line): string {
+  const classes = ['sb-line', `sb-line--${kebab(line.type)}`]
+  if (line.indent > 0) classes.push('sb-line--indented')
+  if (line.type === 'codeBody' && line.last) classes.push('sb-line--code-last')
+  return classes.join(' ')
+}
+
+/** 字下げは CSS 変数で渡す。数値なので属性に入れても安全。 */
+export function indentStyle(line: Line): string {
+  return line.indent > 0 ? ` style="--sb-indent:${line.indent}"` : ''
+}
+
+function kebab(value: string): string {
+  return value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)
 }
 
 export function renderInline(nodes: Inline[]): string {
