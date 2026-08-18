@@ -26,6 +26,7 @@ export function itemDto(overrides: Partial<ItemDto> = {}): ItemDto {
     recurrenceRule: null,
     recurrenceBasis: null,
     seriesId: null,
+    completedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

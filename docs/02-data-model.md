@@ -59,6 +59,7 @@ TODO・タスクを表す。
 | recurrence_rule | text | No | 繰り返し規則（RRULE 形式）。NULL なら繰り返しなし |
 | recurrence_basis | enum | No | `due`（every） / `completion`（after） |
 | series_id | UUID | No | 同じ繰り返しから生まれた Item 群の識別子 |
+| completed_at | timestamptz | No | 完了にした日時。`status` が `closed` 以外なら NULL |
 | created_at | timestamptz | Yes | 作成日時 |
 | updated_at | timestamptz | Yes | 更新日時 |
 
@@ -74,6 +75,13 @@ TODO・タスクを表す。
 | `closed` | 完了 |
 
 `inbox` は「未整理の一時置き場」として扱う。運用上は、整理後に随時空にしていくことを想定する。
+
+### completed_at
+
+`status` が `closed` になった瞬間の日時を入れ、`closed` 以外へ戻したら NULL に戻す。
+「今日」リストの完了タスクを**期限ではなく「今日完了したか」で絞り込む**ために使う
+（[08-todo-management.md](08-todo-management.md)）。`updated_at` は他の項目を変えるだけでも
+更新されるため、完了日時としては使えない。
 
 ### due_at と due_has_time
 
@@ -375,12 +383,17 @@ CREATE TABLE items (
   recurrence_rule  TEXT,
   recurrence_basis recurrence_basis,
   series_id        UUID,
+  completed_at     TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- ルールがあるなら basis も必ずある
   CONSTRAINT items_recurrence_complete CHECK (
     (recurrence_rule IS NULL AND recurrence_basis IS NULL)
     OR (recurrence_rule IS NOT NULL AND recurrence_basis IS NOT NULL)
+  ),
+  -- completed_at が入るのは closed のときだけ
+  CONSTRAINT items_completed_at_only_when_closed CHECK (
+    status = 'closed' OR completed_at IS NULL
   )
 );
 

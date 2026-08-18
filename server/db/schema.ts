@@ -58,6 +58,12 @@ export const items = pgTable(
     recurrenceBasis: recurrenceBasis('recurrence_basis'),
     /** 同じ繰り返しから生まれた Item 群の識別子。起点 Item の id を入れる。 */
     seriesId: uuid('series_id'),
+    /**
+     * 完了にした日時。status が closed になった瞬間だけ入れ、
+     * 再オープンで null に戻す。「今日」リストの完了タスクを
+     * 「今日完了したもの」だけに絞るために使う。
+     */
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -82,6 +88,11 @@ export const items = pgTable(
       'items_recurrence_complete',
       sql`(${t.recurrenceRule} IS NULL AND ${t.recurrenceBasis} IS NULL)
           OR (${t.recurrenceRule} IS NOT NULL AND ${t.recurrenceBasis} IS NOT NULL)`,
+    ),
+    // completed_at が入るのは closed のときだけ
+    check(
+      'items_completed_at_only_when_closed',
+      sql`${t.status} = 'closed' OR ${t.completedAt} IS NULL`,
     ),
   ],
 )

@@ -155,6 +155,14 @@ export function withPatch(
   // 期限を消したら、時刻指定の有無も意味を失う
   if (defined.dueAt === null) next.dueHasTime = false
 
+  // 完了にした日時は status の遷移から決める（server/api/items.patch.ts と同じ）。
+  // open → closed で今の時刻を入れ、closed → それ以外で null に戻す
+  const wasOpen = local.status !== 'closed'
+  if (defined.status === 'closed' && wasOpen) next.completedAt = now
+  else if (defined.status !== undefined && defined.status !== 'closed' && !wasOpen) {
+    next.completedAt = null
+  }
+
   return next
 }
 
@@ -178,6 +186,7 @@ function pickItemFields(source: ItemDto): ItemDto {
     recurrenceRule: source.recurrenceRule,
     recurrenceBasis: source.recurrenceBasis,
     seriesId: source.seriesId,
+    completedAt: source.completedAt,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
   }

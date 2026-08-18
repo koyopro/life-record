@@ -40,11 +40,55 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
       before.filter((row) => row.status !== 'closed').map((row) => row.id),
     )
 
-    const after = await tx
-      .update(items)
-      .set(values)
-      .where(inArray(items.id, ids))
-      .returning()
+    /*
+     * 完了にした日時（completed_at）は status の遷移から決める。
+     * 単一の values で一括更新すると全行へ同じ値が入ってしまうため、
+     * 遷移の向きごとに分けて更新する（docs/02-data-model.md 2.3）。
+     *
+     * - open → closed：今の時刻を入れる
+     * - closed → それ以外：null に戻す（再オープン）
+     * - 遷移しない（closed のまま／open のまま）：触らない
+     */
+    const closingIds = new Set(
+      values.status === 'closed' ? ids.filter((id) => wasOpen.has(id)) : [],
+    )
+    const reopeningIds = new Set(
+      values.status !== undefined && values.status !== 'closed'
+        ? ids.filter((id) => !wasOpen.has(id))
+        : [],
+    )
+    const restIds = ids.filter(
+      (id) => !closingIds.has(id) && !reopeningIds.has(id),
+    )
+
+    const after: (typeof before)[number][] = []
+    if (closingIds.size > 0) {
+      after.push(
+        ...(await tx
+          .update(items)
+          .set({ ...values, completedAt: values.updatedAt })
+          .where(inArray(items.id, [...closingIds]))
+          .returning()),
+      )
+    }
+    if (reopeningIds.size > 0) {
+      after.push(
+        ...(await tx
+          .update(items)
+          .set({ ...values, completedAt: null })
+          .where(inArray(items.id, [...reopeningIds]))
+          .returning()),
+      )
+    }
+    if (restIds.length > 0) {
+      after.push(
+        ...(await tx
+          .update(items)
+          .set(values)
+          .where(inArray(items.id, restIds))
+          .returning()),
+      )
+    }
 
     // 一括完了でも、繰り返し中のものは次回分を作る。
     // 単体更新と挙動をそろえるため（docs/10-recurrence.md 10.2）。

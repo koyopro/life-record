@@ -52,6 +52,7 @@ export default defineEventHandler(async (event) => {
         recurrenceRule: snapshot.recurrenceBasis ? snapshot.recurrenceRule : null,
         recurrenceBasis: snapshot.recurrenceRule ? snapshot.recurrenceBasis : null,
         seriesId: snapshot.seriesId ?? null,
+        completedAt: snapshot.completedAt ? new Date(snapshot.completedAt) : null,
         createdAt: new Date(snapshot.createdAt),
         updatedAt: new Date(snapshot.updatedAt),
       })

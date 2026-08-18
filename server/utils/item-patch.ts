@@ -18,6 +18,11 @@ export interface ItemUpdateValues {
   dueHasTime?: boolean
   recurrenceRule?: string | null
   recurrenceBasis?: RecurrenceBasis | null
+  /**
+   * 完了にした日時。status の遷移から決まるので、ここでは検証しない
+   * （items.patch.ts が、更新前の状態を見て個別に設定する）。
+   */
+  completedAt?: Date | null
   updatedAt: Date
 }
 

@@ -43,6 +43,15 @@ export function endOfAppDay(at: Date = new Date()): Date {
 }
 
 /**
+ * その日の始まり（00:00:00.000）を、アプリのタイムゾーンで返す。
+ *
+ * 「今日完了したもの」のように、範囲で絞り込むときに endOfAppDay と対で使う。
+ */
+export function startOfAppDay(at: Date = new Date()): Date {
+  return new Date(`${toAppDate(at)}T00:00:00.000+09:00`)
+}
+
+/**
  * 「今日」を期限として保存するときの値。
  *
  * 時刻の指定がない期限は 23:59 とする決まりなので、

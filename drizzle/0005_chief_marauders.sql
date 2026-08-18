@@ -1,0 +1,2 @@
+ALTER TABLE "items" ADD COLUMN "completed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "items_completed_at_only_when_closed" CHECK ("items"."status" = 'closed' OR "items"."completed_at" IS NULL);

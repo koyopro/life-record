@@ -65,6 +65,8 @@ export interface ItemDto {
   recurrenceBasis: RecurrenceBasis | null
   /** 同じ繰り返しから生まれた Item 群の識別子。 */
   seriesId: string | null
+  /** 完了にした日時。ISO 8601。closed 以外は null（docs/02-data-model.md 2.3）。 */
+  completedAt: string | null
   createdAt: string
   updatedAt: string
 }

@@ -42,6 +42,7 @@ export function buildItemDraft(text: string, now: Date = new Date()): DraftResul
       recurrenceRule: parsed.recurrence?.rule ?? null,
       recurrenceBasis: parsed.recurrence?.basis ?? null,
       seriesId: null,
+      completedAt: null,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     },

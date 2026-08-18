@@ -129,6 +129,7 @@ export function toItemDto(
     recurrenceRule: item.recurrenceRule,
     recurrenceBasis: item.recurrenceBasis,
     seriesId: item.seriesId,
+    completedAt: item.completedAt?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   }

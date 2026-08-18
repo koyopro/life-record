@@ -59,6 +59,7 @@ export function toLocalItem(item: ItemDto, syncState: SyncState = 'synced'): Loc
     recurrenceRule: item.recurrenceRule,
     recurrenceBasis: item.recurrenceBasis,
     seriesId: item.seriesId,
+    completedAt: item.completedAt,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     syncState,

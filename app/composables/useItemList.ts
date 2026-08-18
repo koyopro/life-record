@@ -10,7 +10,7 @@ import {
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { buildItemDraft } from '~/utils/item-draft'
-import { endOfAppDay } from '~~/shared/utils/date'
+import { endOfAppDay, startOfAppDay } from '~~/shared/utils/date'
 
 interface Options {
   /** 対象の status。'all' なら絞り込まない。 */
@@ -78,13 +78,21 @@ export function useItemList(options: Options) {
 
     if (completed.value) {
       if (item.status !== 'closed') return false
+      // 「今日」リストの完了タスクは、期限ではなく「今日完了したか」で絞る。
+      // 未完了側は「今日までにやること」を期限で選ぶのに対し、完了側で
+      // 知りたいのは「今日終えたこと」であり、対応する軸が違うため。
+      if (dueUntilToday.value) {
+        if (!item.completedAt) return false
+        const completedAt = new Date(item.completedAt)
+        if (completedAt < startOfAppDay() || completedAt > endOfAppDay()) return false
+      }
     } else {
       if (status.value !== 'all' && item.status !== status.value) return false
       if (openOnly.value && item.status === 'closed') return false
-    }
-    if (dueUntilToday.value) {
-      if (!item.dueAt) return false
-      if (new Date(item.dueAt) > endOfAppDay()) return false
+      if (dueUntilToday.value) {
+        if (!item.dueAt) return false
+        if (new Date(item.dueAt) > endOfAppDay()) return false
+      }
     }
     if (tag.value && !item.tags.includes(tag.value)) return false
     if (untagged.value && item.tags.length > 0) return false
