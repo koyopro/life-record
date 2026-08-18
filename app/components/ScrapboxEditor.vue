@@ -1059,6 +1059,8 @@ defineExpose({
   color: var(--accent);
 }
 
+/* 日記・タスクへのアプリ内リンク。外部リンクと見分けられるよう、ページリンクと同じ見た目にする */
+.editor :deep(.sb-link--internal),
 .editor :deep(.sb-page-link) {
   color: var(--accent);
   border-bottom: 1px dotted currentcolor;

@@ -105,6 +105,12 @@ function renderNode(node: Inline): string {
       const href = safeUrl(node.href)
       const inner = renderInline(node.nodes)
       if (!href) return inner
+      // アプリ内のパス（/items/... /diary/...）は、同じタブの中の
+      // ページ遷移として扱う。外部リンクと違い、新規タブを開くと
+      // 一覧やタブが増えるだけで、日記とタスクを行き来する用途に合わない。
+      if (href.startsWith('/')) {
+        return `<a class="sb-link sb-link--internal" href="${escapeHtml(href)}">${inner}</a>`
+      }
       return `<a class="sb-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${inner}</a>`
     }
 

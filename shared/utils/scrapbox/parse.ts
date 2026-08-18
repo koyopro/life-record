@@ -1,4 +1,5 @@
 import type { Line, Inline } from './types'
+import { isAppDate } from '../date'
 
 /**
  * Scrapbox 記法のパーサ（docs/11-scrapbox-notation.md）。
@@ -24,6 +25,24 @@ const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i
  * アプリからの相対パスにしている。
  */
 const APP_IMAGE_PATH = /^\/images\//
+
+/**
+ * このサービスの Item 詳細を指すパス。
+ *
+ * 日記とタスクの本文で相互にリンクを書けるように、画像リンク
+ * （`[/images/xxx]`）と同じ「角括弧＋アプリの相対パス」の雰囲気で表す
+ * （docs/11-scrapbox-notation.md 11.7）。URL の入力欄・アドレスバーから
+ * そのまま貼り付けられるよう、id 部分は UUID の形だけを見る。
+ */
+const APP_ITEM_PATH = /^\/items\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** このサービスの日記を指すパス。 */
+const APP_DIARY_PATH = /^\/diary\/(\d{4}-\d{2}-\d{2})$/
+
+function isAppDiaryPath(value: string): boolean {
+  const match = APP_DIARY_PATH.exec(value)
+  return match !== null && isAppDate(match[1])
+}
 
 /**
  * 文字装飾に使える記号（Scrapbox の文字装飾記法）。
@@ -334,7 +353,12 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
 }
 
 function isUrl(value: string): boolean {
-  return URL_PATTERN.test(value) || APP_IMAGE_PATH.test(value)
+  return (
+    URL_PATTERN.test(value) ||
+    APP_IMAGE_PATH.test(value) ||
+    APP_ITEM_PATH.test(value) ||
+    isAppDiaryPath(value)
+  )
 }
 
 function isImage(value: string): boolean {
