@@ -359,6 +359,12 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.undo(),
   },
   {
+    keys: ['/'],
+    label: '検索',
+    group: 'その他',
+    run: () => navigateTo('/search'),
+  },
+  {
     keys: ['?', '/'],
     display: '?',
     shift: true,

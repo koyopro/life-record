@@ -12,6 +12,7 @@ const NAV = [
   { to: '/', label: 'Inbox' },
   { to: '/items', label: 'タスク' },
   { to: '/diary', label: '日記' },
+  { to: '/search', label: '検索' },
 ]
 
 /**

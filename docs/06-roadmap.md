@@ -242,13 +242,17 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 
 ## Milestone 9: 検索・整理機能
 
-- [ ] Item.title の検索
-- [ ] Section.body の検索
-- [ ] Diary.body の検索
-- [ ] 横断検索の結果表示UI（日付順に混在表示）
-- [ ] status フィルタ
-- [ ] 日付フィルタ
+- [x] Item.title の検索
+- [x] Section.body の検索
+- [x] Diary.body の検索
+- [x] 横断検索の結果表示UI（日付順に混在表示）
+- [x] 対象の限定（タスク名 / 作業記録 / 日記）
+- [x] status フィルタ
+- [x] 日付フィルタ
+- [x] ショートカット `/`（検索へ）
+- [ ] タグでの絞り込み（[03-functional-spec.md](03-functional-spec.md) 3.6。まだ入れていない）
 - [ ] 全文検索インデックスの検討（データ量が増えてきた場合）
+      → [07-open-questions.md](07-open-questions.md) Q9
 
 ---
 
