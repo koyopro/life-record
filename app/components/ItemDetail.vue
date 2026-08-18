@@ -35,6 +35,9 @@ const emit = defineEmits<{
 
 const id = computed(() => props.itemId)
 
+/** 「← 一覧へ」の戻り先。直前に見ていた一覧へ返す。 */
+const listOrigin = useListOrigin()
+
 // 分割表示では itemId が切り替わるので、top-level await は使わない
 // （Suspense で一覧ごと再描画されてしまうため）。
 const { data: item, error, refresh } = useFetch<ItemDetailDto>(
@@ -295,7 +298,8 @@ async function remove() {
   if (!confirm('このタスクを削除します。よろしいですか？')) return
   await $fetch(`/api/items/${id.value}`, { method: 'DELETE' })
   emit('removed', id.value)
-  if (!props.embedded) await navigateTo('/items')
+  // 消した詳細は履歴に残っているので、戻るのではなく一覧へ進める
+  if (!props.embedded) await navigateTo(listOrigin.value)
 }
 
 // --- 日々の作業記録（docs/03-functional-spec.md 3.2） ---------------------
@@ -418,7 +422,7 @@ async function removeSection(section: SectionDto) {
     <p v-else-if="!item" class="page__placeholder">読み込み中…</p>
 
     <template v-else>
-      <NuxtLink v-if="!embedded" to="/items" class="page__back">← 一覧へ</NuxtLink>
+      <NuxtLink v-if="!embedded" :to="listOrigin" class="page__back">← 一覧へ</NuxtLink>
 
       <header class="head">
         <!-- タイトルもボタンなしで保存する -->
