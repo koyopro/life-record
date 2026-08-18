@@ -99,6 +99,41 @@ const unsynced = computed(() => Boolean(cached.value && cached.value.syncState !
  */
 const hasDetail = computed(() => Boolean(detail.value))
 
+/**
+ * 詳細が取れていないことを知らせるか。
+ *
+ * 取得の最中にも知らせると、たいていはすぐ届くので一瞬だけ出て消え、
+ * その分だけ画面がずれる。オフラインだと分かっているときは即座に、
+ * オンラインのつもりなのに返ってこないときは何秒か待ってから出す。
+ */
+const DETAIL_SLOW_MS = 4000
+const detailSlow = ref(false)
+let slowTimer: ReturnType<typeof setTimeout> | null = null
+
+if (import.meta.client) {
+  watch(
+    [id, hasDetail],
+    () => {
+      if (slowTimer) clearTimeout(slowTimer)
+      detailSlow.value = false
+      // 届いたなら待つ必要はない。別の Item に切り替わったら数え直す
+      if (hasDetail.value) return
+      slowTimer = setTimeout(() => {
+        detailSlow.value = true
+      }, DETAIL_SLOW_MS)
+    },
+    { immediate: true },
+  )
+
+  onUnmounted(() => {
+    if (slowTimer) clearTimeout(slowTimer)
+  })
+}
+
+const showDetailNote = computed(
+  () => !hasDetail.value && (!online.value || detailSlow.value),
+)
+
 // --- タイトル（リアルタイム保存） --------------------------------------
 
 /**
@@ -489,12 +524,19 @@ async function removeSection(section: SectionDto) {
 
       <p v-if="actionError" class="page__error" role="alert">{{ actionError }}</p>
 
-      <!-- 何ができて何ができないかを、offline のときだけ短く伝える -->
-      <p v-if="!hasDetail" class="page__note">
-        <template v-if="online">タスクの詳細を読み込めませんでした。</template>
-        <template v-else>オフラインです。</template>
-        状態・期限・重要度・タグ・タイトルはこの端末に保存され、繋がったときに送ります。
-        本文と作業記録は繋がってから編集できます。
+      <!--
+        何ができて何ができないかを短く伝える。
+        取得の途中では出さない（出しては消えると画面がずれる）。
+      -->
+      <p v-if="showDetailNote" class="page__note">
+        <template v-if="online">
+          本文と作業記録を読み込めていません。
+        </template>
+        <template v-else>
+          オフラインです。
+          状態・期限・重要度・タグ・タイトルはこの端末に保存され、繋がったときに送ります。
+          本文と作業記録は繋がってから編集できます。
+        </template>
       </p>
 
       <section class="meta">
