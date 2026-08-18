@@ -4,6 +4,7 @@ import { dropPrefixUnit, indentOf, parseScrapbox } from '~~/shared/utils/scrapbo
 import type { Line } from '~~/shared/utils/scrapbox/types'
 import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
+import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -705,7 +706,44 @@ async function uploadAll(files: File[]) {
   }
 }
 
+// --- 他のタスクへのリンク（ドラッグ＆ドロップ） ---------------------------
+//
+// 日記の「この日にやったこと」などから Item をドラッグすると、開かずに
+// 本文へリンクを差し込める（docs/11-scrapbox-notation.md
+// 「アプリ内のページへのリンク」）。画像と違い行を割らない。
+// 「カーソル位置に挿入する」操作なので、テキストカーソルのある場所へ
+// そのままはめ込む。編集中の行が無ければ、画像と同じく末尾に足す。
+
+function insertItemLink(payload: ItemDragPayload) {
+  const link = `[/items/${payload.id} ${payload.title}]`
+  const el = input.value
+
+  if (activeIndex.value !== null && el) {
+    const start = el.selectionStart ?? activeText.value.length
+    const end = el.selectionEnd ?? start
+    const value = activeText.value
+    replaceActiveLine(value.slice(0, start) + link + value.slice(end))
+    const caret = start + link.length
+    void setCaret(caret, caret)
+    return
+  }
+
+  const lines = [...rawLines.value]
+  const replaceEmpty = lines.length === 1 && lines[0] === ''
+  if (replaceEmpty) lines.splice(0, 1, link)
+  else lines.splice(lines.length, 0, link)
+  commit(lines)
+}
+
 function onDrop(event: DragEvent) {
+  const itemLink = readItemLinkDrag(event.dataTransfer)
+  if (itemLink) {
+    event.preventDefault()
+    dragging.value = false
+    insertItemLink(itemLink)
+    return
+  }
+
   const files = images.imagesFrom(event.dataTransfer)
   dragging.value = false
   if (files.length === 0) return
@@ -714,8 +752,9 @@ function onDrop(event: DragEvent) {
 }
 
 function onDragOver(event: DragEvent) {
-  // 画像を落とせる場所であることをブラウザに伝える
-  if (!event.dataTransfer?.types.includes('Files')) return
+  // 画像・タスクのリンクを落とせる場所であることをブラウザに伝える
+  const dataTransfer = event.dataTransfer
+  if (!dataTransfer?.types.includes('Files') && !isItemLinkDrag(dataTransfer)) return
   event.preventDefault()
   dragging.value = true
 }

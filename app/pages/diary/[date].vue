@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { SAVE_STATE_LABELS } from '~/composables/useAutosave'
 import type { DiaryDetailDto } from '~~/shared/types/diary'
-import { STATUS_LABELS } from '~~/shared/types/item'
+import { STATUS_LABELS, type ItemDto } from '~~/shared/types/item'
 import {
   formatAppDate,
   isAppDate,
   shiftAppDate,
   toAppDate,
 } from '~~/shared/utils/date'
+import { startItemLinkDrag } from '~/utils/item-drag'
 
 /**
  * 日付ごとの日記（docs/03-functional-spec.md 3.3）。
@@ -85,6 +86,14 @@ function onDateInput(event: Event) {
 }
 
 const workedOn = computed(() => diary.value?.items ?? [])
+
+/**
+ * 「この日にやったこと」から本文へドラッグしたら、開かずにリンクを差し込めるようにする。
+ * 本文側（ScrapboxEditor）はカーソル位置にそのリンクを挿入する。
+ */
+function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
+  startItemLinkDrag(event, { id: item.id, title: item.title })
+}
 </script>
 
 <template>
@@ -145,7 +154,13 @@ const workedOn = computed(() => diary.value?.items ?? [])
         <h2 class="worked__title">この日にやったこと</h2>
         <ul class="worked__list">
           <li v-for="item in workedOn" :key="item.id">
-            <NuxtLink class="worked__item" :to="`/items/${item.id}`">
+            <NuxtLink
+              class="worked__item"
+              :to="`/items/${item.id}`"
+              draggable="true"
+              :aria-label="`「${item.title}」を本文へドラッグすると、リンクを挿入できます`"
+              @dragstart="onWorkedOnDragStart(item, $event)"
+            >
               <span class="worked__name">{{ item.title }}</span>
               <span class="worked__status">{{ STATUS_LABELS[item.status] }}</span>
             </NuxtLink>
