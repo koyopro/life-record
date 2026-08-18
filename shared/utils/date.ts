@@ -60,16 +60,12 @@ export function shiftAppDate(date: string, days: number): string {
   return shifted.toISOString().slice(0, 10)
 }
 
-const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const
+/** 曜日の並び。カレンダーの見出しにも使うので、日曜始まりで持つ。 */
+export const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const
 
 /** 曜日（日〜土）。 */
 export function weekdayOf(date: string): string {
-  const [year, month, day] = date.split('-').map(Number) as [
-    number,
-    number,
-    number,
-  ]
-  return WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]!
+  return WEEKDAYS[weekdayIndexOf(date)]!
 }
 
 /** 表示用の日付（2026/08/18(火)）。 */
@@ -82,4 +78,77 @@ export function formatAppDate(date: string): string {
 export function formatAppDateShort(date: string): string {
   const [, month, day] = date.split('-') as [string, string, string]
   return `${Number(month)}月${Number(day)}日(${weekdayOf(date)})`
+}
+
+// --- 月（YYYY-MM） -------------------------------------------------------
+//
+// 日記の一覧はカレンダー表示のため、月を単位に扱う
+// （docs/03-functional-spec.md 3.3）。日付と同じく、時刻を持たない
+// カレンダー上の月として文字列のまま扱う。
+
+const APP_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
+
+/** YYYY-MM の形をしているか。 */
+export function isAppMonth(value: unknown): value is string {
+  return typeof value === 'string' && APP_MONTH_PATTERN.test(value)
+}
+
+/** その日付が属する月。 */
+export function monthOf(date: string): string {
+  return date.slice(0, 7)
+}
+
+/** 月を months ヶ月ずらす。 */
+export function shiftAppMonth(month: string, months: number): string {
+  const [year, index] = month.split('-').map(Number) as [number, number]
+  const shifted = new Date(Date.UTC(year, index - 1 + months, 1))
+  return shifted.toISOString().slice(0, 7)
+}
+
+/** その月の初日。 */
+export function firstDayOfMonth(month: string): string {
+  return `${month}-01`
+}
+
+/** その月の末日。月ごとの日数と閏年は Date に任せる。 */
+export function lastDayOfMonth(month: string): string {
+  const [year, index] = month.split('-').map(Number) as [number, number]
+  // 翌月の0日目＝当月の末日
+  return new Date(Date.UTC(year, index, 0)).toISOString().slice(0, 10)
+}
+
+/** 表示用の月（2026年8月）。 */
+export function formatAppMonth(month: string): string {
+  const [year, index] = month.split('-') as [string, string]
+  return `${year}年${Number(index)}月`
+}
+
+/**
+ * カレンダーに並べる日付。日曜始まりの7の倍数で返す。
+ *
+ * 前後の月の日も含める。週の途中で欄が欠けると、曜日の列がずれて
+ * カレンダーとして読めなくなるため。
+ */
+export function monthGrid(month: string): string[] {
+  const first = firstDayOfMonth(month)
+  const last = lastDayOfMonth(month)
+
+  const start = shiftAppDate(first, -weekdayIndexOf(first))
+  const end = shiftAppDate(last, 6 - weekdayIndexOf(last))
+
+  const dates: string[] = []
+  for (let date = start; date <= end; date = shiftAppDate(date, 1)) {
+    dates.push(date)
+  }
+  return dates
+}
+
+/** 曜日の番号（日曜が 0）。 */
+function weekdayIndexOf(date: string): number {
+  const [year, month, day] = date.split('-').map(Number) as [
+    number,
+    number,
+    number,
+  ]
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
 }

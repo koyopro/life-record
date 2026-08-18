@@ -7,6 +7,17 @@
   --accent: #2f6f4e;
   --accent-text: #ffffff;
   --danger: #a8332a;
+  /*
+   * 重要度の色（docs/08-todo-management.md 8.1）。RTM に倣い、
+   * 高いものほど強い色にする。重要度なしは灰色で、色が無い状態にはしない。
+   * 帯が消えていると、色が付いていないのか単に無いのか区別できないため。
+   */
+  --priority-1: #d24632;
+  --priority-2: #2f6fbf;
+  --priority-3: #62aed8;
+  --priority-none: #c9c9c1;
+  /* 土曜の色。日本のカレンダーの慣習に合わせる（日曜は --danger） */
+  --saturday: #2f6fbf;
   --radius: 12px;
   --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 12px rgb(0 0 0 / 4%);
 }
@@ -21,6 +32,12 @@
     --accent: #5aa47c;
     --accent-text: #10231a;
     --danger: #e0796f;
+    /* 暗い背景では沈むので、明るい側へ寄せる */
+    --priority-1: #e0685a;
+    --priority-2: #5e97dd;
+    --priority-3: #79c1e0;
+    --priority-none: #4a4943;
+    --saturday: #6ea8e0;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 12px rgb(0 0 0 / 20%);
   }
 }

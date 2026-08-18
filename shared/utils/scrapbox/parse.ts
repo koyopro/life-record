@@ -130,7 +130,7 @@ export function dropPrefixUnit(prefix: string): string {
  *
  * Scrapbox では行頭の空白が階層を表すため、保存時に正規化してはならない。
  */
-function indentOf(line: string): number {
+export function indentOf(line: string): number {
   let count = 0
   while (count < line.length) {
     const char = line[count]

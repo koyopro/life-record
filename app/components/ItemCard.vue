@@ -95,11 +95,14 @@ function onTouchEnd() {
 <template>
   <article
     class="card"
-    :class="{
-      'card--focused': focused,
-      'card--selected': selected,
-      'card--done': done,
-    }"
+    :class="[
+      `card--priority-${item.priority ?? 'none'}`,
+      {
+        'card--focused': focused,
+        'card--selected': selected,
+        'card--done': done,
+      },
+    ]"
     :style="{ transform: dragX ? `translateX(${dragX}px)` : undefined }"
     @click="emit('focus')"
     @touchstart.passive="onTouchStart"
@@ -194,7 +197,7 @@ function onTouchEnd() {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left: 3px solid transparent;
+  border-left: 4px solid var(--priority-none);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 0.75rem 0.5rem 0.75rem 0.75rem;
@@ -204,12 +207,32 @@ function onTouchEnd() {
   transition: transform 0.15s ease;
 }
 
-/* カーソル位置。キーボード操作の対象がどれかを常に見えるようにする */
+/*
+ * 重要度は左端の帯で示す（docs/08-todo-management.md 8.1）。
+ * 一覧を眺めたときに、読まずに優先度が分かるようにするため。
+ * 重要度なしは既定の灰色（`.card` の指定）のまま。
+ * 色だけに頼らないよう、「重要度高」の文字は meta に残す。
+ */
+.card--priority-1 {
+  border-left-color: var(--priority-1);
+}
+
+.card--priority-2 {
+  border-left-color: var(--priority-2);
+}
+
+.card--priority-3 {
+  border-left-color: var(--priority-3);
+}
+
+/*
+ * カーソル位置。キーボード操作の対象がどれかを常に見えるようにする。
+ * 左端は重要度に使うので、囲みの線だけで示す。
+ */
 .card--focused {
-  border-left-color: var(--accent);
   box-shadow:
     var(--shadow),
-    0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+    0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .card--selected {

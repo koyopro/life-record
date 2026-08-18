@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
-import { dropPrefixUnit, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import { dropPrefixUnit, indentOf, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 import type { Line } from '~~/shared/utils/scrapbox/types'
 
 /**
@@ -332,6 +332,10 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
   const el = input.value
   if (index === null || !el) return
 
+  // 修飾キーを押していれば、カーソルではなく行そのものを動かす
+  if (event.altKey) return moveBlock(event, delta)
+  if (event.ctrlKey) return moveLine(event, delta)
+
   // 行内を移動できるうちは、行をまたがない
   if (delta === -1 && el.selectionStart !== 0) return
   if (delta === 1 && el.selectionStart !== el.value.length) return
@@ -341,6 +345,124 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
 
   event.preventDefault()
   void activate(next, delta === -1 ? 'end' : 'start')
+}
+
+/**
+ * 行を1つだけ、隣の行と入れ替える（`Ctrl`+`↑` / `↓`）。
+ *
+ * 字下げは動かさない。ぶら下がっている行は連れていかないので、
+ * 階層をまたいで並べ替えたいときはこちらを使う。
+ */
+function moveLine(event: KeyboardEvent, delta: -1 | 1) {
+  const index = activeIndex.value
+  if (index === null || composing.value) return
+
+  const lines = [...rawLines.value]
+  const target = index + delta
+  if (target < 0 || target >= lines.length) return
+
+  event.preventDefault()
+  const caret = input.value?.selectionStart ?? activeText.value.length
+  const [moved] = lines.splice(index, 1)
+  lines.splice(target, 0, moved!)
+  commit(lines)
+  void activate(target, caret, lines)
+}
+
+/**
+ * 段落を、同じ階層の隣の段落と入れ替える（`Option`+`↑` / `↓`）。
+ *
+ * ぶら下がっている行ごと動かすので、階層を保ったまま順番を変えられる。
+ * 隣にあるのが同じ深さの段落でないとき（親の直下の先頭など）は動かさない。
+ * 深さが変わる移動は、字下げ（`Tab`）と行の移動（`Ctrl`+`↑` / `↓`）で行う。
+ */
+function moveBlock(event: KeyboardEvent, delta: -1 | 1) {
+  const index = activeIndex.value
+  if (index === null || composing.value) return
+
+  const lines = [...rawLines.value]
+  const all = parseScrapbox(lines.join('\n'))
+
+  // コードブロックの中に段落の階層は無い。外に出さず、中だけで入れ替える
+  if (all[index]?.type === 'codeBody') {
+    if (all[index + delta]?.type === 'codeBody') moveLine(event, delta)
+    return
+  }
+
+  const length = blockLength(all, index)
+  const caret = input.value?.selectionStart ?? activeText.value.length
+
+  // 動かす先は、行数ではなく隣の段落の分だけずらす。
+  // 1行ずつ動かすと、隣の段落の途中に割り込んでしまう。
+  let target: number
+  if (delta === 1) {
+    // 段落の次の行は、必ず同じか浅い深さになる（深い行は段落に入るため）。
+    // 浅ければ、その段落は親の最後の子。入れ替える相手がいない
+    const next = index + length
+    if (next >= lines.length) return
+    if (indentOf(all[next]!.raw) !== indentOf(all[index]!.raw)) return
+    target = index + blockLength(all, next)
+  } else {
+    const previous = previousSiblingStart(all, index)
+    if (previous < 0) return
+    target = previous
+  }
+
+  event.preventDefault()
+  const block = lines.splice(index, length)
+  lines.splice(target, 0, ...block)
+  commit(lines)
+  void activate(target, caret, lines)
+}
+
+/**
+ * 段落の行数。段落は、その行と、続くより深い字下げの行。
+ *
+ * Scrapbox では行頭の空白の数がそのまま階層なので、字下げの深い行は
+ * その上の行にぶら下がっている。コードブロックは見出しと中身で
+ * ひとまとまりなので、字下げに関わらず切り離さない。
+ */
+function blockLength(all: Line[], index: number): number {
+  const start = all[index]
+  if (!start) return 0
+  // コードブロックの中身に階層は無いので、その行だけで1つ
+  if (start.type === 'codeBody') return 1
+
+  const base = indentOf(start.raw)
+  let inCode = start.type === 'codeHeader'
+  let end = index + 1
+  while (end < all.length) {
+    const line = all[end]!
+    // コードブロックの中身は空行でも中断しない（字下げが浅くても続き）
+    if (inCode && line.type === 'codeBody') {
+      end++
+      continue
+    }
+    if (indentOf(line.raw) <= base) break
+    inCode = line.type === 'codeHeader'
+    end++
+  }
+  return end - index
+}
+
+/**
+ * 同じ深さで直前にある段落の先頭。無ければ -1。
+ *
+ * 上へ遡り、自分より深い行（＝手前の段落にぶら下がっている行）は飛ばす。
+ * 最初に見つかった同じ深さの行が、直前の段落の先頭になる。
+ * それより先に浅い行が来たら、それは親なので入れ替える相手はいない。
+ */
+function previousSiblingStart(all: Line[], index: number): number {
+  const base = indentOf(all[index]!.raw)
+  for (let start = index - 1; start >= 0; start--) {
+    const line = all[start]!
+    // コードブロックの中身は、見出しと一緒に動かすので単体では見ない
+    if (line.type === 'codeBody') continue
+    const indent = indentOf(line.raw)
+    if (indent > base) continue
+    return indent === base ? start : -1
+  }
+  return -1
 }
 
 /** 字下げを1段変える。Scrapbox では字下げが箇条書きの階層になる。 */
