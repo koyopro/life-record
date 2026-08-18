@@ -3,6 +3,7 @@ import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
 import { dropPrefixUnit, indentOf, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 import type { Line } from '~~/shared/utils/scrapbox/types'
 import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
+import { toAppDate } from '~~/shared/utils/date'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -87,6 +88,7 @@ async function activate(
   activeLine.value = line
   activeText.value = line.content
   closeEmojiPicker()
+  lastDateInsert = null
 
   await nextTick()
   const el = input.value
@@ -102,6 +104,7 @@ function deactivate() {
   activeIndex.value = null
   activeLine.value = null
   closeEmojiPicker()
+  lastDateInsert = null
 }
 
 /**
@@ -333,6 +336,9 @@ function onKeydown(event: KeyboardEvent) {
       // macOS の Ctrl+D は「カーソルより後ろを1文字消す」
       if (event.ctrlKey) return onForwardDelete(event)
       return
+    case 't':
+      if (event.ctrlKey) return insertToday(event)
+      return
   }
 }
 
@@ -356,6 +362,54 @@ function onOpenBracket(event: KeyboardEvent) {
 
   replaceActiveLine(`${value.slice(0, start)}[${selected}]${value.slice(end)}`)
   void setCaret(start + 1, start + 1 + selected.length)
+}
+
+/** 続けて `Ctrl` + `T` を押したとみなす間隔。この間なら日付をリンクへ差し替える。 */
+const DATE_INSERT_REPEAT_MS = 1500
+
+/** 直前に `Ctrl` + `T` で入れた日付の範囲。続けて押されたときの差し替えに使う。 */
+let lastDateInsert: { at: number; start: number; end: number } | null = null
+
+/**
+ * `Ctrl` + `T` で今日の日付を挿入する。
+ *
+ * カーソルを動かさず・間を空けずにもう一度押すと、挿入した日付を
+ * 日記へのリンク（`[/diary/YYYY-MM-DD]`）に差し替える。
+ * 1回で常にリンクにはしない方針は、日付だけ書きたい場面
+ * （期限のメモなど）を主にしているため。
+ */
+function insertToday(event: KeyboardEvent) {
+  const el = input.value
+  if (activeIndex.value === null || !el) return
+  event.preventDefault()
+
+  const now = Date.now()
+  const date = toAppDate()
+  const start = el.selectionStart ?? activeText.value.length
+  const end = el.selectionEnd ?? start
+  const value = activeText.value
+
+  const upgrade =
+    lastDateInsert !== null &&
+    now - lastDateInsert.at <= DATE_INSERT_REPEAT_MS &&
+    start === lastDateInsert.end &&
+    end === lastDateInsert.end &&
+    value.slice(lastDateInsert.start, lastDateInsert.end) === date
+
+  if (upgrade) {
+    const { start: linkStart, end: linkEnd } = lastDateInsert!
+    const link = `[/diary/${date}]`
+    replaceActiveLine(value.slice(0, linkStart) + link + value.slice(linkEnd))
+    const caret = linkStart + link.length
+    void setCaret(caret, caret)
+    lastDateInsert = null
+    return
+  }
+
+  replaceActiveLine(value.slice(0, start) + date + value.slice(end))
+  const caret = start + date.length
+  void setCaret(caret, caret)
+  lastDateInsert = { at: now, start, end: caret }
 }
 
 /**
