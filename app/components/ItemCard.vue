@@ -119,14 +119,19 @@ function onTouchEnd() {
       ✓
     </div>
 
+    <!--
+      左端はタスクの選択。完了は `c` / スワイプ / 長押しメニューで行う
+      （docs/08-todo-management.md 8.4）。同じ形の四角を2つ並べると
+      どちらが何なのか読み取れないため、押せる四角はこれ1つにする。
+    -->
     <button
       type="button"
-      class="card__check"
-      :aria-label="done ? `「${item.title}」を未完了に戻す` : `「${item.title}」を完了にする`"
-      :aria-pressed="done"
-      @click.stop="emit('complete')"
+      class="card__select"
+      :aria-label="`「${item.title}」を選択`"
+      :aria-pressed="selected"
+      @click.stop="emit('select')"
     >
-      <span class="card__check-box">{{ done ? '✓' : '' }}</span>
+      <span class="card__select-box">{{ selected ? '✓' : '' }}</span>
     </button>
 
     <div class="card__main">
@@ -179,16 +184,6 @@ function onTouchEnd() {
         </button>
       </div>
     </div>
-
-    <button
-      type="button"
-      class="card__select"
-      :aria-label="`「${item.title}」を選択`"
-      :aria-pressed="selected"
-      @click.stop="emit('select')"
-    >
-      {{ selected ? '☑' : '☐' }}
-    </button>
   </article>
 </template>
 
@@ -200,7 +195,8 @@ function onTouchEnd() {
   border-left: 4px solid var(--priority-none);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 0.75rem 0.5rem 0.75rem 0.75rem;
+  /* 左端の四角は自前で余白を持つので、その分だけ詰める */
+  padding: 0.75rem 0.75rem 0.75rem 0.5rem;
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
@@ -257,7 +253,7 @@ function onTouchEnd() {
   color: var(--accent);
 }
 
-.card__check {
+.card__select {
   background: transparent;
   border: 0;
   padding: 0.25rem;
@@ -268,7 +264,7 @@ function onTouchEnd() {
   place-items: center;
 }
 
-.card__check-box {
+.card__select-box {
   width: 1.25rem;
   height: 1.25rem;
   border: 1.5px solid var(--border);
@@ -278,6 +274,12 @@ function onTouchEnd() {
   font-size: 0.875rem;
   line-height: 1;
   color: var(--accent);
+}
+
+.card--selected .card__select-box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 .card__main {
@@ -381,11 +383,4 @@ function onTouchEnd() {
   overflow-wrap: anywhere;
 }
 
-.card__select {
-  background: transparent;
-  border: 0;
-  color: var(--text-muted);
-  min-width: 2.25rem;
-  min-height: 2.25rem;
-}
 </style>
