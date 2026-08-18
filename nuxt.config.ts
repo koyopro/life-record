@@ -32,6 +32,17 @@ export default defineNuxtConfig({
       display: 'standalone',
       background_color: '#f6f6f4',
       theme_color: '#f6f6f4',
+      /*
+       * OS の共有シートから URL を受け取る（docs/13-share-target.md）。
+       *
+       * 受付は manifest だけで済む。共有された内容はクエリで /share に
+       * 渡ってくるので、Service Worker には何も足さない。
+       */
+      share_target: {
+        action: '/share',
+        method: 'GET',
+        params: { title: 'title', text: 'text', url: 'url' },
+      },
       icons: [
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },

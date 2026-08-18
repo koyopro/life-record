@@ -9,9 +9,8 @@ import {
   type SortKey,
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
-import { endOfAppDay, todayDueAt } from '~~/shared/utils/date'
-import { parseSmartAdd } from '~~/shared/utils/smart-add'
-import { TITLE_MAX_LENGTH, splitInput } from '~~/shared/utils/text'
+import { buildItemDraft } from '~/utils/item-draft'
+import { endOfAppDay } from '~~/shared/utils/date'
 
 interface Options {
   /** 対象の status。'all' なら絞り込まない。 */
@@ -364,44 +363,19 @@ export function useItemList(options: Options) {
   /**
    * Item を追加する。
    *
-   * 応答を待たずに一覧へ出す。サーバーと同じパーサ（SmartAdd）と同じ既定値
-   * （期限は今日）を使うため、あとから届く内容と食い違わない。
-   * id もここで決めて送る。決まっていないと、追加直後の操作の宛先がない。
+   * 応答を待たずに一覧へ出す。組み立ては buildItemDraft に任せる
+   * （共有の受付と同じ経路を通す）。
    */
   async function create(text: string): Promise<boolean> {
-    const split = splitInput(text)
-    const parsed = split ? parseSmartAdd(split.titleLine) : null
+    const result = buildItemDraft(text)
 
-    if (!split || !parsed?.title) {
-      errorMessage.value = 'タイトルが空です'
+    if ('error' in result) {
+      errorMessage.value = result.error
       return false
-    }
-    if (parsed.title.length > TITLE_MAX_LENGTH) {
-      errorMessage.value = `タイトルは ${TITLE_MAX_LENGTH} 文字までです`
-      return false
-    }
-
-    const now = new Date()
-    const draft: ItemDto = {
-      id: crypto.randomUUID(),
-      title: parsed.title,
-      status: 'inbox',
-      priority: parsed.priority,
-      url: parsed.url,
-      // 期限の指定がなければ今日（server/api/items.post.ts と同じ既定）
-      dueAt: (parsed.dueAt ?? todayDueAt(now)).toISOString(),
-      dueHasTime: parsed.dueAt ? parsed.dueHasTime : false,
-      body: split.body ?? null,
-      tags: [...parsed.tags].sort(),
-      recurrenceRule: parsed.recurrence?.rule ?? null,
-      recurrenceBasis: parsed.recurrence?.basis ?? null,
-      seriesId: null,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
     }
 
     errorMessage.value = null
-    await store.create(draft, text)
+    await store.create(result.draft, text)
 
     return true
   }

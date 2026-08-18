@@ -8,16 +8,22 @@ const props = withDefaults(
     placeholder?: string
     /** 複数行を受け付けるか。false なら SmartAdd 専用の1行入力。 */
     multiline?: boolean
+    /** 最初から入れておくテキスト。共有の受付（/share）で使う。 */
+    initialText?: string
+    /** 送信ボタンの文字。 */
+    submitLabel?: string
   }>(),
   {
     placeholder: '思いついたことを書く\n1行目がタイトルになります',
     multiline: true,
+    initialText: '',
+    submitLabel: '追加',
   },
 )
 
 const emit = defineEmits<{ submit: [text: string] }>()
 
-const text = ref('')
+const text = ref(props.initialText)
 const textarea = ref<HTMLTextAreaElement | null>(null)
 
 const canSubmit = computed(() => text.value.trim().length > 0)
@@ -98,6 +104,11 @@ function focus() {
   textarea.value?.focus()
 }
 
+// 最初から入っているテキストは、高さを合わせないと後ろが隠れる
+onMounted(() => {
+  if (props.initialText) autoGrow()
+})
+
 defineExpose({ focus })
 
 /*
@@ -144,7 +155,7 @@ useComposerRegistration(focus)
         </span>
       </span>
       <button type="submit" class="composer__submit" :disabled="!canSubmit">
-        追加
+        {{ submitLabel }}
       </button>
     </div>
   </form>
