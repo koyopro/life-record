@@ -1,10 +1,7 @@
 import { asc, eq, inArray, notInArray, sql } from 'drizzle-orm'
-import type { Db } from '~~/server/db'
+import type { Executor } from '~~/server/db'
 import { itemTags, tags } from '~~/server/db/schema'
 import { normalizeTagName } from '~~/shared/types/tag'
-
-/** Db もしくはトランザクションのどちらでも受けられるようにする。 */
-type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0]
 
 /** 各 Item に付いているタグ名を、まとめて引く。 */
 export async function tagsByItemId(

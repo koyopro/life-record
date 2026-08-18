@@ -1,7 +1,13 @@
-import { asc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
-import { assertUuid, toItemDto, toSectionDto } from '~~/server/utils/items'
+import {
+  assertUuid,
+  comparePrimarySection,
+  compareSectionsForDisplay,
+  toItemDto,
+  toSectionDto,
+} from '~~/server/utils/items'
 import { tagsByItemId } from '~~/server/utils/tags'
 import type { ItemDetailDto } from '~~/shared/types/item'
 
@@ -15,22 +21,18 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
     throw createError({ statusCode: 404, message: '見つかりません' })
   }
 
-  const rows = await db
-    .select()
-    .from(sections)
-    .where(eq(sections.itemId, id))
-    // 新しい日付を上に。同じ日付の中は position 順（docs/03-functional-spec.md 3.1）
-    .orderBy(sections.date, asc(sections.position), asc(sections.createdAt))
+  const rows = await db.select().from(sections).where(eq(sections.itemId, id))
 
-  const ordered = [...rows].sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? 1 : -1
-    return a.position - b.position
-  })
+  // 新しい日付を上に。同じ日付の中は position 順（docs/03-functional-spec.md 3.1）
+  const ordered = [...rows].sort(compareSectionsForDisplay)
+  // 本文に使うのは最初に作られたもの。一覧カードと同じ Section を指す
+  const primary = [...rows].sort(comparePrimarySection)[0] ?? null
 
   const tagNames = await tagsByItemId(db, [id])
 
   return {
-    ...toItemDto(item, ordered[0]?.body ?? null, tagNames.get(id) ?? []),
+    ...toItemDto(item, primary?.body ?? null, tagNames.get(id) ?? []),
     sections: ordered.map(toSectionDto),
+    primarySectionId: primary?.id ?? null,
   }
 })

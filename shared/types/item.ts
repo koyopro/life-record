@@ -73,13 +73,20 @@ export interface SectionDto {
   id: string
   date: string
   body: string
+  /** 同じ日付の中での表示順（docs/02-data-model.md 2.4）。 */
   position: number
   createdAt: string
   updatedAt: string
 }
 
 export interface ItemDetailDto extends ItemDto {
+  /** 日付降順、同一日付内は position 昇順（docs/03-functional-spec.md 3.1）。 */
   sections: SectionDto[]
+  /**
+   * 「本文」として扱う Section の id。最初に作られたもの。
+   * 一覧カードに出す本文（`body`）と同じ Section を指す。
+   */
+  primarySectionId: string | null
 }
 
 /** Item に対して変更できる項目。 */

@@ -1,25 +1,17 @@
-/**
- * アプリケーション全体のタイムゾーン。
- * 個人利用のため固定とする（docs/08-todo-management.md 8.5）。
- */
-export const APP_TIME_ZONE = 'Asia/Tokyo'
-
-const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-  timeZone: APP_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
+// 日付そのものの扱いはクライアントと共通（shared/utils/date.ts）。
+// ここに置くのは、サーバーでしか使わない期限まわりの組み立てだけ。
+// 再エクスポートはしない。自動インポートで同じ名前が二重に登録されるため。
+import { isAppDate, toAppDate } from '~~/shared/utils/date'
 
 /**
- * 指定時刻の「アプリのタイムゾーンにおける日付」を YYYY-MM-DD で返す。
- *
- * Section.date はカレンダー上の日付であり、サーバーの UTC 日付とは
- * ずれうるため、必ずこの関数を通す。
+ * リクエストに含まれる日付（YYYY-MM-DD）を検証して返す。
+ * Section.date / Diary.date の入口はすべてここを通す。
  */
-export function toAppDate(at: Date = new Date()): string {
-  // en-CA は YYYY-MM-DD 形式を返す
-  return dateFormatter.format(at)
+export function assertAppDate(value: unknown, label = '日付'): string {
+  if (!isAppDate(value)) {
+    throw createError({ statusCode: 400, message: `不正な${label}です` })
+  }
+  return value
 }
 
 /**

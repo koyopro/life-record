@@ -1,6 +1,7 @@
 import { useDb } from '~~/server/db'
 import { itemTags, items, sections } from '~~/server/db/schema'
-import { toAppDate, todayDueAt } from '~~/server/utils/date'
+import { todayDueAt } from '~~/server/utils/date'
+import { toAppDate } from '~~/shared/utils/date'
 import { toItemDto } from '~~/server/utils/items'
 import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, type ItemDto, type ItemStatus } from '~~/shared/types/item'

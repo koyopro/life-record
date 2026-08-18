@@ -176,12 +176,13 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 
 目的：Item に対する日々の作業記録を残せるようにする。
 
-- [ ] Section 作成（Item + 日付を指定）
-- [ ] Section 編集
-- [ ] Section 削除
-- [ ] Item 詳細画面での Section の時系列表示
-- [ ] `position` による並び替え
-- [ ] 当日の Section をすばやく追加する動線
+- [x] Section 作成（Item + 日付を指定）
+- [x] Section 編集
+- [x] Section の日付の変更
+- [x] Section 削除
+- [x] Item 詳細画面での Section の時系列表示
+- [x] `position` による並び替え（同一日付内）
+- [x] 当日の Section をすばやく追加する動線（`Shift` + `y`）
 
 ### 完了条件
 

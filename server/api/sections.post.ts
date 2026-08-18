@@ -1,8 +1,9 @@
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
-import { toAppDate } from '~~/server/utils/date'
-import { assertUuid, toSectionDto } from '~~/server/utils/items'
+import { assertAppDate } from '~~/server/utils/date'
+import { toAppDate } from '~~/shared/utils/date'
+import { assertUuid, nextPosition, toSectionDto } from '~~/server/utils/items'
 import type { SectionDto } from '~~/shared/types/item'
 import { BODY_MAX_LENGTH } from '~~/shared/utils/text'
 
@@ -12,8 +13,6 @@ interface Body {
   date?: unknown
   body?: unknown
 }
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 /** Section を作成する。Item に対する、その日の作業記録。 */
 export default defineEventHandler(async (event): Promise<SectionDto> => {
@@ -29,13 +28,8 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
     })
   }
 
-  let date = toAppDate()
-  if (payload?.date !== undefined) {
-    if (typeof payload.date !== 'string' || !DATE_PATTERN.test(payload.date)) {
-      throw createError({ statusCode: 400, message: '不正な日付です' })
-    }
-    date = payload.date
-  }
+  const date =
+    payload?.date === undefined ? toAppDate() : assertAppDate(payload.date)
 
   const db = useDb()
 
@@ -51,21 +45,14 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
       })
     }
 
-    // 同じ Item の末尾に置く
-    const [last] = await tx
-      .select({ position: sections.position })
-      .from(sections)
-      .where(eq(sections.itemId, itemId))
-      .orderBy(desc(sections.position))
-      .limit(1)
-
     const [created] = await tx
       .insert(sections)
       .values({
         itemId,
         date,
         body,
-        position: (last?.position ?? -1) + 1,
+        // 同じ日付の記録の末尾に置く（docs/02-data-model.md 2.4）
+        position: await nextPosition(tx, itemId, date),
       })
       .returning()
 

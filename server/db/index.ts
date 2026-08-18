@@ -19,6 +19,9 @@ import * as schema from './schema'
  */
 export type Db = NodePgDatabase<typeof schema>
 
+/** Db もしくはトランザクションのどちらでも受けられるようにする。 */
+export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0]
+
 function createDb(): Db {
   const url = process.env.DATABASE_URL
   if (!url) {

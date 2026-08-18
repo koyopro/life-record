@@ -34,8 +34,13 @@ export default defineEventHandler(async (event) => {
         title: snapshot.title,
         status: snapshot.status,
         priority: snapshot.priority,
+        url: snapshot.url ?? null,
         dueAt: snapshot.dueAt ? new Date(snapshot.dueAt) : null,
         dueHasTime: Boolean(snapshot.dueHasTime),
+        // 繰り返しは rule と basis が揃っていなければ CHECK 制約に掛かる
+        recurrenceRule: snapshot.recurrenceBasis ? snapshot.recurrenceRule : null,
+        recurrenceBasis: snapshot.recurrenceRule ? snapshot.recurrenceBasis : null,
+        seriesId: snapshot.seriesId ?? null,
         createdAt: new Date(snapshot.createdAt),
         updatedAt: new Date(snapshot.updatedAt),
       })
@@ -60,6 +65,13 @@ export default defineEventHandler(async (event) => {
       )
     }
 
+    // 本文は最初に作られた Section。スナップショットは表示順（日付降順）で
+    // 並んでいるので、先頭をそのまま使うと別の日の記録を拾ってしまう。
+    const primaryBody =
+      [...restoredSections].sort((a, b) =>
+        a.createdAt === b.createdAt ? 0 : a.createdAt < b.createdAt ? -1 : 1,
+      )[0]?.body ?? null
+
     const restoredTags = Array.isArray(snapshot.tags) ? snapshot.tags : []
     if (restoredTags.length > 0) {
       const tagIds = await ensureTags(tx, restoredTags)
@@ -69,6 +81,6 @@ export default defineEventHandler(async (event) => {
         .onConflictDoNothing()
     }
 
-    return toItemDto(restored, restoredSections[0]?.body ?? null, restoredTags)
+    return toItemDto(restored, primaryBody, restoredTags)
   })
 })

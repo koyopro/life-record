@@ -133,7 +133,7 @@ Item について、その日に行った作業・検討内容などを記録す
 | item_id | UUID | Yes | 所属する Item |
 | date | date | Yes | 作業・記録の日付 |
 | body | text | Yes | その日の作業メモ |
-| position | integer | Yes | Item 内での表示順 |
+| position | integer | Yes | **同一日付内**での表示順 |
 | created_at | timestamptz | Yes | 作成日時 |
 | updated_at | timestamptz | Yes | 更新日時 |
 
@@ -155,6 +155,28 @@ Section:
 ```
 
 1つの Item に複数の Section を持たせられるため、1つのTODOが複数日にまたがっても表現できる。
+
+### position
+
+**同一日付内での並び順**であり、日付をまたいだ通し番号ではない。
+
+一覧は日付の新しい順に並べる（[03-functional-spec.md](03-functional-spec.md) 3.1）。
+日付をまたぐ順序は `date` が決めるため、position が担うのは
+「同じ日に複数の記録を書いたときの並び」だけでよい。
+
+そのため、
+
+- 作成時は **同じ Item・同じ日付**の末尾に置く
+- 並べ替えは同じ日付の記録どうしでのみ行う
+- 日付を変えたら、移した先の日付の末尾へ移す
+
+### 「本文」として扱う Section
+
+Item は本文を持たないため、一覧カードと詳細画面の「本文」には
+**その Item で最初に作られた Section**（`created_at` が最も古いもの）を使う。
+
+position で決めない。position は同一日付内の並び順なので、
+並べ替えたり日付を直したりした途端に、本文が別の記録へ移ってしまう。
 
 ### body の形式
 

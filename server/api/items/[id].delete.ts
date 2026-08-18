@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
-import { assertUuid, toItemDto, toSectionDto } from '~~/server/utils/items'
+import {
+  assertUuid,
+  comparePrimarySection,
+  compareSectionsForDisplay,
+  toItemDto,
+  toSectionDto,
+} from '~~/server/utils/items'
 import { tagsByItemId } from '~~/server/utils/tags'
 import type { ItemDetailDto } from '~~/shared/types/item'
 
@@ -33,14 +39,13 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
       throw createError({ statusCode: 404, message: '見つかりません' })
     }
 
-    const ordered = [...removedSections].sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? 1 : -1
-      return a.position - b.position
-    })
+    const ordered = [...removedSections].sort(compareSectionsForDisplay)
+    const primary = [...removedSections].sort(comparePrimarySection)[0] ?? null
 
     return {
-      ...toItemDto(removed, ordered[0]?.body ?? null, removedTags),
+      ...toItemDto(removed, primary?.body ?? null, removedTags),
       sections: ordered.map(toSectionDto),
+      primarySectionId: primary?.id ?? null,
     }
   })
 })

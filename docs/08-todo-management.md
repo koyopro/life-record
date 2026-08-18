@@ -139,6 +139,7 @@ RTM の[キーボードショートカット](https://www.rememberthemilk.com/he
 | `u` | URL を変更 | URLを変更 |
 | `Shift` + `u` | URL を開く | URLを開く |
 | `y` | ノートを追加（本文へ移る） | ノートの追加 |
+| `Shift` + `y` | 今日の作業記録を書く | |
 | `z` | 元に戻す | 元に戻す |
 | `Delete` / `Backspace` | 削除 | |
 | `/` | 検索にフォーカス | |

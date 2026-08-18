@@ -139,6 +139,7 @@ interface DetailExposed {
   focusTitle: () => void
   focusUrl: () => void
   focusBody: () => void
+  focusTodaySection: () => void
 }
 
 const detail = ref<DetailExposed | null>(null)
@@ -149,7 +150,7 @@ const detail = ref<DetailExposed | null>(null)
  * 右ペインが出ていればその欄へ。出ていない狭い画面では、
  * 編集できる場所が詳細画面しかないのでそちらへ移動する。
  */
-async function focusDetail(field: 'Title' | 'Url' | 'Body') {
+async function focusDetail(field: 'Title' | 'Url' | 'Body' | 'TodaySection') {
   const target = list.cursorItem.value
   if (!target) return
 
@@ -319,6 +320,14 @@ const shortcuts = computed<Shortcut[]>(() => [
     label: 'ノートを追加（本文）',
     group: '編集',
     run: () => focusDetail('Body'),
+  },
+  {
+    keys: ['Y'],
+    display: 'y',
+    shift: true,
+    label: '今日の作業記録を書く',
+    group: '編集',
+    run: () => focusDetail('TodaySection'),
   },
   {
     keys: ['U'],

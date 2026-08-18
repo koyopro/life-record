@@ -13,6 +13,7 @@ import {
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
+import { toAppDate } from '~~/shared/utils/date'
 
 const props = defineProps<{
   itemId: string
@@ -76,7 +77,17 @@ const titleSave = useAutosave({
 // （docs/02-data-model.md 2.9-1）。Section がなければ最初の保存時に作る。
 
 const sections = computed<SectionDto[]>(() => item.value?.sections ?? [])
-const primarySection = computed<SectionDto | null>(() => sections.value[0] ?? null)
+
+/** 本文として扱う Section。最初に作られたもの（一覧カードと同じ）。 */
+const primarySection = computed<SectionDto | null>(
+  () =>
+    sections.value.find((s) => s.id === item.value?.primarySectionId) ?? null,
+)
+
+/** 本文を除いた、日々の作業記録。日付の新しい順に並んでいる。 */
+const logSections = computed<SectionDto[]>(() =>
+  sections.value.filter((s) => s.id !== primarySection.value?.id),
+)
 
 const bodyDraft = ref<string | null>(null)
 const body = computed({
@@ -106,6 +117,8 @@ defineExpose({
   focusBody,
   focusTitle: () => focusEnd(titleInput.value),
   focusUrl: () => focusEnd(urlInput.value),
+  /** 一覧の `Shift` + `y` から、今日の作業記録へ移る。 */
+  focusTodaySection: () => addTodaySection(),
 })
 const createdSectionId = ref<string | null>(null)
 
@@ -142,7 +155,7 @@ watch(item, (value) => {
     title.value = value.title
     titleSave.markSynced()
   }
-  const latest = value.sections[0]?.body ?? ''
+  const latest = primarySection.value?.body ?? ''
   if (bodySave.state.value === 'idle' || bodySave.state.value === 'saved') {
     if (latest !== body.value) {
       body.value = latest
@@ -285,35 +298,114 @@ async function remove() {
   if (!props.embedded) await navigateTo('/items')
 }
 
-// --- 追加の作業記録 -----------------------------------------------------
+// --- 日々の作業記録（docs/03-functional-spec.md 3.2） ---------------------
 
 const addingSection = ref(false)
 
-async function addSection() {
+/** 作成直後の記録へフォーカスするための参照。 */
+const sectionEditors = new Map<string, { focus: () => void }>()
+
+function setSectionEditor(id: string, el: unknown) {
+  if (el) sectionEditors.set(id, el as { focus: () => void })
+  else sectionEditors.delete(id)
+}
+
+/**
+ * 同じ日付の中で前後に動かせるか。
+ * position は同一日付内の並び順なので、日付をまたいでは動かさない。
+ */
+function canMove(index: number, delta: -1 | 1): boolean {
+  const list = logSections.value
+  const current = list[index]
+  const next = list[index + delta]
+  return Boolean(current && next && current.date === next.date)
+}
+
+/**
+ * 今日の作業記録へ移る（`Shift` + `y` / 「今日の記録を追加」）。
+ *
+ * すでに今日の記録があって、まだ何も書いていなければそれを使う。
+ * 押すたびに空の記録が増えていくのを避けるため。
+ */
+async function addTodaySection() {
+  const today = toAppDate()
+  const existing = logSections.value.filter((s) => s.date === today)
+  const reusable = existing.find((s) => !s.body.trim())
+
+  if (reusable) {
+    focusSection(reusable.id)
+    return
+  }
+
   addingSection.value = true
   try {
-    await $fetch('/api/sections', {
+    const created = await $fetch<SectionDto>('/api/sections', {
       method: 'POST',
-      body: { itemId: id.value, body: '' },
+      body: { itemId: id.value, date: today, body: '' },
     })
     await refresh()
     emit('changed')
+    focusSection(created.id)
   } finally {
     addingSection.value = false
   }
 }
 
+async function focusSection(sectionId: string) {
+  await nextTick()
+  sectionEditors.get(sectionId)?.focus()
+}
+
 async function saveSection(section: SectionDto, value: string) {
+  // 一覧カードに出るのは本文（最初の記録）だけなので、changed は投げない
   await $fetch(`/api/sections/${section.id}`, {
     method: 'PATCH',
     body: { body: value },
   })
 }
 
+async function changeSectionDate(section: SectionDto, date: string) {
+  actionError.value = null
+  try {
+    await $fetch(`/api/sections/${section.id}`, {
+      method: 'PATCH',
+      body: { date },
+    })
+    await refresh()
+  } catch {
+    actionError.value = '日付を変更できませんでした'
+  }
+}
+
+/** 同じ日付の記録どうしを入れ替える。並びはまとめて送る。 */
+async function moveSection(index: number, delta: -1 | 1) {
+  const list = logSections.value
+  const current = list[index]
+  const other = list[index + delta]
+  if (!current || !other || current.date !== other.date) return
+
+  const sameDate = list.filter((s) => s.date === current.date)
+  const from = sameDate.indexOf(current)
+  const to = sameDate.indexOf(other)
+  const ids = sameDate.map((s) => s.id)
+  ids[from] = other.id
+  ids[to] = current.id
+
+  actionError.value = null
+  try {
+    await $fetch('/api/sections/reorder', { method: 'POST', body: { ids } })
+    await refresh()
+  } catch {
+    actionError.value = '並べ替えできませんでした'
+  }
+}
+
 async function removeSection(section: SectionDto) {
   if (!confirm('この作業記録を削除します。よろしいですか？')) return
+  sectionEditors.delete(section.id)
   await $fetch(`/api/sections/${section.id}`, { method: 'DELETE' })
   await refresh()
+  emit('changed')
 }
 </script>
 
@@ -505,13 +597,22 @@ async function removeSection(section: SectionDto) {
         </ul>
       </section>
 
-      <section v-if="sections.length > 1" class="log">
-        <h2 class="log__title">これまでの作業記録</h2>
+      <!--
+        日々の作業記録。日付の新しい順、同じ日付の中は position 順
+        （docs/03-functional-spec.md 3.1）。
+      -->
+      <section v-if="logSections.length" class="log">
+        <h2 class="log__title">作業記録</h2>
         <ItemSectionEditor
-          v-for="section in sections.slice(1)"
+          v-for="(section, index) in logSections"
           :key="section.id"
+          :ref="(el) => setSectionEditor(section.id, el)"
           :section="section"
+          :can-move-up="canMove(index, -1)"
+          :can-move-down="canMove(index, 1)"
           @save="(value) => saveSection(section, value)"
+          @change-date="(date) => changeSectionDate(section, date)"
+          @move="(delta) => moveSection(index, delta)"
           @remove="removeSection(section)"
         />
       </section>
@@ -521,7 +622,7 @@ async function removeSection(section: SectionDto) {
           type="button"
           class="page__add"
           :disabled="addingSection"
-          @click="addSection"
+          @click="addTodaySection"
         >
           今日の作業記録を追加
         </button>
@@ -709,10 +810,15 @@ async function removeSection(section: SectionDto) {
   font-weight: 600;
 }
 
-.log,
 .series {
   display: grid;
   gap: 0.5rem;
+}
+
+/* 記録どうしは、日をまたいだ別の記録だと分かる程度に離す */
+.log {
+  display: grid;
+  gap: 1rem;
 }
 
 .series__title {

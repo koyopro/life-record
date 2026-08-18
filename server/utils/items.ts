@@ -1,6 +1,6 @@
-import { asc, desc, inArray, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 import { items, sections, type Item, type Section } from '~~/server/db/schema'
-import type { Db } from '~~/server/db'
+import type { Db, Executor } from '~~/server/db'
 import type {
   ItemDto,
   Priority,
@@ -34,7 +34,55 @@ export function orderByFor(sort: SortKey): SQL[] {
 }
 
 /**
- * 各 Item の先頭 Section の本文を引く。一覧カードの表示に使う。
+ * Item の「本文」として扱う Section を選ぶ基準（docs/03-functional-spec.md 3.2）。
+ *
+ * 最初に作られたものを本文とする。position で決めないのは、position が
+ * 同一日付内での並び順であり（docs/02-data-model.md 2.4）、
+ * 並べ替えた途端に本文が別の Section へ移ってしまうため。
+ */
+export function comparePrimarySection(
+  a: { createdAt: Date; position: number; id: string },
+  b: { createdAt: Date; position: number; id: string },
+): number {
+  const created = a.createdAt.getTime() - b.createdAt.getTime()
+  if (created !== 0) return created
+  if (a.position !== b.position) return a.position - b.position
+  return a.id < b.id ? -1 : 1
+}
+
+/**
+ * 詳細画面での Section の並び（docs/03-functional-spec.md 3.1）。
+ * 日付の新しい順、同じ日付の中は position 昇順。
+ */
+export function compareSectionsForDisplay(a: Section, b: Section): number {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1
+  if (a.position !== b.position) return a.position - b.position
+  return a.createdAt.getTime() - b.createdAt.getTime()
+}
+
+/**
+ * 同じ Item・同じ日付の記録の末尾に置くための position。
+ *
+ * position は日付をまたいだ通し番号ではなく、同一日付内での並び順
+ * （docs/02-data-model.md 2.4）。
+ */
+export async function nextPosition(
+  db: Executor,
+  itemId: string,
+  date: string,
+): Promise<number> {
+  const [last] = await db
+    .select({ position: sections.position })
+    .from(sections)
+    .where(and(eq(sections.itemId, itemId), eq(sections.date, date)))
+    .orderBy(desc(sections.position))
+    .limit(1)
+
+  return (last?.position ?? -1) + 1
+}
+
+/**
+ * 各 Item の本文（最初の Section）を引く。一覧カードの表示に使う。
  *
  * Item ごとに1クエリ投げると件数分の往復が発生するので、まとめて取る。
  */
@@ -46,6 +94,7 @@ export async function firstSectionBodies(
 
   const rows = await db
     .select({
+      id: sections.id,
       itemId: sections.itemId,
       body: sections.body,
       position: sections.position,
@@ -53,7 +102,7 @@ export async function firstSectionBodies(
     })
     .from(sections)
     .where(inArray(sections.itemId, itemIds))
-    .orderBy(asc(sections.position), asc(sections.createdAt))
+    .orderBy(asc(sections.createdAt), asc(sections.position), asc(sections.id))
 
   const byItemId = new Map<string, string>()
   for (const row of rows) {

@@ -1,4 +1,4 @@
-import { APP_TIME_ZONE } from '~~/server/utils/date'
+import { APP_TIME_ZONE } from '~~/shared/utils/date'
 
 /**
  * サーバー側の日付計算を Asia/Tokyo に固定する。
