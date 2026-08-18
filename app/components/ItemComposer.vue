@@ -69,8 +69,23 @@ function submit() {
   })
 }
 
+/**
+ * 日本語入力の変換中か。
+ *
+ * 変換を確定する Enter を送信として扱うと、書きかけのタイトルで
+ * 追加されてしまう。ブラウザによって知らせ方が違うので両方を見る。
+ *
+ * - Chrome / Firefox … 確定の keydown は `isComposing` が true
+ * - Safari            … compositionend が先に来るため `isComposing` は
+ *                       false になる。代わりに keyCode が 229 になる
+ */
+function isComposing(event: KeyboardEvent) {
+  return event.isComposing || event.keyCode === 229
+}
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter') {
+    if (isComposing(event)) return
     // 1行入力なら Enter で送信。複数行なら ⌘/Ctrl + Enter。
     if (!props.multiline || event.metaKey || event.ctrlKey) {
       event.preventDefault()
