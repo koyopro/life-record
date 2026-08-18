@@ -7,6 +7,8 @@ const props = defineProps<{
   item: ItemDto
   focused?: boolean
   selected?: boolean
+  /** まだサーバーへ送れていない変更を抱えているか（docs/12-offline.md 12.8）。 */
+  pending?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -140,9 +142,17 @@ function onTouchEnd() {
       </button>
       <p v-if="bodyExcerpt" class="card__body">{{ bodyExcerpt }}</p>
       <div
-        v-if="item.priority || due.state !== 'none' || item.tags.length || recurrenceLabel"
+        v-if="item.priority || due.state !== 'none' || item.tags.length || recurrenceLabel || pending"
         class="card__meta"
       >
+        <!-- この端末にだけある変更。オフライン中に書いたものが分かるように -->
+        <span
+          v-if="pending"
+          class="card__pending"
+          title="まだサーバーへ送れていない変更があります"
+        >
+          <span aria-hidden="true">●</span> 未同期
+        </span>
         <span v-if="recurrenceLabel" class="card__recurrence" :title="recurrenceLabel">
           <span aria-hidden="true">↻</span>
           <span class="card__recurrence-text">{{ recurrenceLabel }}</span>
@@ -322,6 +332,12 @@ function onTouchEnd() {
 
 .card__priority {
   font-weight: 600;
+}
+
+/* 未同期は状態の説明であって、優先度の高い情報ではない。控えめに出す */
+.card__pending {
+  color: var(--text-muted);
+  font-size: 0.75rem;
 }
 
 .card__priority--1 {

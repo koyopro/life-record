@@ -1,7 +1,7 @@
 import type { UndoEntry } from '~/composables/useUndo'
+import type { LocalItem } from '~/utils/offline/local-database'
 import {
   isSortKey,
-  type ItemDetailDto,
   type ItemDto,
   type ItemPatch,
   type ItemStatus,
@@ -32,206 +32,91 @@ interface Options {
 }
 
 /**
- * 一覧の取得・カーソル・複数選択・編集操作をまとめたもの。
+ * 一覧の絞り込み・カーソル・複数選択・編集操作をまとめたもの。
  *
  * キーボード操作（docs/08-todo-management.md 8.4）は「選択中のタスク」に
  * 対して働くため、カーソルと選択の状態をデータと同じ場所で持つ。
  *
- * 追加や編集は、サーバーの応答を待たずに一覧へ反映する（ローカル先行反映）。
- * 応答を待って描き直すと、押してから見た目が変わるまでの間が空く。
- * 送信は裏で行い、取り直しが済んだところで重ねるのをやめる。
+ * データそのものは持たない。全件は useItemStore（＝IndexedDB）にあり、
+ * ここはそこから今の一覧に出すものを選んで並べるだけ。
+ * 絞り込みをローカルで計算しているので、オフラインでも同じ一覧が出る
+ * （docs/12-offline.md 12.4）。
+ *
+ * 追加や編集は、サーバーの応答を待たずに反映する（ローカル先行反映）。
+ * 送信は useSync が裏で順に行うため、ここでは待たない。
  */
 export function useItemList(options: Options) {
   const status = computed(() => toValue(options.status))
   const completed = computed(() => toValue(options.completed ?? false))
   const openOnly = computed(() => toValue(options.openOnly ?? false))
   const tag = computed(() => toValue(options.tag ?? undefined))
-  const untagged = computed(() =>
-    toValue(options.untagged ?? false) ? 'true' : undefined,
-  )
-  const dueUntil = computed(() =>
-    toValue(options.dueUntilToday ?? false) ? 'today' : undefined,
-  )
-  const open = computed(() => (openOnly.value ? 'true' : undefined))
+  const untagged = computed(() => toValue(options.untagged ?? false))
+  const dueUntilToday = computed(() => toValue(options.dueUntilToday ?? false))
   const sort = ref<SortKey>(options.defaultSort ?? 'priority')
+
+  const store = useItemStore()
+  const sync = useSync()
   const undoStack = useUndo()
   const tagList = useTags()
 
   const message = ref<string | null>(null)
   const errorMessage = ref<string | null>(null)
 
-  // --- 取得 -----------------------------------------------------------
+  // --- 一覧 -----------------------------------------------------------
   //
-  // 未完了側と完了側の両方をあらかじめ取っておく。切り替え（`h`）のたびに
-  // 取りに行くと、押してから中身が入れ替わるまで間が空く。
-
-  const openList = useFetch<ItemDto[]>('/api/items', {
-    query: { status, sort, tag, untagged, dueUntil, open },
-    default: () => [],
-  })
-
-  const closedList = useFetch<ItemDto[]>('/api/items', {
-    // 完了は status が closed になる。画面の status では絞り込まない
-    // （status は進行状態を1つだけ持つ値なので、完了したものは
-    // inbox でも backlog でもなくなる）
-    query: { status: 'closed', sort, tag, untagged, dueUntil },
-    default: () => [],
-  })
-
-  const server = computed<ItemDto[]>(
-    () => (completed.value ? closedList.data.value : openList.data.value) ?? [],
-  )
-
-  const loading = computed(() =>
-    completed.value ? closedList.pending.value : openList.pending.value,
-  )
-
-  const error = computed(() =>
-    completed.value ? closedList.error.value : openList.error.value,
-  )
-
-  /** 両方を取り直す。操作で片方から片方へ移るため、まとめて更新する。 */
-  async function refresh() {
-    await Promise.all([openList.refresh(), closedList.refresh()])
-  }
-
-  // --- ローカル先行反映 ------------------------------------------------
-
-  /** 送信を待たずに一覧へ重ねている変更。 */
-  interface LocalChange {
-    /** 対象の Item id。 */
-    id: string
-    /** 追加した Item。まだサーバーの一覧には無い。 */
-    added?: ItemDto
-    /** 変えた項目。 */
-    patch?: Partial<ItemDto>
-    /** 削除したか。 */
-    removed?: boolean
-  }
-
-  // 操作ごとに鍵を振る。同じ Item への操作が重なっても、
-  // 終わったものから順に外せるようにするため。
-  const localChanges = ref(new Map<number, LocalChange>())
-  let nextChangeKey = 0
-
-  /** 変更を重ね始める。取り下げるための鍵を返す。 */
-  function pushChanges(changes: LocalChange[]): number[] {
-    const keys: number[] = []
-    const next = new Map(localChanges.value)
-    for (const change of changes) {
-      const key = nextChangeKey++
-      next.set(key, change)
-      keys.push(key)
-    }
-    localChanges.value = next
-    return keys
-  }
-
-  /** 重ねるのをやめる。取り直しが済んだとき、または送信に失敗したとき。 */
-  function dropChanges(keys: number[]) {
-    const next = new Map(localChanges.value)
-    for (const key of keys) next.delete(key)
-    localChanges.value = next
-  }
+  // 未完了側と完了側で取りに行き分けることはしない。全件がローカルにあるので、
+  // 切り替え（`h`）は絞り込みを変えるだけで済む。
 
   /**
-   * いまの一覧に残るか。
+   * いまの一覧に出すか。
    *
-   * ローカルで変えた Item にだけ使う。完了にしたら未完了の一覧から
-   * すぐ消える、といった見た目を応答を待たずに出すため。
-   * 絞り込みの判定そのものはサーバー（server/api/items.get.ts）が正。
+   * サーバーの絞り込み（server/api/items.get.ts）と同じ条件をここで作る。
+   * ずれていると、取り直したときに行が現れたり消えたりする。
    */
-  function belongsHere(item: ItemDto): boolean {
+  function belongsHere(item: LocalItem): boolean {
+    // 削除して、まだ送れていないもの。取り消せるよう記録は残してある
+    if (item.syncState === 'pending_delete') return false
+
     if (completed.value) {
       if (item.status !== 'closed') return false
     } else {
       if (status.value !== 'all' && item.status !== status.value) return false
       if (openOnly.value && item.status === 'closed') return false
     }
-    if (dueUntil.value === 'today') {
+    if (dueUntilToday.value) {
       if (!item.dueAt) return false
       if (new Date(item.dueAt) > endOfAppDay()) return false
     }
     if (tag.value && !item.tags.includes(tag.value)) return false
-    if (untagged.value === 'true' && item.tags.length > 0) return false
+    if (untagged.value && item.tags.length > 0) return false
     return true
   }
 
-  const items = computed<ItemDto[]>(() => {
-    const list = server.value
-    const changes = [...localChanges.value.values()]
-    if (changes.length === 0) return list
+  const items = computed<LocalItem[]>(() =>
+    sortItems(store.items.value.filter(belongsHere), sort.value),
+  )
 
-    const added = new Map<string, ItemDto>()
-    const patches = new Map<string, Partial<ItemDto>>()
-    const removed = new Map<string, boolean>()
+  const loading = store.loading
 
-    // 重ねた順に畳み込む。同じ Item を続けて操作したときは後のほうを採る
-    for (const change of changes) {
-      if (change.added) {
-        added.set(change.id, change.added)
-        removed.set(change.id, false)
-      }
-      if (change.patch) {
-        patches.set(change.id, { ...patches.get(change.id), ...change.patch })
-      }
-      if (change.removed) removed.set(change.id, true)
-    }
+  /** 読み込めなかった。ローカルに何か出せるなら、わざわざ出さない。 */
+  const error = computed(() =>
+    store.items.value.length === 0 ? store.fetchError.value : null,
+  )
 
-    const known = new Set(list.map((item) => item.id))
-    const merged = [
-      ...list,
-      // 取り直しでサーバーから返ってきたものは、もう重ねる必要がない
-      ...[...added.values()].filter((item) => !known.has(item.id)),
-    ]
+  /** サーバーから取り直す。 */
+  async function refresh() {
+    await store.fetchFromServer()
+  }
 
-    const result: ItemDto[] = []
-    for (const base of merged) {
-      if (removed.get(base.id)) continue
-      const patch = patches.get(base.id)
-      const item = patch ? { ...base, ...patch } : base
-      // 触っていないものは、サーバーの絞り込みをそのまま信じる
-      if ((patch || added.has(item.id)) && !belongsHere(item)) continue
-      result.push(item)
-    }
-
-    return sortItems(result, sort.value)
+  // 画面を開いたら最新を見に行く。ローカルの表示は待たせない
+  onMounted(() => {
+    void store.refreshIfStale()
   })
 
-  /**
-   * 重ねた変更を、裏でサーバーへ送る。
-   *
-   * 送信が終わって一覧を取り直せたら、重ねるのをやめる。
-   * 失敗したら重ねた変更を取り消し、見た目を元へ戻す。
-   */
-  function sync(
-    keys: number[],
-    send: () => Promise<unknown>,
-    settings: { undo?: UndoEntry; tags?: boolean } = {},
-  ): Promise<void> {
-    // 前の失敗を引きずらない。送信そのものは列に並ぶが、
-    // 操作を始めた時点で消しておく
-    errorMessage.value = null
-
-    return enqueue(async () => {
-      try {
-        await send()
-      } catch (e) {
-        errorMessage.value = extractMessage(e)
-        // 何もできていないので、済んだかのような文言は残さない
-        message.value = null
-        dropChanges(keys)
-        // 戻す先がもう無いので、取り消しの候補からも外す
-        if (settings.undo) undoStack.remove(settings.undo)
-        return
-      }
-      await Promise.all([
-        refresh(),
-        ...(settings.tags ? [tagList.refresh()] : []),
-      ])
-      dropChanges(keys)
-    })
-  }
+  // 送信が通ったらタグ一覧を取り直す。タグは Item 側の操作で増減する
+  watch(sync.lastSyncedAt, () => {
+    void tagList.refresh()
+  })
 
   // --- カーソルと選択 -------------------------------------------------
 
@@ -250,12 +135,12 @@ export function useItemList(options: Options) {
     return index >= 0 ? index : 0
   })
 
-  const cursorItem = computed<ItemDto | null>(
+  const cursorItem = computed<LocalItem | null>(
     () => items.value[cursor.value] ?? null,
   )
 
   /** 操作の対象。複数選択があればそちら、なければカーソル位置。 */
-  const targets = computed<ItemDto[]>(() => {
+  const targets = computed<LocalItem[]>(() => {
     if (selectedIds.value.size > 0) {
       return items.value.filter((item) => selectedIds.value.has(item.id))
     }
@@ -314,7 +199,7 @@ export function useItemList(options: Options) {
    * 元の値へ戻す取り消し操作。
    *
    * 元の値は Item ごとに異なるため、まとめて戻さず1件ずつ復元する。
-   * 戻す側もローカルへ先に反映し、送信は裏で行う。
+   * 戻す側もローカルへ先に反映し、送信は列へ積むだけ。
    */
   function restoreEntry(
     label: string,
@@ -323,20 +208,9 @@ export function useItemList(options: Options) {
     return {
       label,
       revert: async () => {
-        const keys = pushChanges(
-          before.map((snapshot) => ({
-            id: snapshot.id,
-            patch: snapshot.values,
-          })),
-        )
-        void sync(keys, async () => {
-          for (const snapshot of before) {
-            await $fetch(itemPath(snapshot.id), {
-              method: 'PATCH',
-              body: snapshot.values,
-            })
-          }
-        })
+        for (const snapshot of before) {
+          await store.patch([snapshot.id], snapshot.values)
+        }
       },
     }
   }
@@ -345,7 +219,7 @@ export function useItemList(options: Options) {
   async function applyPatch(
     patch: ItemPatch,
     label: string,
-    scope?: ItemDto[],
+    scope?: LocalItem[],
   ) {
     const list = scope ?? targets.value
     if (list.length === 0) return
@@ -358,31 +232,15 @@ export function useItemList(options: Options) {
       ) as ItemPatch,
     }))
 
-    const changeKeys = pushChanges(
-      list.map((item) => ({ id: item.id, patch })),
-    )
+    errorMessage.value = null
     message.value = describe(list.length, label)
     clearSelection()
 
-    const entry = restoreEntry(label, before)
-    undoStack.push(entry)
+    undoStack.push(restoreEntry(label, before))
 
-    void sync(
-      changeKeys,
-      async () => {
-        // 1件なら単体エンドポイント、複数なら一括エンドポイント。
-        // 三項演算子でまとめると型推論が破綻するので分岐を分ける。
-        const single = list.length === 1 ? list[0] : undefined
-        if (single) {
-          await $fetch(itemPath(single.id), { method: 'PATCH', body: patch })
-          return
-        }
-        await $fetch<ItemDto[]>('/api/items', {
-          method: 'PATCH',
-          body: { ids: list.map((item) => item.id), patch },
-        })
-      },
-      { undo: entry },
+    await store.patch(
+      list.map((item) => item.id),
+      patch,
     )
   }
 
@@ -425,86 +283,41 @@ export function useItemList(options: Options) {
       id: item.id,
       values: { dueAt: item.dueAt, dueHasTime: item.dueHasTime } as ItemPatch,
     }))
-    const after = list.map((item) => ({
-      id: item.id,
-      values: {
-        dueAt: postponedDue(item).toISOString(),
-        dueHasTime: item.dueHasTime,
-      } as ItemPatch,
-    }))
 
-    const changeKeys = pushChanges(
-      after.map((next) => ({ id: next.id, patch: next.values })),
-    )
     message.value = describe(list.length, '期限を明日にした')
     clearSelection()
+    undoStack.push(restoreEntry('期限を明日にした', before))
 
-    const entry = restoreEntry('期限を明日にした', before)
-    undoStack.push(entry)
-
-    void sync(
-      changeKeys,
-      async () => {
-        for (const next of after) {
-          await $fetch(itemPath(next.id), {
-            method: 'PATCH',
-            body: next.values,
-          })
-        }
-      },
-      { undo: entry },
-    )
+    for (const item of list) {
+      await store.patch([item.id], {
+        dueAt: postponedDue(item).toISOString(),
+        dueHasTime: item.dueHasTime,
+      })
+    }
   }
 
-  /** 削除。スナップショットを保持し、Undo で復元できるようにする。 */
+  /**
+   * 削除。取り消し（`u`）で元に戻せるようにする。
+   *
+   * まだ送っていなければ送らずに取り消す。すでに送ってしまっていた場合は、
+   * 削除の応答として受け取った控えから復元する（useItemStore の restore）。
+   */
   async function remove() {
     const list = targets.value
     if (list.length === 0) return
 
-    const changeKeys = pushChanges(
-      list.map((item) => ({ id: item.id, removed: true })),
-    )
+    const ids = list.map((item) => item.id)
     message.value = describe(list.length, '削除した')
     clearSelection()
 
-    // 復元に要る内容は DELETE の応答で返ってくる。送信は投げた順に
-    // 処理されるため、取り消しが走るころには埋まっている。
-    const snapshots: ItemDetailDto[] = []
-
-    const entry: UndoEntry = {
+    undoStack.push({
       label: '削除した',
       revert: async () => {
-        const restoreKeys = pushChanges(
-          list.map((item) => ({ id: item.id, added: item })),
-        )
-        void sync(
-          restoreKeys,
-          async () => {
-            for (const snapshot of snapshots) {
-              await $fetch<ItemDto>('/api/items/restore', {
-                method: 'POST',
-                body: snapshot,
-              })
-            }
-          },
-          { tags: true },
-        )
+        await store.restore(ids)
       },
-    }
-    undoStack.push(entry)
+    })
 
-    // 削除で参照が0になったタグは消えるため、タグ一覧も取り直す
-    void sync(
-      changeKeys,
-      async () => {
-        for (const item of list) {
-          snapshots.push(
-            await $fetch<ItemDetailDto>(itemPath(item.id), { method: 'DELETE' }),
-          )
-        }
-      },
-      { undo: entry, tags: true },
-    )
+    await store.remove(ids)
   }
 
   /**
@@ -528,51 +341,19 @@ export function useItemList(options: Options) {
     )
     const ids = list.map((item) => item.id)
 
-    const after = list.map((item) => ({
-      id: item.id,
-      tags: nextTags(item.tags, add, remove),
-    }))
-
-    const changeKeys = pushChanges(
-      after.map((next) => ({ id: next.id, patch: { tags: next.tags } })),
-    )
     message.value = describe(list.length, 'タグを変更した')
     clearSelection()
 
-    let entry: UndoEntry | undefined
     if (addedNow.length > 0 || removedNow.length > 0) {
-      entry = {
+      undoStack.push({
         label: 'タグを変更した',
         revert: async () => {
-          const revertKeys = pushChanges(
-            after.map((next) => ({
-              id: next.id,
-              patch: { tags: nextTags(next.tags, removedNow, addedNow) },
-            })),
-          )
-          void sync(
-            revertKeys,
-            () =>
-              $fetch<ItemDto[]>('/api/items/tags', {
-                method: 'POST',
-                body: { ids, add: removedNow, remove: addedNow },
-              }),
-            { tags: true },
-          )
+          await store.applyTags(ids, removedNow, addedNow)
         },
-      }
-      undoStack.push(entry)
+      })
     }
 
-    void sync(
-      changeKeys,
-      () =>
-        $fetch<ItemDto[]>('/api/items/tags', {
-          method: 'POST',
-          body: { ids, add, remove },
-        }),
-      { undo: entry, tags: true },
-    )
+    await store.applyTags(ids, add, remove)
   }
 
   async function undo() {
@@ -620,17 +401,7 @@ export function useItemList(options: Options) {
     }
 
     errorMessage.value = null
-    const changeKeys = pushChanges([{ id: draft.id, added: draft }])
-
-    void sync(
-      changeKeys,
-      () =>
-        $fetch<ItemDto>('/api/items', {
-          method: 'POST',
-          body: { id: draft.id, text },
-        }),
-      { tags: true },
-    )
+    await store.create(draft, text)
 
     return true
   }
@@ -676,36 +447,9 @@ export function useItemList(options: Options) {
   }
 }
 
-/**
- * URL を string 型として組み立てるための薄いラッパー。
- *
- * テンプレートリテラルをそのまま $fetch に渡すと、Nitro の型付きルート推論が
- * 全ルートを突き合わせようとして型チェックが破綻する。
- */
-function itemPath(id: string): string {
-  return `/api/items/${id}`
-}
-
-/** タグの付け外しを反映した名前の並び。サーバーと同じく名前順にそろえる。 */
-function nextTags(current: string[], add: string[], remove: string[]): string[] {
-  const next = new Set(current.filter((name) => !remove.includes(name)))
-  for (const name of add) next.add(name)
-  return [...next].sort()
-}
-
 const STATUS_LABELS_JA: Record<ItemStatus, string> = {
   inbox: 'Inbox',
   backlog: 'Backlog',
   in_progress: '対応中',
   closed: '完了',
-}
-
-function extractMessage(e: unknown): string {
-  if (typeof e === 'object' && e !== null) {
-    // サーバーは message で返す。statusMessage は HTTP ステータス行に載るため
-    // 日本語が壊れる（h3 も将来サニタイズすると警告している）。
-    const data = (e as { data?: { message?: string } }).data
-    if (data?.message) return data.message
-  }
-  return '操作に失敗しました'
 }

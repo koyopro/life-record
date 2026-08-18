@@ -589,6 +589,7 @@ defineExpose({
             :item="item"
             :focused="index === list.cursor.value"
             :selected="list.selectedIds.value.has(item.id)"
+            :pending="item.syncState !== 'synced'"
             @focus="list.focusItem(item.id)"
             @select="list.toggleSelect(item.id)"
             @complete="toggleComplete(item)"

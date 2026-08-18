@@ -126,6 +126,13 @@ function isActive(to: string): boolean {
       </nav>
       <ThemeToggle />
     </header>
+    <!--
+      オフライン・未同期の知らせ。出すものが無ければ何も描かない。
+      ブラウザの状態を見るので、サーバー描画とは食い違う。
+    -->
+    <ClientOnly>
+      <SyncStatus class="shell__sync" />
+    </ClientOnly>
     <main class="shell__main">
       <NuxtPage />
     </main>
@@ -150,6 +157,10 @@ function isActive(to: string): boolean {
   align-items: center;
   gap: 0.75rem;
   padding-bottom: 0.75rem;
+}
+
+.shell__sync {
+  padding-bottom: 0.5rem;
 }
 
 .nav {

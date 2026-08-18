@@ -27,6 +27,8 @@
 | DB | **Neon** (PostgreSQL) |
 | フロントエンド | **Vue.js + TypeScript** |
 | 画像ストレージ | **Amazon S3** |
+| ローカルの保管 | **IndexedDB**（`idb`）— TODO の写しと未送信の操作 |
+| オフライン起動 | **Service Worker**（`@vite-pwa/nuxt` / Workbox） |
 
 ## 4.2 選定理由
 
@@ -78,19 +80,24 @@ Vercel 上での API 実装・ルーティング・型共有が一体化され�
 描き直すと、押してから見た目が変わるまでの間が空き、キーボードで続けて
 操作するテンポが崩れるため。
 
-- 変更はいったん一覧へ重ねて表示し（`useItemList` の localChanges）、
-  送信と取り直しが済んだところで重ねるのをやめる
-- 失敗したら重ねた変更を取り消し、エラーを出す
-- 並びはクライアントでも計算する（`app/utils/item-order.ts`）。サーバーの
-  `ORDER BY` と同じ順序にしないと、取り直しのたびに行が飛ぶ
-- 送信は1本の列にまとめる（`useSyncQueue`）。並行に投げると、続けざまの
-  操作が投げた順に届かず、最後に書かれる値が入れ替わる
+ブラウザ側では **IndexedDB を唯一の読み取り元**とする（詳細は
+[12-offline.md](12-offline.md)）。
+
+- 操作はまず IndexedDB へ書き、画面はそれを読み直す（`useItemStore`）
+- 送信は列（`SyncQueue`）へ積むだけで待たない。実際に送るのは `useSync`
+- 失敗しても操作は消さず、間隔を空けて送り直す。オフラインならそのまま残る
+- サーバーから取った内容は、いったん IndexedDB へ書いてから読み直す。
+  こうするとオンラインとオフラインで画面の作りが変わらない
+- 並びと絞り込みはクライアントで計算する（`app/utils/item-order.ts` /
+  `useItemList`）。サーバーの `ORDER BY` / `WHERE` と同じ結果にしないと、
+  取り直しのたびに行が飛ぶ
 
 Item の id はクライアントで採番して `POST /api/items` に渡す。追加した直後の
 Item に対する操作の宛先が、応答を待たずに決まっている必要があるため。
+同じ id が二度届いても作り直さない（再送で二重登録にならないようにする）。
 
-未完了 / 完了（`h`）の切り替えは、両方をあらかじめ取っておく。
-切り替えのたびに取りに行くと、押してから中身が入れ替わるまで間が空く。
+一覧は条件ごとに取りに行かず、**全件を1回**取って手元で絞り込む。
+未完了 / 完了（`h`）の切り替えも、タグでの絞り込みも通信を伴わない。
 
 ### 画面幅による出し分け
 
@@ -133,7 +140,7 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | POST | `/api/items` | Item 作成。1行目を SmartAdd として解釈し、2行目以降は Section にする。`id` を渡せる |
 | PATCH | `/api/items` | 複数選択した Item への一括更新 |
 | GET | `/api/items/:id` | Item 詳細（Section・タグを含む） |
-| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / url / due_at / 繰り返し） |
+| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / url / due_at / 繰り返し）。`baseUpdatedAt` を添えると競合を検出して 409 |
 | DELETE | `/api/items/:id` | Item 削除。Undo 用に削除内容を返す |
 | POST | `/api/items/restore` | 削除した Item の復元（Undo 専用） |
 | POST | `/api/items/tags` | 複数 Item へのタグの付け外し（`add` / `remove`） |

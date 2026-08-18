@@ -6,6 +6,8 @@ import {
   PRIORITY_LABELS,
   STATUS_LABELS,
   type ItemDetailDto,
+  type ItemDto,
+  type ItemPatch,
   type ItemStatus,
   type Priority,
   type SectionDto,
@@ -38,12 +40,64 @@ const id = computed(() => props.itemId)
 /** 「← 一覧へ」の戻り先。直前に見ていた一覧へ返す。 */
 const listOrigin = useListOrigin()
 
+const store = useItemStore()
+const { online } = useOnline()
+
 // 分割表示では itemId が切り替わるので、top-level await は使わない
 // （Suspense で一覧ごと再描画されてしまうため）。
-const { data: item, error, refresh } = useFetch<ItemDetailDto>(
+const { data: detail, error: detailError, refresh } = useFetch<ItemDetailDto>(
   () => `/api/items/${id.value}`,
   { watch: [id] },
 )
+
+/** ローカル（IndexedDB）にある Item。オフラインでもこちらは読める。 */
+const cached = computed(() => store.byId(id.value))
+
+/**
+ * 画面に出す内容。
+ *
+ * メタデータはローカルを正とする（未送信の変更もここに入っている）。
+ * 作業記録（Section）はサーバーにしか無いので、取れているときだけ出す
+ * （docs/12-offline.md 12.9）。
+ */
+const item = computed<ItemDetailDto | null>(() => {
+  const local = cached.value
+  const fetched = detail.value
+
+  if (!fetched) {
+    if (!local) return null
+    return { ...local, sections: [], primarySectionId: null }
+  }
+  if (!local) return fetched
+
+  return {
+    ...fetched,
+    title: local.title,
+    status: local.status,
+    priority: local.priority,
+    url: local.url,
+    dueAt: local.dueAt,
+    dueHasTime: local.dueHasTime,
+    tags: local.tags,
+    recurrenceRule: local.recurrenceRule,
+    recurrenceBasis: local.recurrenceBasis,
+    updatedAt: local.updatedAt,
+  }
+})
+
+/** 読み込めなかった。ローカルにも何も無いときだけ知らせる。 */
+const error = computed(() => (item.value ? null : detailError.value))
+
+/** まだサーバーへ送れていない変更を抱えているか。 */
+const unsynced = computed(() => Boolean(cached.value && cached.value.syncState !== 'synced'))
+
+/**
+ * 本文と作業記録（Section）を扱えるか。
+ *
+ * Section はサーバーにしか置いていない。取れていないのに編集させると、
+ * 書いたものが行き先を失うので、そのときは出さない（docs/12-offline.md 12.9）。
+ */
+const hasDetail = computed(() => Boolean(detail.value))
 
 // --- タイトル（リアルタイム保存） --------------------------------------
 
@@ -65,12 +119,9 @@ const titleSave = useAutosave({
   source: title,
   // 空のまま保存するとサーバー側で弾かれるので、入力中は送らない
   enabled: () => title.value.trim().length > 0,
+  // ローカルへ書けば保存は済み。サーバーへの送信は useSync が引き受ける
   save: async (value) => {
-    await $fetch(`/api/items/${id.value}`, {
-      method: 'PATCH',
-      body: { title: value.trim() },
-    })
-    emit('changed')
+    await store.patch([id.value], { title: value.trim() })
   },
 })
 
@@ -151,22 +202,6 @@ const bodySave = useAutosave({
   },
 })
 
-// 別画面での変更や再取得に追随する。編集中の内容は上書きしない。
-watch(item, (value) => {
-  if (!value) return
-  if (titleSave.state.value === 'idle' || titleSave.state.value === 'saved') {
-    title.value = value.title
-    titleSave.markSynced()
-  }
-  const latest = primarySection.value?.body ?? ''
-  if (bodySave.state.value === 'idle' || bodySave.state.value === 'saved') {
-    if (latest !== body.value) {
-      body.value = latest
-      bodySave.markSynced()
-    }
-  }
-})
-
 // --- URL（リアルタイム保存） -------------------------------------------
 
 const urlDraft = ref<string | null>(null)
@@ -182,12 +217,39 @@ const urlSave = useAutosave({
   // 入力途中は保存しない。書き終わって初めて http(s) の形になるため。
   enabled: () => !url.value.trim() || isOpenableUrl(url.value),
   save: async (value) => {
-    await $fetch(`/api/items/${id.value}`, {
-      method: 'PATCH',
-      body: { url: value.trim() || null },
-    })
-    emit('changed')
+    await store.patch([id.value], { url: value.trim() || null })
   },
+})
+
+/**
+ * 別画面での変更や再取得に追随する。編集中の内容は上書きしない。
+ *
+ * 触っていない欄（下書きが null）は、届いた内容をそのまま見せる。
+ * このとき markSynced を忘れると、内容が届いただけで「変わった」と
+ * 見なされ、同じ値をそのまま保存してしまう（オフラインでは、触っても
+ * いないタスクに未同期の印が付く）。
+ */
+watch(item, (value) => {
+  if (!value) return
+
+  const titleIdle =
+    titleSave.state.value === 'idle' || titleSave.state.value === 'saved'
+  if (titleDraft.value === null || titleIdle) {
+    titleDraft.value = null
+    titleSave.markSynced()
+  }
+
+  const urlIdle = urlSave.state.value === 'idle' || urlSave.state.value === 'saved'
+  if (urlDraft.value === null || urlIdle) {
+    urlDraft.value = null
+    urlSave.markSynced()
+  }
+
+  const bodyIdle = bodySave.state.value === 'idle' || bodySave.state.value === 'saved'
+  if (bodyDraft.value === null || bodyIdle) {
+    bodyDraft.value = null
+    bodySave.markSynced()
+  }
 })
 
 // --- メタデータの操作 ---------------------------------------------------
@@ -197,42 +259,18 @@ const actionError = ref<string | null>(null)
 /**
  * メタデータを変える。
  *
- * 画面には先に反映し、送信は裏で行う（一覧と同じ考え方）。
- * 失敗したら、変えた項目だけを元の値へ戻す。
+ * ローカル（IndexedDB）へ書いた時点で画面に出る。送信は useSync が
+ * 裏で行うので、オフラインでも同じように操作できる。
  */
-async function patch(values: Partial<ItemDetailDto>) {
-  const before = item.value
-  if (!before) return
-
+async function patch(values: ItemPatch) {
+  if (!item.value) return
   actionError.value = null
-  item.value = { ...before, ...values }
-
-  void enqueue(async () => {
-    try {
-      await $fetch(`/api/items/${id.value}`, { method: 'PATCH', body: values })
-    } catch {
-      actionError.value = '更新できませんでした'
-      if (item.value) {
-        const keys = Object.keys(values) as (keyof ItemDetailDto)[]
-        item.value = {
-          ...item.value,
-          ...(Object.fromEntries(
-            keys.map((key) => [key, before[key]]),
-          ) as Partial<ItemDetailDto>),
-        }
-      }
-      return
-    }
-    await refresh()
-    // 一覧側は自分で先読みできないので、届いてから知らせる
-    emit('changed')
-  })
+  await store.patch([id.value], values)
 }
 
 const dueOpen = ref(false)
 const tagOpen = ref(false)
 const recurrenceOpen = ref(false)
-const tagList = useTags()
 
 // --- 繰り返し ----------------------------------------------------------
 
@@ -257,66 +295,33 @@ async function applyRecurrence(value: Recurrence | null) {
 /** 同じ繰り返しから生まれた過去のオカレンス。 */
 const seriesId = computed(() => item.value?.seriesId ?? null)
 
-const { data: series, refresh: refreshSeries } = useFetch<ItemDetailDto[]>(
-  '/api/items',
-  {
-    query: { series: seriesId, sort: 'due' },
-    default: () => [],
-    // series が null のまま投げると絞り込みが効かず全件返ってくるので、
-    // 系列が決まってから取りに行く。
-    immediate: false,
-  },
-)
-
-watch(
-  seriesId,
-  (id) => {
-    if (id) void refreshSeries()
-  },
-  { immediate: true },
-)
-
-function occurrenceDate(entry: ItemDetailDto): string {
+function occurrenceDate(entry: ItemDto): string {
   return entry.dueAt
     ? new Date(entry.dueAt).toLocaleDateString('ja-JP')
     : '期限なし'
 }
 
+/**
+ * 系列の過去分。
+ *
+ * 手元にある Item から選ぶ。全件がローカルにあるので取りに行く必要がなく、
+ * オフラインでも同じものが出る。
+ */
 const pastOccurrences = computed(() => {
   const current = seriesId.value
   if (!current) return []
-  return (series.value ?? [])
-    // 取得内容が古い場合に備え、系列が一致するものだけに絞る
+  return store.items.value
     .filter((entry) => entry.seriesId === current && entry.id !== id.value)
+    .filter((entry) => entry.syncState !== 'pending_delete')
     .sort((a, b) => ((a.dueAt ?? '') > (b.dueAt ?? '') ? -1 : 1))
 })
 
 async function applyTags(changes: { add: string[]; remove: string[] }) {
   tagOpen.value = false
-  const before = item.value
-  if (!before) return
+  if (!item.value) return
 
   actionError.value = null
-  const next = new Set(
-    before.tags.filter((name) => !changes.remove.includes(name)),
-  )
-  for (const name of changes.add) next.add(name)
-  item.value = { ...before, tags: [...next].sort() }
-
-  void enqueue(async () => {
-    try {
-      await $fetch('/api/items/tags', {
-        method: 'POST',
-        body: { ids: [id.value], add: changes.add, remove: changes.remove },
-      })
-    } catch {
-      actionError.value = 'タグを変更できませんでした'
-      if (item.value) item.value = { ...item.value, tags: before.tags }
-      return
-    }
-    await Promise.all([refresh(), tagList.refresh()])
-    emit('changed')
-  })
+  await store.applyTags([id.value], changes.add, changes.remove)
 }
 
 async function applyDue(due: { date: Date; hasTime: boolean } | null) {
@@ -333,10 +338,8 @@ const dueLabel = computed(() =>
 
 async function remove() {
   if (!confirm('このタスクを削除します。よろしいですか？')) return
-  // 送信は裏で行い、画面はすぐ次へ移す
-  void enqueue(async () => {
-    await $fetch(`/api/items/${id.value}`, { method: 'DELETE' })
-  })
+  // ローカルで消して先へ進む。サーバーへの削除は useSync が送る
+  await store.remove([id.value])
   emit('removed', id.value)
   // 消した詳細は履歴に残っているので、戻るのではなく一覧へ進める
   if (!props.embedded) await navigateTo(listOrigin.value)
@@ -480,10 +483,19 @@ async function removeSection(section: SectionDto) {
         />
         <span class="head__save" :class="`head__save--${titleSave.state.value}`">
           {{ SAVE_STATE_LABELS[titleSave.state.value] }}
+          <span v-if="unsynced" class="head__pending">・未同期</span>
         </span>
       </header>
 
       <p v-if="actionError" class="page__error" role="alert">{{ actionError }}</p>
+
+      <!-- 何ができて何ができないかを、offline のときだけ短く伝える -->
+      <p v-if="!hasDetail" class="page__note">
+        <template v-if="online">タスクの詳細を読み込めませんでした。</template>
+        <template v-else>オフラインです。</template>
+        状態・期限・重要度・タグ・タイトルはこの端末に保存され、繋がったときに送ります。
+        本文と作業記録は繋がってから編集できます。
+      </p>
 
       <section class="meta">
         <div class="meta__row">
@@ -601,7 +613,7 @@ async function removeSection(section: SectionDto) {
         </div>
       </section>
 
-      <section class="body">
+      <section v-if="hasDetail" class="body">
         <div class="body__head">
           <h2 class="body__title">本文</h2>
           <!-- 本文も日付を持つ Section なので、その日の日記へ行ける -->
@@ -653,7 +665,7 @@ async function removeSection(section: SectionDto) {
         日々の作業記録。日付の新しい順、同じ日付の中は position 順
         （docs/03-functional-spec.md 3.1）。
       -->
-      <section v-if="logSections.length" class="log">
+      <section v-if="hasDetail && logSections.length" class="log">
         <h2 class="log__title">作業記録</h2>
         <ItemSectionEditor
           v-for="(section, index) in logSections"
@@ -671,6 +683,7 @@ async function removeSection(section: SectionDto) {
 
       <div class="page__actions">
         <button
+          v-if="hasDetail"
           type="button"
           class="page__add"
           :disabled="addingSection"
@@ -720,6 +733,16 @@ async function removeSection(section: SectionDto) {
   margin: 0;
   color: var(--danger);
   font-size: 0.875rem;
+}
+
+.page__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.head__pending {
+  color: var(--text-muted);
 }
 
 .page__placeholder {

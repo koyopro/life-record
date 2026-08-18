@@ -9,6 +9,8 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
@@ -19,6 +21,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "chrono-node": "^2.10.1",
     "drizzle-orm": "^0.45.2",
+    "idb": "^8.0.3",
     "nuxt": "^4.5.2",
     "pg": "^8.23.0",
     "rrule": "^2.8.1",
@@ -26,9 +29,15 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
+    "@nuxt/test-utils": "^4.1.0",
     "@types/pg": "^8.23.0",
+    "@vite-pwa/nuxt": "^1.1.1",
+    "@vue/test-utils": "^2.4.11",
     "drizzle-kit": "^0.31.10",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.11.2",
     "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
     "vue-tsc": "^3.3.10"
   }
 }
