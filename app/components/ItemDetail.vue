@@ -160,6 +160,21 @@ const titleSave = useAutosave({
   },
 })
 
+/**
+ * タイトルは複数行での編集を想定していないため、`Enter` は改行ではなく
+ * 確定として扱う（すぐに保存してフォーカスを外す）。
+ *
+ * 日本語入力の変換を確定する `Enter` まで拾ってしまわないよう、
+ * 変換中は素通りさせる（ItemComposer.vue と同じ判定）。
+ */
+function onTitleKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter') return
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  void titleSave.flush()
+  ;(event.target as HTMLTextAreaElement).blur()
+}
+
 // --- 本文（リアルタイム保存） ------------------------------------------
 //
 // Item は本文を持たないため、本文は先頭 Section に書く
@@ -585,6 +600,7 @@ async function removeSection(section: SectionDto) {
               el.style.height = 'auto'
               el.style.height = `${el.scrollHeight}px`
             }"
+            @keydown="onTitleKeydown"
           />
 
           <div v-if="priorityOpen" class="head__priority-backdrop" @click="priorityOpen = false" />
