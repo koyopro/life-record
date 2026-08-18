@@ -2,6 +2,7 @@
 import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
 import { dropPrefixUnit, indentOf, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 import type { Line } from '~~/shared/utils/scrapbox/types'
+import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -85,6 +86,7 @@ async function activate(
   activeIndex.value = target
   activeLine.value = line
   activeText.value = line.content
+  closeEmojiPicker()
 
   await nextTick()
   const el = input.value
@@ -99,6 +101,7 @@ async function activate(
 function deactivate() {
   activeIndex.value = null
   activeLine.value = null
+  closeEmojiPicker()
 }
 
 /**
@@ -120,6 +123,7 @@ function onInput(event?: Event) {
 
   // 貼り付けで改行が入ることがあるので、その場合は行を分ける
   if (activeText.value.includes('\n')) {
+    closeEmojiPicker()
     const inserted = `${prefix}${activeText.value}`.split('\n')
     lines.splice(index, 1, ...inserted)
     commit(lines)
@@ -131,6 +135,7 @@ function onInput(event?: Event) {
   commit(lines)
   // 変換中は行頭を取り直さない。入力欄の値やキャレットを触ると変換が壊れる
   if (!composing.value) syncPrefix(lines, index, prefix)
+  updateEmojiTrigger()
   resize()
 }
 
@@ -190,6 +195,79 @@ function resize() {
   el.style.height = `${el.scrollHeight}px`
 }
 
+// --- 絵文字候補（Notion に倣い `:` で出す） -------------------------------
+//
+// 記法としては残さない。選んだ時点で実際の絵文字（Unicode 文字）に
+// 置き換えるので、保存されるテキストに `:smile:` のようなコードは残らない。
+
+/** 編集中の行における、候補を出すきっかけになった `:` の位置。 */
+const emojiStart = ref<number | null>(null)
+const emojiQuery = ref('')
+const emojiIndex = ref(0)
+
+const emojiMatches = computed<EmojiEntry[]>(() =>
+  emojiStart.value === null ? [] : searchEmoji(emojiQuery.value),
+)
+
+function closeEmojiPicker() {
+  emojiStart.value = null
+  emojiQuery.value = ''
+  emojiIndex.value = 0
+}
+
+/**
+ * キャレットの直前にある `:` を探し、候補を出すべきか判断する。
+ *
+ * 対象にするのは、キャレットまでの間に空白を挟まない `:...` だけ。
+ * `https://` のような URL の `:` で誤って出さないよう、直前が
+ * `http` / `https` で終わる場合は除外する。
+ */
+function updateEmojiTrigger() {
+  const el = input.value
+  if (!el || activeIndex.value === null) {
+    closeEmojiPicker()
+    return
+  }
+  if (el.selectionStart !== el.selectionEnd) {
+    closeEmojiPicker()
+    return
+  }
+
+  const caret = el.selectionStart ?? activeText.value.length
+  const before = activeText.value.slice(0, caret)
+  const at = before.lastIndexOf(':')
+  if (at === -1) {
+    closeEmojiPicker()
+    return
+  }
+
+  const query = before.slice(at + 1)
+  if (/\s/.test(query) || /(https?|ftp):?$/i.test(before.slice(0, at + 1))) {
+    closeEmojiPicker()
+    return
+  }
+
+  emojiStart.value = at
+  emojiQuery.value = query
+  emojiIndex.value = 0
+}
+
+/** 候補を選び、`:` からキャレットまでを絵文字に置き換える。 */
+function selectEmoji(entry: EmojiEntry) {
+  const start = emojiStart.value
+  const el = input.value
+  if (start === null || !el) return
+
+  const caret = el.selectionStart ?? activeText.value.length
+  const value = activeText.value
+  const next = value.slice(0, start) + entry.char + value.slice(caret)
+  replaceActiveLine(next)
+
+  const newCaret = start + entry.char.length
+  void setCaret(newCaret, newCaret)
+  closeEmojiPicker()
+}
+
 // --- キー操作 -----------------------------------------------------------
 //
 // 日本語入力の変換中は Enter などを横取りしない。変換の確定が
@@ -205,6 +283,34 @@ const composing = ref(false)
  * `event.key` を直接見る。
  */
 function onKeydown(event: KeyboardEvent) {
+  // 絵文字候補を出している間は、上下で選び Enter / Tab で確定する。
+  // 行の分割やインデントなど、通常のキー操作より優先する。
+  if (emojiStart.value !== null) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeEmojiPicker()
+      return
+    }
+    if (emojiMatches.value.length > 0) {
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault()
+          emojiIndex.value = (emojiIndex.value + 1) % emojiMatches.value.length
+          return
+        case 'ArrowUp':
+          event.preventDefault()
+          emojiIndex.value =
+            (emojiIndex.value - 1 + emojiMatches.value.length) % emojiMatches.value.length
+          return
+        case 'Enter':
+        case 'Tab':
+          event.preventDefault()
+          selectEmoji(emojiMatches.value[emojiIndex.value]!)
+          return
+      }
+    }
+  }
+
   switch (event.key) {
     case 'Enter':
       return onEnter(event)
@@ -622,7 +728,35 @@ defineExpose({
           @compositionstart="composing = true"
           @compositionend="composing = false"
           @keydown="onKeydown"
+          @keyup.left="updateEmojiTrigger"
+          @keyup.right="updateEmojiTrigger"
+          @keyup.home="updateEmojiTrigger"
+          @keyup.end="updateEmojiTrigger"
+          @click="updateEmojiTrigger"
         />
+
+        <!--
+          絵文字候補（Notion に倣い `:` で出す）。押すときは mousedown を
+          preventDefault し、textarea の blur（＝行の編集解除）より前に
+          selectEmoji を確定させる。
+        -->
+        <ul v-if="emojiStart !== null" class="editor__emoji" role="listbox" aria-label="絵文字候補">
+          <li
+            v-for="(entry, i) in emojiMatches"
+            :key="entry.name"
+            class="editor__emoji-item"
+            :class="{ 'editor__emoji-item--active': i === emojiIndex }"
+            role="option"
+            :aria-selected="i === emojiIndex"
+            @mousedown.prevent="selectEmoji(entry)"
+          >
+            <span class="editor__emoji-char" aria-hidden="true">{{ entry.char }}</span>
+            <span class="editor__emoji-name">:{{ entry.name }}:</span>
+          </li>
+          <li v-if="!emojiMatches.length" class="editor__emoji-empty">
+            該当する絵文字がありません
+          </li>
+        </ul>
       </div>
 
       <!--
@@ -698,6 +832,57 @@ defineExpose({
   font: inherit;
   text-align: left;
   cursor: text;
+}
+
+.editor__editing {
+  position: relative;
+}
+
+.editor__emoji {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  min-width: 10rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.editor__emoji-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.editor__emoji-item--active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.editor__emoji-char {
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.editor__emoji-name {
+  color: var(--text-muted);
+}
+
+.editor__emoji-empty {
+  padding: 0.25rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
 }
 
 .editor__foot {
