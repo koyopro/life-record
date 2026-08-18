@@ -125,3 +125,48 @@ function renderNode(node: Inline): string {
       return `<span class="sb-hashtag">#${escapeHtml(node.name)}</span>`
   }
 }
+
+/**
+ * 記法を取り除いた読みやすい文字列にする。
+ *
+ * 一覧カードの抜粋など、装飾を出さずに中身だけ見せたい場所で使う。
+ * `[* 見出し]` がそのまま見えていると読みにくいため。
+ */
+export function toPlainText(input: string): string {
+  return parseScrapbox(input)
+    .map((line) => {
+      switch (line.type) {
+        case 'codeHeader':
+          return line.name
+        case 'codeBody':
+          return line.text.trim()
+        case 'quote':
+        case 'text':
+          return `${' '.repeat(line.indent)}${plainInline(line.nodes)}`
+      }
+    })
+    .join('\n')
+    .trim()
+}
+
+function plainInline(nodes: Inline[]): string {
+  return nodes
+    .map((node) => {
+      switch (node.type) {
+        case 'text':
+        case 'code':
+          return node.value
+        case 'decoration':
+          return plainInline(node.nodes)
+        case 'link':
+          return plainInline(node.nodes)
+        case 'pageLink':
+          return node.title
+        case 'image':
+          return ''
+        case 'hashtag':
+          return `#${node.name}`
+      }
+    })
+    .join('')
+}

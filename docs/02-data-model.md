@@ -53,6 +53,7 @@ TODO・タスクを表す。
 | title | text | Yes | TODOのタイトル |
 | status | enum | Yes | `inbox` / `backlog` / `in_progress` / `closed` |
 | priority | smallint | No | 重要度。1（高） / 2（中） / 3（低）。NULL は重要度なし |
+| url | text | No | 関連する URL。1件だけ持つ |
 | due_at | timestamptz | No | 期限。作業日とは別概念 |
 | due_has_time | boolean | Yes | 期限に時刻の指定があるか。false なら日付のみ |
 | recurrence_rule | text | No | 繰り返し規則（RRULE 形式）。NULL なら繰り返しなし |
@@ -94,6 +95,15 @@ Remember The Milk に倣い、**値が小さいほど重要度が高い**。
 詳細は [08-todo-management.md](08-todo-management.md) を参照。
 
 カラム自体は初期スキーマに含めた。実際に使い始めたのは Milestone 3。
+
+### url
+
+タスクに関連する URL を1つだけ持つ。本文にもリンクは書けるが、
+**一覧から直接開きたいもの**は属性として分けて持つ
+（一覧で `Shift` + `u` から開く。[08-todo-management.md](08-todo-management.md) 8.4）。
+
+`http://` `https://` のみを保存する。別タブで開く先なので、
+`javascript:` などは保存の時点で弾く。
 
 ### type カラムについて
 
@@ -337,6 +347,7 @@ CREATE TABLE items (
   title            TEXT NOT NULL,
   status           item_status NOT NULL DEFAULT 'inbox',
   priority         SMALLINT CHECK (priority BETWEEN 1 AND 3),
+  url              TEXT,
   due_at           TIMESTAMPTZ,
   due_has_time     BOOLEAN NOT NULL DEFAULT false,
   recurrence_rule  TEXT,

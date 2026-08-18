@@ -22,6 +22,12 @@ export interface SmartAddResult {
   tags: string[]
   /** 繰り返し。指定がなければ null。 */
   recurrence: Recurrence | null
+  /**
+   * 関連 URL。タイトルに裸の URL を書いた場合に取り込む。
+   *
+   * `Shift + u` で開く先になる。本文ではなく Item の属性として持つ。
+   */
+  url: string | null
   /** 解釈できなかった記法。UI で警告として出す。 */
   warnings: string[]
 }
@@ -59,6 +65,9 @@ export function parseSmartAdd(
   const dueResult = extractDue(rest, referenceDate, warnings)
   rest = dueResult.rest
 
+  const urlResult = extractUrl(rest)
+  rest = urlResult.rest
+
   const title = rest.replace(/\s+/g, ' ').trim()
 
   return {
@@ -68,7 +77,26 @@ export function parseSmartAdd(
     priority: priorityResult.priority,
     tags: tagResult.tags,
     recurrence: recurrenceResult.recurrence,
+    url: urlResult.url,
     warnings,
+  }
+}
+
+/**
+ * 裸の URL を取り出して、Item の URL 欄に回す。
+ *
+ * タイトルに URL がそのまま入っていると読みにくく、
+ * 一覧から開く導線もない。最初の1つだけを取り込む。
+ */
+function extractUrl(input: string): { rest: string; url: string | null } {
+  const match = /(^|\s)(https?:\/\/\S+)/.exec(input)
+  if (!match) return { rest: input, url: null }
+
+  const url = match[2]!
+  const start = match.index + match[1]!.length
+  return {
+    rest: `${input.slice(0, start)} ${input.slice(start + url.length)}`,
+    url,
   }
 }
 

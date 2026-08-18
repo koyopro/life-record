@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PRIORITY_LABELS, type ItemDto } from '~~/shared/types/item'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
+import { toPlainText } from '~~/shared/utils/scrapbox/render'
 
 const props = defineProps<{
   item: ItemDto
@@ -16,6 +17,11 @@ const emit = defineEmits<{
   longpress: []
   filterTag: [tag: string]
 }>()
+
+/** 抜粋では記法を出さず、中身だけを見せる。 */
+const bodyExcerpt = computed(() =>
+  props.item.body ? toPlainText(props.item.body) : '',
+)
 
 const due = computed(() => formatDue(props.item))
 const done = computed(() => props.item.status === 'closed')
@@ -124,7 +130,7 @@ function onTouchEnd() {
       <button type="button" class="card__title" @click.stop="emit('open')">
         {{ item.title }}
       </button>
-      <p v-if="item.body" class="card__body">{{ item.body }}</p>
+      <p v-if="bodyExcerpt" class="card__body">{{ bodyExcerpt }}</p>
       <div
         v-if="item.priority || due.state !== 'none' || item.tags.length || recurrenceLabel"
         class="card__meta"
@@ -147,6 +153,17 @@ function onTouchEnd() {
         >
           {{ due.label }}
         </span>
+        <a
+          v-if="item.url"
+          class="card__url"
+          :href="item.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="`「${item.title}」のリンクを開く`"
+          @click.stop
+        >
+          <span aria-hidden="true">↗</span> リンク
+        </a>
         <button
           v-for="tag in item.tags"
           :key="tag"
@@ -325,6 +342,11 @@ function onTouchEnd() {
   .card__recurrence-text {
     display: inline;
   }
+}
+
+.card__url {
+  color: var(--accent);
+  text-decoration: none;
 }
 
 .card__tag {

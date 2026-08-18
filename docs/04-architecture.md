@@ -113,7 +113,7 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | POST | `/api/items` | Item 作成。1行目を SmartAdd として解釈し、2行目以降は Section にする |
 | PATCH | `/api/items` | 複数選択した Item への一括更新 |
 | GET | `/api/items/:id` | Item 詳細（Section・タグを含む） |
-| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / due_at / 繰り返し） |
+| PATCH | `/api/items/:id` | Item 更新（タイトル / status / priority / url / due_at / 繰り返し） |
 | DELETE | `/api/items/:id` | Item 削除。Undo 用に削除内容を返す |
 | POST | `/api/items/restore` | 削除した Item の復元（Undo 専用） |
 | POST | `/api/items/tags` | 複数 Item へのタグの付け外し（`add` / `remove`） |

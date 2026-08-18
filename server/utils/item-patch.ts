@@ -1,10 +1,17 @@
-import { isItemStatus, isPriority, type ItemPatch } from '~~/shared/types/item'
+import {
+  URL_MAX_LENGTH,
+  isItemStatus,
+  isOpenableUrl,
+  isPriority,
+  type ItemPatch,
+} from '~~/shared/types/item'
 import { isRecurrenceBasis, type RecurrenceBasis } from '~~/shared/types/recurrence'
 import { isValidRule } from '~~/shared/utils/recurrence'
 import { TITLE_MAX_LENGTH } from '~~/shared/utils/text'
 
 export interface ItemUpdateValues {
   title?: string
+  url?: string | null
   status?: ItemPatch['status']
   priority?: number | null
   dueAt?: Date | null
@@ -42,6 +49,30 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
       })
     }
     values.title = title
+  }
+
+  if ('url' in input) {
+    if (input.url === null || input.url === '') {
+      values.url = null
+    } else if (typeof input.url === 'string') {
+      const url = input.url.trim()
+      if (url.length > URL_MAX_LENGTH) {
+        throw createError({
+          statusCode: 400,
+          message: `URL は ${URL_MAX_LENGTH} 文字までです`,
+        })
+      }
+      // 別タブで開く先なので、保存の時点で http(s) 以外は通さない
+      if (!isOpenableUrl(url)) {
+        throw createError({
+          statusCode: 400,
+          message: 'URL は http:// か https:// で始まる必要があります',
+        })
+      }
+      values.url = url
+    } else {
+      throw createError({ statusCode: 400, message: '不正な URL です' })
+    }
   }
 
   if ('status' in input) {

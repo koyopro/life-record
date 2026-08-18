@@ -37,6 +37,11 @@ export const items = pgTable(
     status: itemStatus('status').notNull().default('inbox'),
     /** 重要度。1(高) / 2(中) / 3(低)、NULL は重要度なし。Milestone 3 で使い始める。 */
     priority: smallint('priority'),
+    /**
+     * 関連する URL を1つだけ持つ。
+     * 本文にも書けるが、一覧から直接開きたいものは分けて持つ。
+     */
+    url: text('url'),
     /** 期限。作業日（Section.date）とは別概念。 */
     dueAt: timestamp('due_at', { withTimezone: true }),
     /**

@@ -29,6 +29,13 @@
       "when": 1787007774881,
       "tag": "0003_watery_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787013627184,
+      "tag": "0004_tearful_champions",
+      "breakpoints": true
     }
   ]
 }

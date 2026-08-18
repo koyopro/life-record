@@ -6,6 +6,7 @@ import {
   type ItemDto,
   type ItemStatus,
   type SortKey,
+  isOpenableUrl,
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { normalizeTagName } from '~~/shared/types/tag'
@@ -135,6 +136,22 @@ async function focusBody() {
   pinnedId.value = target.id
   await nextTick()
   detail.value?.focusBody()
+}
+
+/**
+ * タスクの URL を別タブで開く（`Shift` + `u`）。
+ *
+ * 開けるのは http(s) のみ。保存時にも同じ条件で弾いている。
+ */
+function openUrl() {
+  const target = list.cursorItem.value
+  if (!target) return
+
+  if (!target.url || !isOpenableUrl(target.url)) {
+    list.message.value = 'このタスクに URL はありません'
+    return
+  }
+  window.open(target.url, '_blank', 'noopener,noreferrer')
 }
 
 function onDetailRemoved(id: string) {
@@ -271,6 +288,14 @@ const shortcuts = computed<Shortcut[]>(() => [
     label: '本文にフォーカス',
     group: '編集',
     run: () => focusBody(),
+  },
+  {
+    keys: ['U'],
+    display: 'u',
+    shift: true,
+    label: 'URL を別タブで開く',
+    group: 'その他',
+    run: () => openUrl(),
   },
   {
     keys: ['r'],

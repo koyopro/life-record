@@ -9,6 +9,7 @@ import {
   type ItemStatus,
   type Priority,
   type SectionDto,
+  isOpenableUrl,
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
@@ -134,6 +135,29 @@ watch(item, (value) => {
       bodySave.markSynced()
     }
   }
+})
+
+// --- URL（リアルタイム保存） -------------------------------------------
+
+const urlDraft = ref<string | null>(null)
+const url = computed({
+  get: () => urlDraft.value ?? item.value?.url ?? '',
+  set: (value: string) => {
+    urlDraft.value = value
+  },
+})
+
+const urlSave = useAutosave({
+  source: url,
+  // 入力途中は保存しない。書き終わって初めて http(s) の形になるため。
+  enabled: () => !url.value.trim() || isOpenableUrl(url.value),
+  save: async (value) => {
+    await $fetch(`/api/items/${id.value}`, {
+      method: 'PATCH',
+      body: { url: value.trim() || null },
+    })
+    emit('changed')
+  },
 })
 
 // --- メタデータの操作 ---------------------------------------------------
@@ -352,6 +376,28 @@ async function removeSection(section: SectionDto) {
         </div>
 
         <div class="meta__row">
+          <span class="meta__label">
+            URL
+            <a
+              v-if="item.url && isOpenableUrl(item.url)"
+              class="meta__open"
+              :href="item.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >開く</a>
+            <span class="meta__save">{{ SAVE_STATE_LABELS[urlSave.state.value] }}</span>
+          </span>
+          <input
+            v-model="url"
+            class="meta__url"
+            type="url"
+            inputmode="url"
+            placeholder="https://..."
+            aria-label="URL"
+          />
+        </div>
+
+        <div class="meta__row">
           <span class="meta__label">タグ</span>
           <div class="meta__values">
             <NuxtLink
@@ -565,8 +611,32 @@ async function removeSection(section: SectionDto) {
 }
 
 .meta__label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
   font-size: 0.8125rem;
   color: var(--text-muted);
+}
+
+.meta__open {
+  color: var(--accent);
+}
+
+.meta__save {
+  font-size: 0.75rem;
+}
+
+.meta__url {
+  font: inherit;
+  /* iOS でフォーカス時に自動ズームされないよう 16px を保つ */
+  font-size: 1rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .meta__values {

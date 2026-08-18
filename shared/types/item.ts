@@ -50,6 +50,8 @@ export interface ItemDto {
   title: string
   status: ItemStatus
   priority: Priority | null
+  /** 関連する URL。1件だけ持つ。 */
+  url: string | null
   /** 期限。ISO 8601。 */
   dueAt: string | null
   /** 期限に時刻の指定があるか。false なら日付のみの期限。 */
@@ -83,6 +85,7 @@ export interface ItemDetailDto extends ItemDto {
 /** Item に対して変更できる項目。 */
 export interface ItemPatch {
   title?: string
+  url?: string | null
   status?: ItemStatus
   priority?: Priority | null
   dueAt?: string | null
@@ -101,4 +104,16 @@ export function isSortKey(value: unknown): value is SortKey {
 
 export function isPriority(value: unknown): value is Priority {
   return value === 1 || value === 2 || value === 3
+}
+
+export const URL_MAX_LENGTH = 2000
+
+/**
+ * 別タブで開いてよい URL か。
+ *
+ * `javascript:` のようなスキームを弾く。リンクとして開く以上、
+ * 保存の時点で通さない。
+ */
+export function isOpenableUrl(value: string): boolean {
+  return /^https?:\/\/\S+$/i.test(value.trim())
 }

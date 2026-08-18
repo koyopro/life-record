@@ -70,6 +70,7 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
         // 追加したタスクが「今日」リストに出ないまま埋もれるのを避ける。
         dueAt: parsed.dueAt ?? todayDueAt(),
         dueHasTime: parsed.dueAt ? parsed.dueHasTime : false,
+        url: parsed.url,
         recurrenceRule: parsed.recurrence?.rule ?? null,
         recurrenceBasis: parsed.recurrence?.basis ?? null,
       })

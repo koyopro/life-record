@@ -72,6 +72,7 @@ export function toItemDto(
     title: item.title,
     status: item.status,
     priority: (item.priority as Priority | null) ?? null,
+    url: item.url,
     dueAt: item.dueAt?.toISOString() ?? null,
     dueHasTime: item.dueHasTime,
     body,
