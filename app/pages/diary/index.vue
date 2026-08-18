@@ -28,7 +28,11 @@ const month = computed(() =>
   isAppMonth(route.query.month) ? route.query.month : monthOf(toAppDate()),
 )
 
-const { data: diaries, error } = await useFetch<DiarySummaryDto[]>(
+/*
+ * top-level await にしない。待つと、月を送るたびに画面遷移そのものが
+ * 取得の完了までブロックされ、切り替えるたびにラグが出るため。
+ */
+const { data: diaries, error, status } = useFetch<DiarySummaryDto[]>(
   '/api/diaries',
   {
     // 表示中の月ぶんだけを取る。月を移ると取り直す
@@ -152,7 +156,11 @@ function onDateInput(event: Event) {
       </NuxtLink>
     </div>
 
-    <p v-if="!diaries.length" class="page__placeholder">
+    <p v-if="status === 'pending' && !diaries.length" class="page__placeholder">
+      読み込み中…
+    </p>
+
+    <p v-else-if="!diaries.length" class="page__placeholder">
       {{ formatAppMonth(month) }}の日記はまだありません。
     </p>
 

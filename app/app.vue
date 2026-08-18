@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import type { Shortcut } from '~/composables/useShortcuts'
+import { toAppDate } from '~~/shared/utils/date'
 
 const route = useRoute()
+
+/** 「g d」= 今日の日記編集ページへ（RTM の `g` に合わせる）。 */
+function goToTodayDiary() {
+  return navigateTo(`/diary/${toAppDate()}`)
+}
 
 /**
  * 分割表示を使う画面は、既定の読みやすい幅（40rem）では狭すぎるため広げる。
@@ -92,6 +98,13 @@ const shortcuts: Shortcut[] = [
     label: 'Inbox へ移動',
     group: '移動',
     run: () => void navigateTo('/'),
+  },
+  {
+    prefix: 'g',
+    keys: ['d'],
+    label: '今日の日記へ移動',
+    group: '移動',
+    run: () => void goToTodayDiary(),
   },
 ]
 

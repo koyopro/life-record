@@ -23,7 +23,13 @@ if (!isAppDate(date.value)) {
   throw createError({ statusCode: 404, message: '日付が正しくありません' })
 }
 
-const { data: diary, error, refresh } = await useFetch<DiaryDetailDto>(
+/*
+ * top-level await にしない。待つと、日付を移るたびに画面遷移そのものが
+ * 取得の完了までブロックされ、切り替えるたびにラグが出る。
+ * 取得中はローカルに何も持たない（Item と違ってオフライン用のキャッシュを
+ * 持たないため）ので、届くまでは読み込み中の表示にする。
+ */
+const { data: diary, error, refresh } = useFetch<DiaryDetailDto>(
   () => `/api/diaries/${date.value}`,
 )
 
@@ -86,6 +92,8 @@ const workedOn = computed(() => diary.value?.items ?? [])
     <p v-if="error" class="page__error" role="alert">
       日記を読み込めませんでした
     </p>
+
+    <p v-else-if="!diary" class="page__placeholder">読み込み中…</p>
 
     <template v-else>
       <header class="head">
@@ -158,6 +166,13 @@ const workedOn = computed(() => diary.value?.items ?? [])
   margin: 0;
   color: var(--danger);
   font-size: 0.875rem;
+}
+
+.page__placeholder {
+  margin: 0;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2rem 0;
 }
 
 .head {
