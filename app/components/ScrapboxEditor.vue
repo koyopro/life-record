@@ -28,14 +28,13 @@ const parsed = computed(() => parseScrapbox(model.value))
 const activeIndex = ref<number | null>(null)
 const activeText = ref('')
 /**
- * 編集中の行の入力欄。
+ * 入力欄。行ごとに作り直さず、1つを使い回す。
  *
- * `v-for` の中に置いた `ref` は配列になるため、関数 ref で直接受け取る。
+ * 行を移るたびに textarea を作り直すと、Enter で行を分けた直後に
+ * 要素が差し替わってフォーカスが外れ、続きを打てなくなる。
+ * 表示位置は flex の `order` で動かす。
  */
 const input = ref<HTMLTextAreaElement | null>(null)
-function setInput(el: unknown) {
-  input.value = el instanceof HTMLTextAreaElement ? el : null
-}
 
 const isEmpty = computed(() => !model.value.trim())
 
@@ -63,10 +62,20 @@ function deactivate() {
   activeIndex.value = null
 }
 
-/** 入力中の行を model に反映する。 */
-function onInput() {
+/**
+ * 入力中の行を model に反映する。
+ *
+ * `v-model` は使わず、入力欄の値を直接読む。`v-model` と `@input` を
+ * 併用すると、どちらが先に走るかで一手ぶん古い値を書き戻すことがある。
+ */
+function onInput(event?: Event) {
   const index = activeIndex.value
   if (index === null) return
+
+  if (event?.target instanceof HTMLTextAreaElement) {
+    activeText.value = event.target.value
+  }
+
   const lines = [...rawLines.value]
 
   // 貼り付けで改行が入ることがあるので、その場合は行を分ける
@@ -201,46 +210,56 @@ defineExpose({
     </button>
 
     <template v-else>
-      <template v-for="(line, index) in parsed" :key="index">
-        <!-- カーソルのある行は、記法をそのままのテキストとして編集する -->
-        <div v-if="index === activeIndex" class="editor__editing">
-          <textarea
-            :ref="setInput"
-            v-model="activeText"
-            class="editor__input"
-            rows="1"
-            :aria-label="`${props.ariaLabel} ${index + 1}行目`"
-            @input="onInput"
-            @blur="deactivate"
-            @compositionstart="composing = true"
-            @compositionend="composing = false"
-            @keydown.enter="onEnter"
-            @keydown.backspace="onBackspace"
-            @keydown.up="onArrow($event, -1)"
-            @keydown.down="onArrow($event, 1)"
-            @keydown.tab="onTab"
-            @keydown.esc.prevent="deactivate"
-          />
-        </div>
-
-        <!--
-          renderLine は入力を全てエスケープしてから組み立てるため、
-          ここで v-html を使ってよい（docs/11-scrapbox-notation.md 11.9）。
-        -->
-        <div
-          v-else
-          :class="lineClass(line)"
-          :style="{ '--sb-indent': line.indent }"
-          @click="onLineClick($event, index)"
-          v-html="renderLine(line)"
+      <!--
+        入力欄は1つだけ置き、flex の order で編集中の行の位置へ動かす。
+        行ごとに作り直すと、Enter の直後にフォーカスが外れてしまう。
+      -->
+      <div
+        v-show="activeIndex !== null"
+        class="editor__editing"
+        :style="{ order: activeIndex ?? 0 }"
+      >
+        <textarea
+          ref="input"
+          class="editor__input"
+          rows="1"
+          :value="activeText"
+          :aria-label="`${props.ariaLabel} ${(activeIndex ?? 0) + 1}行目`"
+          @input="onInput"
+          @blur="deactivate"
+          @compositionstart="composing = true"
+          @compositionend="composing = false"
+          @keydown.enter="onEnter"
+          @keydown.backspace="onBackspace"
+          @keydown.up="onArrow($event, -1)"
+          @keydown.down="onArrow($event, 1)"
+          @keydown.tab="onTab"
+          @keydown.esc.prevent="deactivate"
         />
-      </template>
+      </div>
+
+      <!--
+        renderLine は入力を全てエスケープしてから組み立てるため、
+        ここで v-html を使ってよい（docs/11-scrapbox-notation.md 11.9）。
+      -->
+      <div
+        v-for="(line, index) in parsed"
+        v-show="index !== activeIndex"
+        :key="index"
+        :class="lineClass(line)"
+        :style="{ order: index, '--sb-indent': line.indent }"
+        @click="onLineClick($event, index)"
+        v-html="renderLine(line)"
+      />
     </template>
   </div>
 </template>
 
 <style scoped>
 .editor {
+  /* 行の並べ替えに order を使うので flex にする */
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
