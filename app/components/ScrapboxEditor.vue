@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
-import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import { dropPrefixUnit, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import type { Line } from '~~/shared/utils/scrapbox/types'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -10,6 +11,10 @@ import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
  * - それ以外の行     … 記法を解釈した表示
  *
  * 保存されるのは常に入力したままのテキスト。
+ *
+ * ただし、行頭のうち表示で余白になる部分（字下げの空白・引用の `>` ・`code:`）は
+ * 入力欄にも入れず、表示と同じ余白として外側に付ける。行頭を文字のまま
+ * 入力欄に入れると、カーソルの有無で文字の開始位置がずれてしまうため。
  */
 const model = defineModel<string>({ required: true })
 
@@ -26,7 +31,17 @@ const rawLines = computed(() => model.value.replace(/\r\n?/g, '\n').split('\n'))
 const parsed = computed(() => parseScrapbox(model.value))
 
 const activeIndex = ref<number | null>(null)
+/**
+ * 編集中の行の解析結果。
+ *
+ * 行頭（`prefix`）と、表示側と同じ外枠のクラスを得るために持つ。
+ * `parsed` から引かないのは、`model` が親を往復して戻るまでの間、
+ * 一手ぶん古い行を拾ってしまうため。
+ */
+const activeLine = shallowRef<Line | null>(null)
+/** 編集中の行の中身。行頭は含まない。 */
 const activeText = ref('')
+const activePrefix = computed(() => activeLine.value?.prefix ?? '')
 /**
  * 入力欄。行ごとに作り直さず、1つを使い回す。
  *
@@ -43,7 +58,18 @@ function commit(lines: string[]) {
 }
 
 /**
- * 行を編集状態にする。
+ * 行を1つだけ解析する。
+ *
+ * 行頭は前後の行に左右される（コードブロックの中かどうか）ため、
+ * その行だけを見ても決められない。全体を解析してから取り出す。
+ */
+function lineAt(lines: string[], index: number): Line {
+  const all = parseScrapbox(lines.join('\n'))
+  return all[Math.min(Math.max(index, 0), all.length - 1)]!
+}
+
+/**
+ * 行を編集状態にする。`caret` は行頭を除いた中身での位置。
  *
  * 行を書き換えた直後に呼ぶ場合は、その配列を `lines` で渡すこと。
  * `model` は親へ伝わってから戻ってくるため、直後に読み直すと
@@ -55,8 +81,10 @@ async function activate(
   lines: string[] = rawLines.value,
 ) {
   const target = Math.min(Math.max(index, 0), lines.length - 1)
+  const line = lineAt(lines, target)
   activeIndex.value = target
-  activeText.value = lines[target] ?? ''
+  activeLine.value = line
+  activeText.value = line.content
 
   await nextTick()
   const el = input.value
@@ -70,6 +98,7 @@ async function activate(
 
 function deactivate() {
   activeIndex.value = null
+  activeLine.value = null
 }
 
 /**
@@ -87,19 +116,41 @@ function onInput(event?: Event) {
   }
 
   const lines = [...rawLines.value]
+  const prefix = activePrefix.value
 
   // 貼り付けで改行が入ることがあるので、その場合は行を分ける
   if (activeText.value.includes('\n')) {
-    const inserted = activeText.value.split('\n')
+    const inserted = `${prefix}${activeText.value}`.split('\n')
     lines.splice(index, 1, ...inserted)
     commit(lines)
     void activate(index + inserted.length - 1, 'end', lines)
     return
   }
 
-  lines[index] = activeText.value
+  lines[index] = prefix + activeText.value
   commit(lines)
+  // 変換中は行頭を取り直さない。入力欄の値やキャレットを触ると変換が壊れる
+  if (!composing.value) syncPrefix(lines, index, prefix)
   resize()
+}
+
+/**
+ * 書き換えた行を解析し直し、行頭の変化を入力欄に反映する。
+ *
+ * 行頭に空白や `>` を打つと、その文字は行頭（＝表示では余白）に移る。
+ * 入力欄からは取り除き、消えた文字のぶんだけキャレットを戻す。
+ *
+ * @param prefix この行を組み立てるのに使った行頭
+ */
+function syncPrefix(lines: string[], index: number, prefix: string) {
+  const line = lineAt(lines, index)
+  activeLine.value = line
+  if (line.prefix === prefix) return
+
+  const caret = input.value?.selectionStart ?? activeText.value.length
+  const moved = prefix.length + caret - line.prefix.length
+  activeText.value = line.content
+  void setCaret(Math.min(Math.max(moved, 0), line.content.length))
 }
 
 /** キャレット位置だけを動かす。行の入れ替えを伴わない操作で使う。 */
@@ -108,14 +159,26 @@ async function setCaret(start: number, end: number = start) {
   input.value?.setSelectionRange(start, end)
 }
 
-/** 編集中の行を丸ごと差し替える。 */
+/** 編集中の行の中身を丸ごと差し替える。行頭は変えない。 */
 function replaceActiveLine(text: string) {
   const index = activeIndex.value
   if (index === null) return
   activeText.value = text
   const lines = [...rawLines.value]
-  lines[index] = text
+  lines[index] = activePrefix.value + text
   commit(lines)
+  resize()
+}
+
+/** 編集中の行の行頭だけを差し替える。中身とキャレットは動かさない。 */
+function replaceActivePrefix(prefix: string) {
+  const index = activeIndex.value
+  if (index === null) return
+  const lines = [...rawLines.value]
+  lines[index] = prefix + activeText.value
+  commit(lines)
+  // 解析し直すと行頭が渡したものと変わることがある（コードブロックの中など）
+  syncPrefix(lines, index, prefix)
   resize()
 }
 
@@ -209,7 +272,9 @@ function onForwardDelete(event: KeyboardEvent) {
 
   event.preventDefault()
   const caret = el.value.length
-  lines.splice(index, 2, (lines[index] ?? '') + (lines[index + 1] ?? ''))
+  // 次の行の行頭は落とす。表示では余白なので、繋げても文字にはしない
+  const next = lineAt(lines, index + 1)
+  lines.splice(index, 2, activePrefix.value + activeText.value + next.content)
   commit(lines)
   void activate(index, caret, lines)
 }
@@ -226,13 +291,16 @@ function onEnter(event: KeyboardEvent) {
   const before = activeText.value.slice(0, caret)
   const after = activeText.value.slice(caret)
 
-  // Scrapbox と同じく、改行したら前の行の字下げを引き継ぐ
-  const indent = /^[ \t]*/.exec(before)?.[0] ?? ''
+  // Scrapbox と同じく、改行したら前の行の字下げを引き継ぐ。
+  // 引用の `>` も引き継ぐ（複数行の引用は各行に `>` を書く記法のため）。
+  // `code:` だけは、続きの行がもう1つのコードブロックにならないよう落とす。
+  const prefix = activePrefix.value
+  const nextPrefix = prefix.replace(/code:$/, '')
 
   const lines = [...rawLines.value]
-  lines.splice(index, 1, before, indent + after)
+  lines.splice(index, 1, prefix + before, nextPrefix + after)
   commit(lines)
-  void activate(index + 1, indent.length, lines)
+  void activate(index + 1, 'start', lines)
 }
 
 function onBackspace(event: KeyboardEvent) {
@@ -240,14 +308,23 @@ function onBackspace(event: KeyboardEvent) {
   const el = input.value
   if (index === null || !el) return
   if (el.selectionStart !== 0 || el.selectionEnd !== 0) return
+
+  // 行頭に余白（字下げ・`>` ・`code:`）があるうちは、まずそれを外す
+  const prefix = activePrefix.value
+  if (prefix) {
+    event.preventDefault()
+    replaceActivePrefix(dropPrefixUnit(prefix))
+    return
+  }
+
   if (index === 0) return
 
   event.preventDefault()
   const lines = [...rawLines.value]
-  const previous = lines[index - 1] ?? ''
-  lines.splice(index - 1, 2, previous + activeText.value)
+  const previous = lineAt(lines, index - 1)
+  lines.splice(index - 1, 2, previous.raw + activeText.value)
   commit(lines)
-  void activate(index - 1, previous.length, lines)
+  void activate(index - 1, previous.content.length, lines)
 }
 
 function onArrow(event: KeyboardEvent, delta: -1 | 1) {
@@ -272,19 +349,15 @@ function onTab(event: KeyboardEvent) {
   if (index === null) return
   event.preventDefault()
 
-  const caret = input.value?.selectionStart ?? 0
+  const prefix = activePrefix.value
 
   if (event.shiftKey) {
-    if (!/^[ \t]/.test(activeText.value)) return
-    activeText.value = activeText.value.slice(1)
-    onInput()
-    setCaret(Math.max(caret - 1, 0))
+    if (!/^[ \t]/.test(prefix)) return
+    replaceActivePrefix(prefix.slice(1))
     return
   }
 
-  activeText.value = ` ${activeText.value}`
-  onInput()
-  setCaret(caret + 1)
+  replaceActivePrefix(` ${prefix}`)
 }
 
 /** 表示側のリンクを押したときは編集に切り替えない。 */
@@ -304,15 +377,16 @@ watch(model, () => {
   const index = activeIndex.value
   if (index === null) return
 
-  const lines = rawLines.value
-  if (index > lines.length - 1) {
+  if (index > parsed.value.length - 1) {
     // 行そのものが無くなったときだけ諦める
     deactivate()
     return
   }
 
-  const current = lines[index] ?? ''
-  if (current !== activeText.value) activeText.value = current
+  const line = parsed.value[index]!
+  const editing = activePrefix.value + activeText.value
+  activeLine.value = line
+  if (line.raw !== editing) activeText.value = line.content
 })
 
 defineExpose({
@@ -335,11 +409,15 @@ defineExpose({
       <!--
         入力欄は1つだけ置き、flex の order で編集中の行の位置へ動かす。
         行ごとに作り直すと、Enter の直後にフォーカスが外れてしまう。
+
+        外枠は表示側の行と同じクラス・同じ字下げにする。行頭は入力欄に
+        入れず余白で表すため、両者が揃っていないと文字の開始位置がずれる。
       -->
       <div
         v-show="activeIndex !== null"
         class="editor__editing"
-        :style="{ order: activeIndex ?? 0 }"
+        :class="activeLine ? lineClass(activeLine) : ''"
+        :style="{ order: activeIndex ?? 0, '--sb-indent': activeLine?.indent ?? 0 }"
       >
         <textarea
           ref="input"
@@ -397,25 +475,38 @@ defineExpose({
   cursor: text;
 }
 
-.editor__editing {
-  /* 編集中の行だけ、記法がそのまま見えていると分かるようにする */
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  border-radius: 4px;
-}
-
 .editor__input {
   font: inherit;
   width: 100%;
   display: block;
   resize: none;
   overflow: hidden;
-  background: transparent;
-  color: var(--text);
+  /* 編集中の行だけ、記法がそのまま見えていると分かるようにする。
+     色を付けるのは入力欄そのもの。行頭の余白まで塗ると、
+     どこから書き換えられるのかが分からなくなる */
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 4px;
+  color: inherit;
   border: 0;
   outline: none;
   padding: 0;
   line-height: inherit;
   tab-size: 2;
+}
+
+/*
+ * 編集中も、表示と同じ字送りにする。
+ * 文字の幅が変わると、カーソルを置いた行だけ見た目が動いてしまう。
+ * （引用の色は外枠から `color: inherit` で受け取る）
+ */
+.editor__editing.sb-line--code-header .editor__input {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.editor__editing.sb-line--code-body .editor__input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
 }
 
 /* --- Scrapbox 記法の見た目 --- */
@@ -425,6 +516,8 @@ defineExpose({
   padding-left: calc(var(--sb-indent, 0) * 1.25rem);
   position: relative;
   min-height: 1.7em;
+  /* 入力欄と同じように空白を残す。詰めると、その行だけ文字の位置がずれる */
+  white-space: pre-wrap;
 }
 
 /* 字下げされた行は箇条書きとして中黒を出す */

@@ -14,8 +14,19 @@ export type Line = TextLine | QuoteLine | CodeHeaderLine | CodeBodyLine
 interface LineBase {
   /** 行頭の空白の数。箇条書きの階層になる。 */
   indent: number
-  /** 元の行そのまま。編集に切り替えるときに使う。 */
+  /** 元の行そのまま。 */
   raw: string
+  /**
+   * 行頭のうち、**表示では文字を出さず余白に置き換える**部分。
+   *
+   * 字下げの空白・引用の `>` ・`code:` など、行の種類を決めるだけで
+   * 中身ではない部分がここに入る。編集中もこの部分は文字として見せず、
+   * 表示と同じ幅の余白を入れる。そうしないと、カーソルの有無で
+   * 文字の開始位置がずれる（docs/11-scrapbox-notation.md 11.6）。
+   */
+  prefix: string
+  /** `prefix` を除いた行の中身。編集で直接さわるのはこちら。 */
+  content: string
 }
 
 export interface TextLine extends LineBase {
@@ -28,17 +39,19 @@ export interface QuoteLine extends LineBase {
   nodes: Inline[]
 }
 
-/** `code:ファイル名` の行。 */
+/** `code:ファイル名` の行。`content` がファイル名にあたる。 */
 export interface CodeHeaderLine extends LineBase {
   type: 'codeHeader'
-  name: string
 }
 
-/** コードブロックの中身の行。記法として解釈しない。 */
+/**
+ * コードブロックの中身の行。記法として解釈しない。
+ *
+ * `content` はブロックの基準までインデントを詰めた中身。
+ * それより深い字下げはコードの一部なので `content` に残す。
+ */
 export interface CodeBodyLine extends LineBase {
   type: 'codeBody'
-  /** 表示する内容。コードブロックの基準までインデントを詰めてある。 */
-  text: string
   /** ブロックの最後の行か。見た目をまとめるために使う。 */
   last: boolean
 }

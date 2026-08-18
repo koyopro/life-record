@@ -48,9 +48,10 @@ export function renderScrapbox(input: string): string {
 export function renderLine(line: Line): string {
   switch (line.type) {
     case 'codeHeader':
-      return `<span class="sb-code__name">${escapeHtml(line.name || 'code')}</span>`
+      // `code:` は行頭として余白に置き換えるので、ここではファイル名だけを出す
+      return `<span class="sb-code__name">${escapeHtml(line.content) || '&nbsp;'}</span>`
     case 'codeBody':
-      return `<code class="sb-code__text">${escapeHtml(line.text) || '&nbsp;'}</code>`
+      return `<code class="sb-code__text">${escapeHtml(line.content) || '&nbsp;'}</code>`
     case 'quote':
     case 'text': {
       const html = renderInline(line.nodes)
@@ -137,9 +138,9 @@ export function toPlainText(input: string): string {
     .map((line) => {
       switch (line.type) {
         case 'codeHeader':
-          return line.name
+          return line.content.trim()
         case 'codeBody':
-          return line.text.trim()
+          return line.content.trim()
         case 'quote':
         case 'text':
           return `${' '.repeat(line.indent)}${plainInline(line.nodes)}`

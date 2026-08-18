@@ -8,6 +8,9 @@ import type { Line, Inline } from './types'
  *
  * **入力の1行が、必ず結果の1要素に対応する。** カーソルのある行だけを
  * テキスト表示に戻すため、行と表示がずれてはいけない。
+ *
+ * 各行は `prefix`（表示では余白に置き換える行頭）と `content`（中身）に
+ * 分けて持つ。`prefix + content === raw` が常に成り立つ。
  */
 
 /** 画像として扱う拡張子。 */
@@ -44,22 +47,23 @@ export function parseScrapbox(input: string): Line[] {
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i]!
     const indent = indentOf(raw)
-    const content = raw.slice(indent)
+    const rest = raw.slice(indent)
 
     // コードブロックの中: 基準より深い行、または空行が続く限り
     if (codeIndent !== null) {
-      const inBlock = !content.trim() || indent > codeIndent
+      const inBlock = !rest.trim() || indent > codeIndent
       if (inBlock) {
         const nextRaw = rawLines[i + 1]
         const nextIsBody =
           nextRaw !== undefined &&
           (!nextRaw.slice(indentOf(nextRaw)).trim() ||
             indentOf(nextRaw) > codeIndent)
+        // 基準より深い字下げはコードの一部なので中身に残す
+        const base = Math.min(codeIndent + 1, indent)
         lines.push({
+          ...split(raw, base),
           type: 'codeBody',
           indent: codeIndent,
-          raw,
-          text: raw.slice(Math.min(codeIndent + 1, indent)),
           last: !nextIsBody,
         })
         continue
@@ -67,32 +71,58 @@ export function parseScrapbox(input: string): Line[] {
       codeIndent = null
     }
 
-    const codeMatch = /^code:(.*)$/.exec(content)
-    if (codeMatch) {
+    if (rest.startsWith(CODE_MARKER)) {
       codeIndent = indent
       lines.push({
+        ...split(raw, indent + CODE_MARKER.length),
         type: 'codeHeader',
         indent,
-        raw,
-        name: codeMatch[1]!.trim(),
       })
       continue
     }
 
-    if (content.startsWith('>')) {
+    // 引用の `>` と、それに続く空白ひとつまでが行頭
+    const quote = /^> ?/.exec(rest)
+    if (quote) {
+      const line = split(raw, indent + quote[0].length)
       lines.push({
+        ...line,
         type: 'quote',
         indent,
-        raw,
-        nodes: parseInline(content.slice(1).replace(/^ /, '')),
+        nodes: parseInline(line.content),
       })
       continue
     }
 
-    lines.push({ type: 'text', indent, raw, nodes: parseInline(content) })
+    lines.push({
+      ...split(raw, indent),
+      type: 'text',
+      indent,
+      nodes: parseInline(rest),
+    })
   }
 
   return lines
+}
+
+const CODE_MARKER = 'code:'
+
+/** 行を、余白に置き換える行頭と中身に分ける。 */
+function split(raw: string, at: number): { raw: string; prefix: string; content: string } {
+  return { raw, prefix: raw.slice(0, at), content: raw.slice(at) }
+}
+
+/**
+ * 行頭を1段ぶん外す。
+ *
+ * 行頭は表示では余白なので、その先頭で `Backspace` を押したときに
+ * 「1文字消す」では見た目が変わらないことがある（`>` の後ろの空白など）。
+ * 意味の単位で外す。
+ */
+export function dropPrefixUnit(prefix: string): string {
+  const marker = /(?:> ?|code:)$/.exec(prefix)
+  if (marker) return prefix.slice(0, -marker[0].length)
+  return prefix.slice(0, -1)
 }
 
 /**
