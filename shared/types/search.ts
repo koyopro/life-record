@@ -38,6 +38,8 @@ export interface SearchQuery {
   q: string
   kind: SearchKind
   status: ItemStatus | 'all'
+  /** 正規化済みのタグ名。空なら絞らない。 */
+  tag: string
   /** YYYY-MM-DD。空なら絞らない。 */
   from: string
   to: string

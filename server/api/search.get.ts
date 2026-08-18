@@ -1,11 +1,12 @@
-import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, exists, gte, lte, sql, type SQL } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
-import { diaries, items, sections } from '~~/server/db/schema'
+import { diaries, itemTags, items, sections, tags } from '~~/server/db/schema'
 import { assertAppDate } from '~~/server/utils/date'
 import { excerptAround, likePattern } from '~~/server/utils/search'
 import { toAppDate } from '~~/shared/utils/date'
 import { isItemStatus, type ItemStatus } from '~~/shared/types/item'
 import { isSearchKind, type SearchHit } from '~~/shared/types/search'
+import { normalizeTagName } from '~~/shared/types/tag'
 
 /** 種別ごとの取得上限。混ぜて並べ替えるので、それぞれ多めに取る。 */
 const PER_KIND_LIMIT = 100
@@ -33,9 +34,31 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
   const from = query.from ? assertAppDate(query.from, '開始日') : null
   const to = query.to ? assertAppDate(query.to, '終了日') : null
 
+  let tagName: string | null = null
+  if (query.tag !== undefined) {
+    tagName = normalizeTagName(String(query.tag))
+    if (!tagName) {
+      throw createError({ statusCode: 400, message: '不正なタグ名です' })
+    }
+  }
+
   const pattern = likePattern(q)
   const db = useDb()
   const hits: SearchHit[] = []
+
+  // タグでの絞り込み（docs/03-functional-spec.md 3.6、docs/09-tags.md）。
+  // タグは Item に付くものなので、作業記録は「その記録が属する Item」の
+  // タグで絞る。一覧側（items.get.ts）と同じく EXISTS で引き、
+  // JOIN による行の重複を避ける。
+  const tagged = tagName
+    ? exists(
+        db
+          .select({ one: itemTags.itemId })
+          .from(itemTags)
+          .innerJoin(tags, eq(tags.id, itemTags.tagId))
+          .where(and(eq(itemTags.itemId, items.id), eq(tags.name, tagName))),
+      )
+    : undefined
 
   // 期間は日付で受け取る。Item だけは日付列を持たないので、
   // 作成日時をその日の始まり・終わりと突き合わせる。
@@ -55,6 +78,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
         all(
           sql`${items.title} ILIKE ${pattern}`,
           status ? eq(items.status, status) : undefined,
+          tagged,
           after ? gte(items.createdAt, after) : undefined,
           before ? lte(items.createdAt, before) : undefined,
         ),
@@ -91,6 +115,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
         all(
           sql`${sections.body} ILIKE ${pattern}`,
           status ? eq(items.status, status) : undefined,
+          tagged,
           from ? gte(sections.date, from) : undefined,
           to ? lte(sections.date, to) : undefined,
         ),
@@ -111,9 +136,11 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
     }
   }
 
-  // status は進行状態なので、日記には当てはまらない。
-  // 絞り込みが指定されているときは、日記を混ぜない
-  if ((kind === 'all' && !status) || kind === 'diary') {
+  // status は進行状態、タグは Item に付くものなので、どちらも日記には
+  // 当てはまらない。絞り込みが指定されているときは、日記を混ぜない。
+  // 絞り込みの対象外という理由で日記だけが素通りするのは分かりにくいため
+  const excludesDiary = Boolean(status) || Boolean(tagName)
+  if ((kind === 'all' && !excludesDiary) || kind === 'diary') {
     const rows = await db
       .select()
       .from(diaries)

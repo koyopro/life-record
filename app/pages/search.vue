@@ -12,6 +12,7 @@ import {
   type SearchHit,
   type SearchKind,
 } from '~~/shared/types/search'
+import { normalizeTagName } from '~~/shared/types/tag'
 import { formatAppDate, isAppDate } from '~~/shared/utils/date'
 
 /**
@@ -42,6 +43,16 @@ const from = computed(() =>
   isAppDate(route.query.from) ? String(route.query.from) : '',
 )
 const to = computed(() => (isAppDate(route.query.to) ? String(route.query.to) : ''))
+
+// タグでの絞り込み（docs/03-functional-spec.md 3.6）。一覧と同じく
+// 名前で指定し、状態は URL に置く（docs/09-tags.md 9.3）
+const { tags: allTags } = useTags()
+
+const tag = computed<string | undefined>(() => {
+  const value = route.query.tag
+  if (typeof value !== 'string') return undefined
+  return normalizeTagName(value) ?? undefined
+})
 
 /** URL の条件を書き換える。履歴を汚さないよう replace を使う。 */
 function setQuery(patch: Record<string, string | undefined>) {
@@ -75,8 +86,23 @@ const statusParam = computed(() =>
 )
 
 const { data: hits, pending } = await useFetch<SearchHit[]>('/api/search', {
-  query: { q: term, kind, status: statusParam, from, to },
+  query: { q: term, kind, status: statusParam, tag, from, to },
   default: () => [],
+})
+
+/** 同じタグをもう一度押したら解除する（一覧と同じ）。 */
+function selectTag(name: string) {
+  setQuery({ tag: tag.value === name ? undefined : name })
+}
+
+// 日記にはタグも状態も付かないため、どちらかで絞ると結果から外れる
+const excludedNote = computed(() => {
+  if (kind.value !== 'all') return ''
+  const by = [status.value !== 'all' ? '状態' : '', tag.value ? 'タグ' : ''].filter(
+    Boolean,
+  )
+  if (by.length === 0) return ''
+  return `${by.join('と')}で絞っているため、日記は結果に含めていません。`
 })
 
 const hasQuery = computed(() => term.value.length > 0)
@@ -161,11 +187,23 @@ const KIND_LABELS: Record<Exclude<SearchKind, 'all'>, string> = {
           />
         </label>
       </div>
+
+      <nav v-if="allTags.length" class="tags" aria-label="タグで絞り込む">
+        <button
+          v-for="entry in allTags"
+          :key="entry.id"
+          type="button"
+          class="tags__item"
+          :class="{ 'tags__item--active': tag === entry.name }"
+          :aria-pressed="tag === entry.name"
+          @click="selectTag(entry.name)"
+        >
+          #{{ entry.name }}
+        </button>
+      </nav>
     </div>
 
-    <p v-if="status !== 'all' && kind === 'all'" class="note">
-      状態で絞っているため、日記は結果に含めていません。
-    </p>
+    <p v-if="excludedNote" class="note">{{ excludedNote }}</p>
 
     <p v-if="!hasQuery" class="page__placeholder">
       探したい言葉を入れてください。
@@ -275,6 +313,34 @@ const KIND_LABELS: Record<Exclude<SearchKind, 'all'>, string> = {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* 一覧のタグ行と同じ見た目にする（app/components/ItemListView.vue） */
+.tags {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  /* 横スクロールはしてよいが、スクロールバーは出さない */
+  scrollbar-width: none;
+}
+
+.tags::-webkit-scrollbar {
+  display: none;
+}
+
+.tags__item {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  min-height: 2.25rem;
+  padding: 0 0.375rem;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+.tags__item--active {
+  color: var(--accent);
   font-weight: 600;
 }
 
