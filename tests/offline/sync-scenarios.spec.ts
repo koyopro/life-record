@@ -308,6 +308,28 @@ describe('オンライン復帰', () => {
     expect(await listOperations()).toEqual([])
   })
 
+  it('送ってしまった削除も、応答の控えから戻せる', async () => {
+    const item = itemDto()
+    const remote = server([item])
+    await mergeServerItems([item])
+
+    await removeTodos([item.id])
+    await sync(remote)
+
+    expect(remote.items.has(item.id)).toBe(false)
+    expect(await getItem(item.id)).toBeUndefined()
+
+    // 取り消し（`u`）
+    await restoreTodos([item.id])
+    expect((await getItem(item.id))?.syncState).toBe('pending_create')
+
+    await sync(remote)
+
+    expect(remote.items.has(item.id)).toBe(true)
+    expect((await getItem(item.id))?.syncState).toBe('synced')
+    expect(await listOperations()).toEqual([])
+  })
+
   it('続けて行った操作の基準は、前の送信の結果に合わせて進む', async () => {
     const item = itemDto()
     const remote = server([item])
