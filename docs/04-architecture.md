@@ -207,7 +207,33 @@ Drizzle Kit で SQL ファイルベースのマイグレーションを生成し
 API が S3 の署名付きURL（PUT）を発行し、ブラウザが S3 へ直接アップロードする。
 Vercel Function を画像バイナリが通過しない構成とする。
 
-CORS 設定で、Vercel のドメインからの PUT を許可する必要がある。
+署名付き URL には本文のチェックサムを載せない
+（`requestChecksumCalculation: 'WHEN_REQUIRED'`）。AWS SDK v3 の既定では
+PutObject に CRC32 が付くが、本文を渡さずに署名するここでは「空データの
+CRC32」がクエリに入り、ブラウザが実ファイルを PUT した時点で S3 に弾かれる。
+
+### CORS
+
+バケットに CORS を設定し、アプリのドメインからの PUT を許可する。
+プリフライト（OPTIONS）は署名なしで飛ぶため、これが無いと IAM や署名が
+正しくても 403 になる。
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://<本番ドメイン>"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
+
+Origin はスキーム・ポートまで含めた完全一致で、末尾スラッシュは付けない。
+Preview デプロイはホスト名が変わるため、使うならワイルドカードが要る。
+
+表示側は `/images/<ID>.<拡張子>` から署名付き GET へリダイレクトする形で、
+`<img>` が読むだけなので GET の CORS は要らない。
 
 ### 配信
 

@@ -71,6 +71,17 @@ function useS3(): { client: S3Client; bucket: string } {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
+      /*
+       * 署名付き URL には本文のチェックサムを載せない。
+       *
+       * 既定（WHEN_SUPPORTED）だと、SDK が PutObject に CRC32 を付ける。
+       * ここでは本文を渡さずに署名するため、その値は「空データの CRC32」に
+       * なり、クエリ（x-amz-checksum-crc32）へ入ってしまう。
+       * ブラウザが実ファイルを PUT すると S3 が突き合わせて弾く。
+       *
+       * MinIO は検証しないので、この不整合はローカルでは表に出ない。
+       */
+      requestChecksumCalculation: 'WHEN_REQUIRED',
       ...(config.endpoint
         ? { endpoint: config.endpoint, forcePathStyle: true }
         : {}),
