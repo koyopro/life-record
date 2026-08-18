@@ -207,13 +207,17 @@ useComposerRegistration(focus)
 .composer__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* ヒントを消しても、ボタンは右端に残す */
+  justify-content: flex-end;
   gap: 0.75rem;
 }
 
 .composer__hint {
   color: var(--text-muted);
   font-size: 0.8125rem;
+  /* 余った幅はヒント側が持つ。足りなければ縮むのもこちら */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* 期限を書かなかったときに何が入るかを、送信前に見せる */
@@ -221,10 +225,13 @@ useComposerRegistration(focus)
   color: var(--accent);
 }
 
-/* タッチ主体の端末ではショートカットが使えないので隠す */
+/*
+ * タッチ主体の端末ではショートカットが使えないので隠す。
+ * visibility では場所を取ったままになり、狭い画面でボタンを潰す。
+ */
 @media (hover: none) {
   .composer__hint {
-    visibility: hidden;
+    display: none;
   }
 }
 
@@ -237,6 +244,9 @@ useComposerRegistration(focus)
   min-height: 2.75rem;
   padding: 0 1.5rem;
   font-weight: 600;
+  /* 幅が足りなくても縮めない。「追加」が縦に折り返してしまう */
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .composer__submit:disabled {
