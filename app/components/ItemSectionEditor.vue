@@ -68,6 +68,17 @@ defineExpose({ focus: () => editor.value?.focus() })
         :aria-label="`${dateLabel} の作業記録の日付`"
         @change="onDateInput"
       />
+      <!--
+        その日の日記へ。Section と Diary は日付だけで結び付く
+        （docs/02-data-model.md 2.7）。
+      -->
+      <NuxtLink
+        class="section__diary"
+        :to="`/diary/${section.date}`"
+        :aria-label="`${dateLabel} の日記を開く`"
+      >
+        日記
+      </NuxtLink>
       <span class="section__save" :class="`section__save--${state}`">
         {{ SAVE_STATE_LABELS[state] }}
       </span>
@@ -137,6 +148,15 @@ defineExpose({ focus: () => editor.value?.focus() })
 .section__date:hover,
 .section__date:focus {
   border-color: var(--border);
+}
+
+.section__diary {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
 }
 
 .section__save {

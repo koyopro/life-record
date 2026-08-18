@@ -13,7 +13,7 @@ import {
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
-import { toAppDate } from '~~/shared/utils/date'
+import { formatAppDate, toAppDate } from '~~/shared/utils/date'
 
 const props = defineProps<{
   itemId: string
@@ -560,6 +560,14 @@ async function removeSection(section: SectionDto) {
       <section class="body">
         <div class="body__head">
           <h2 class="body__title">本文</h2>
+          <!-- 本文も日付を持つ Section なので、その日の日記へ行ける -->
+          <NuxtLink
+            v-if="primarySection"
+            class="body__diary"
+            :to="`/diary/${primarySection.date}`"
+          >
+            {{ formatAppDate(primarySection.date) }} の日記
+          </NuxtLink>
           <span class="body__save" :class="`body__save--${bodySave.state.value}`">
             {{ SAVE_STATE_LABELS[bodySave.state.value] }}
           </span>
@@ -798,8 +806,15 @@ async function removeSection(section: SectionDto) {
 .body__head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 0.75rem;
+}
+
+.body__diary {
+  margin-left: auto;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .body__title,

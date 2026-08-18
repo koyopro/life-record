@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 import { items, sections, type Item, type Section } from '~~/server/db/schema'
-import type { Db, Executor } from '~~/server/db'
+import type { Executor } from '~~/server/db'
 import type {
   ItemDto,
   Priority,
@@ -87,7 +87,7 @@ export async function nextPosition(
  * Item ごとに1クエリ投げると件数分の往復が発生するので、まとめて取る。
  */
 export async function firstSectionBodies(
-  db: Db,
+  db: Executor,
   itemIds: string[],
 ): Promise<Map<string, string>> {
   if (itemIds.length === 0) return new Map()
@@ -138,7 +138,7 @@ export function toItemDto(
  * Item 群を DTO へ変換する。本文とタグをまとめて引いてから組み立てる。
  * 件数分の往復を避けるため、一覧系はすべてこれを通す。
  */
-export async function toItemDtos(db: Db, rows: Item[]): Promise<ItemDto[]> {
+export async function toItemDtos(db: Executor, rows: Item[]): Promise<ItemDto[]> {
   const ids = rows.map((row) => row.id)
   const [bodies, tagNames] = await Promise.all([
     firstSectionBodies(db, ids),
