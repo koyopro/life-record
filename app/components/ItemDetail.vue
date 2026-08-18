@@ -307,6 +307,15 @@ const dueOpen = ref(false)
 const tagOpen = ref(false)
 const recurrenceOpen = ref(false)
 
+// --- 重要度（RTM に倣い、タイトル横の色を押して切り替える） ----------------
+
+const priorityOpen = ref(false)
+
+async function setPriority(value: Priority | null) {
+  priorityOpen.value = false
+  await patch({ priority: value })
+}
+
 // --- 繰り返し ----------------------------------------------------------
 
 const recurrence = computed<Recurrence | null>(() => {
@@ -326,6 +335,52 @@ async function applyRecurrence(value: Recurrence | null) {
     recurrenceBasis: value?.basis ?? null,
   })
 }
+
+// --- 詳細を追加（RTM に倣い、設定していない項目だけを出す） -----------------
+//
+// 繰り返しと URL は、設定していなければ行そのものを出さない。
+// 「詳細を追加」から選んだときだけ、その場で入力欄・ダイアログを出す。
+
+const detailMenuOpen = ref(false)
+/** URL 欄を出すか。値があれば常に出す。無くても「詳細を追加」から開いたら出す。 */
+const urlFieldOpen = ref(false)
+const showUrlRow = computed(() => Boolean(item.value?.url) || urlFieldOpen.value)
+
+function toggleDetailMenu() {
+  priorityOpen.value = false
+  detailMenuOpen.value = !detailMenuOpen.value
+}
+
+function openRecurrenceFromMenu() {
+  detailMenuOpen.value = false
+  recurrenceOpen.value = true
+}
+
+async function openUrlField() {
+  detailMenuOpen.value = false
+  urlFieldOpen.value = true
+  await nextTick()
+  urlInput.value?.focus()
+}
+
+const detailOptions = computed(() => {
+  const options: { key: string; label: string; run: () => void }[] = []
+  if (!recurrence.value) {
+    options.push({ key: 'recurrence', label: '繰り返し', run: openRecurrenceFromMenu })
+  }
+  if (!showUrlRow.value) {
+    options.push({ key: 'url', label: 'URL', run: openUrlField })
+  }
+  return options
+})
+
+// 別のタスクへ移ったら、開きかけのポップオーバーや「詳細を追加」で
+// 出した空欄は持ち越さない。
+watch(id, () => {
+  priorityOpen.value = false
+  detailMenuOpen.value = false
+  urlFieldOpen.value = false
+})
 
 /** 同じ繰り返しから生まれた過去のオカレンス。 */
 const seriesId = computed(() => item.value?.seriesId ?? null)
@@ -503,19 +558,63 @@ async function removeSection(section: SectionDto) {
       <NuxtLink v-if="!embedded" :to="listOrigin" class="page__back">← 一覧へ</NuxtLink>
 
       <header class="head">
-        <!-- タイトルもボタンなしで保存する -->
-        <textarea
-          ref="titleInput"
-          v-model="title"
-          class="head__title"
-          rows="1"
-          aria-label="タイトル"
-          @input="(e) => {
-            const el = e.target as HTMLTextAreaElement
-            el.style.height = 'auto'
-            el.style.height = `${el.scrollHeight}px`
-          }"
-        />
+        <div class="head__top">
+          <!--
+            重要度は RTM に倣い、タイトル横の色で表す。押すと候補が出て
+            そのまま切り替えられる（一覧の「重要度は左端の色」と同じ考え方）。
+          -->
+          <button
+            type="button"
+            class="head__priority"
+            :class="`head__priority--${item.priority ?? 'none'}`"
+            :aria-label="`重要度: ${item.priority ? PRIORITY_LABELS[item.priority] : 'なし'}（押して変更）`"
+            aria-haspopup="listbox"
+            :aria-expanded="priorityOpen"
+            @click="priorityOpen = !priorityOpen"
+          />
+
+          <!-- タイトルもボタンなしで保存する -->
+          <textarea
+            ref="titleInput"
+            v-model="title"
+            class="head__title"
+            rows="1"
+            aria-label="タイトル"
+            @input="(e) => {
+              const el = e.target as HTMLTextAreaElement
+              el.style.height = 'auto'
+              el.style.height = `${el.scrollHeight}px`
+            }"
+          />
+
+          <div v-if="priorityOpen" class="head__priority-backdrop" @click="priorityOpen = false" />
+          <ul v-if="priorityOpen" class="head__priority-menu" role="listbox" aria-label="重要度を選ぶ">
+            <li v-for="value in PRIORITIES" :key="value">
+              <button
+                type="button"
+                class="head__priority-option"
+                role="option"
+                :aria-selected="item.priority === value"
+                @click="setPriority(value)"
+              >
+                <span class="head__priority-dot" :class="`head__priority-dot--${value}`" aria-hidden="true" />
+                優先度{{ PRIORITY_LABELS[value] }}
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="head__priority-option"
+                role="option"
+                :aria-selected="item.priority === null"
+                @click="setPriority(null)"
+              >
+                <span class="head__priority-dot head__priority-dot--none" aria-hidden="true" />
+                優先度なし
+              </button>
+            </li>
+          </ul>
+        </div>
         <span class="head__save" :class="`head__save--${titleSave.state.value}`">
           {{ SAVE_STATE_LABELS[titleSave.state.value] }}
           <span v-if="unsynced" class="head__pending">・未同期</span>
@@ -556,31 +655,7 @@ async function removeSection(section: SectionDto) {
           </div>
         </div>
 
-        <div class="meta__row">
-          <span class="meta__label">重要度</span>
-          <div class="meta__values">
-            <button
-              v-for="value in PRIORITIES"
-              :key="value"
-              type="button"
-              class="chip"
-              :class="{ 'chip--active': item.priority === value }"
-              @click="patch({ priority: value as Priority })"
-            >
-              {{ PRIORITY_LABELS[value] }}
-            </button>
-            <button
-              type="button"
-              class="chip"
-              :class="{ 'chip--active': item.priority === null }"
-              @click="patch({ priority: null })"
-            >
-              なし
-            </button>
-          </div>
-        </div>
-
-        <div class="meta__row">
+        <div v-if="showUrlRow" class="meta__row">
           <span class="meta__label">URL</span>
           <input
             ref="urlInput"
@@ -618,18 +693,13 @@ async function removeSection(section: SectionDto) {
           </div>
         </div>
 
-        <div class="meta__row">
+        <div v-if="recurrence" class="meta__row">
           <span class="meta__label">繰り返し</span>
           <div class="meta__values">
             <button type="button" class="chip" @click="recurrenceOpen = true">
-              {{ recurrenceLabel ?? '設定する' }}
+              {{ recurrenceLabel }}
             </button>
-            <button
-              v-if="recurrence"
-              type="button"
-              class="chip chip--quiet"
-              @click="applyRecurrence(null)"
-            >
+            <button type="button" class="chip chip--quiet" @click="applyRecurrence(null)">
               やめる
             </button>
           </div>
@@ -649,6 +719,38 @@ async function removeSection(section: SectionDto) {
             >
               外す
             </button>
+          </div>
+        </div>
+
+        <!--
+          RTM の「タスクの詳細を入力」に倣い、繰り返し・URL のうち
+          まだ設定していないものだけをここから追加できるようにする。
+          両方設定済みなら足すものが無いので出さない。
+        -->
+        <div v-if="detailOptions.length" class="meta__row">
+          <div class="meta__add-wrap">
+            <button
+              type="button"
+              class="meta__add"
+              aria-haspopup="menu"
+              :aria-expanded="detailMenuOpen"
+              @click="toggleDetailMenu"
+            >
+              詳細を追加 <span aria-hidden="true">▾</span>
+            </button>
+            <div v-if="detailMenuOpen" class="meta__add-backdrop" @click="detailMenuOpen = false" />
+            <ul v-if="detailMenuOpen" class="meta__add-menu" role="menu">
+              <li v-for="option in detailOptions" :key="option.key">
+                <button
+                  type="button"
+                  class="meta__add-option"
+                  role="menuitem"
+                  @click="option.run()"
+                >
+                  {{ option.label }}
+                </button>
+              </li>
+            </ul>
           </div>
         </div>
       </section>
@@ -798,8 +900,16 @@ async function removeSection(section: SectionDto) {
   gap: 0.25rem;
 }
 
+.head__top {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
 .head__title {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   resize: none;
   background: transparent;
   border: 0;
@@ -815,6 +925,96 @@ async function removeSection(section: SectionDto) {
 
 .head__title:focus {
   border-bottom-color: var(--border);
+}
+
+/*
+ * 重要度は一覧のカードと同じく色の帯で表す（RTM に倣う）。
+ * ここでは押せるボタンにして、押すと候補を出す。
+ */
+.head__priority {
+  flex: 0 0 auto;
+  width: 0.375rem;
+  align-self: stretch;
+  min-height: 1.75rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--priority-none);
+}
+
+.head__priority--1 {
+  background: var(--priority-1);
+}
+
+.head__priority--2 {
+  background: var(--priority-2);
+}
+
+.head__priority--3 {
+  background: var(--priority-3);
+}
+
+.head__priority-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.head__priority-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 31;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  min-width: 9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.head__priority-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.5rem 0.625rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.head__priority-option:hover,
+.head__priority-option:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.head__priority-dot {
+  flex: 0 0 auto;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 999px;
+  background: var(--priority-none);
+}
+
+.head__priority-dot--1 {
+  background: var(--priority-1);
+}
+
+.head__priority-dot--2 {
+  background: var(--priority-2);
+}
+
+.head__priority-dot--3 {
+  background: var(--priority-3);
 }
 
 .head__save,
@@ -915,6 +1115,64 @@ async function removeSection(section: SectionDto) {
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+}
+
+/*
+ * RTM の「タスクの詳細を入力」に倣った、未設定の項目を足すための欄。
+ * 常設の行より控えめに（破線・薄い色で）出す。
+ */
+.meta__add-wrap {
+  position: relative;
+}
+
+.meta__add {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.meta__add-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.meta__add-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 31;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  min-width: 9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.meta__add-option {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.5rem 0.625rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.meta__add-option:hover,
+.meta__add-option:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .body {
