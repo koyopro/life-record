@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { ItemDto } from '~~/shared/types/item'
 import { normalizeTagName, parseTagNames } from '~~/shared/types/tag'
 
 const props = defineProps<{
-  items: ItemDto[]
+  /** いま付いているタグ（複数選択時は和集合）。 */
+  tags: string[]
+  /** 対象の件数。見出しに出す。 */
+  count: number
   /** 開いた直後に外す側へ寄せるか（`Shift` + `t`）。 */
   focusRemoval?: boolean
 }>()
@@ -18,14 +20,7 @@ const { suggest } = useTags()
 const input = ref('')
 const inputEl = ref<HTMLInputElement | null>(null)
 
-/** 対象に付いているタグ（複数選択時は和集合）。 */
-const currentTags = computed(() => {
-  const names = new Set<string>()
-  for (const item of props.items) {
-    for (const tag of item.tags) names.add(tag)
-  }
-  return [...names].sort()
-})
+const currentTags = computed(() => [...new Set(props.tags)].sort())
 
 const removing = ref<Set<string>>(new Set())
 
@@ -80,7 +75,7 @@ onMounted(() => {
       @submit.prevent="apply"
     >
       <h2 class="sheet__title">
-        タグ<span v-if="items.length > 1"> ({{ items.length }}件)</span>
+        タグ<span v-if="count > 1"> ({{ count }}件)</span>
       </h2>
 
       <input

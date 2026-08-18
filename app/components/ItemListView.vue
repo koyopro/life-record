@@ -448,6 +448,11 @@ function openTags(focusRemoval: boolean) {
   tagOpen.value = true
 }
 
+/** 対象に付いているタグ（複数選択時は和集合）。 */
+const targetTags = computed(() =>
+  list.targets.value.flatMap((item) => item.tags),
+)
+
 async function applyTags(changes: { add: string[]; remove: string[] }) {
   tagOpen.value = false
   await list.applyTags(changes.add, changes.remove)
@@ -633,7 +638,8 @@ defineExpose({
 
     <TagDialog
       v-if="tagOpen"
-      :items="list.targets.value"
+      :tags="targetTags"
+      :count="list.targets.value.length"
       :focus-removal="tagFocusRemoval"
       @apply="applyTags"
       @close="tagOpen = false"

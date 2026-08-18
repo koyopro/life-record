@@ -1,12 +1,25 @@
 <script setup lang="ts">
-import { PRIORITY_LABELS } from '~~/shared/types/item'
-import { parseSmartAdd } from '~~/shared/utils/smart-add'
+import { PRIORITIES, PRIORITY_LABELS, type Priority } from '~~/shared/types/item'
+import type { Recurrence } from '~~/shared/types/recurrence'
+import { describeRecurrence } from '~~/shared/utils/recurrence'
+import {
+  composeSmartAddInput,
+  mergeSmartAddOverrides,
+  parseSmartAdd,
+  type SmartAddDue,
+  type SmartAddOverrides,
+} from '~~/shared/utils/smart-add'
 import { splitInput } from '~~/shared/utils/text'
 
 const props = withDefaults(
   defineProps<{
     placeholder?: string
-    /** 複数行を受け付けるか。false なら SmartAdd 専用の1行入力。 */
+    /**
+     * 複数行を受け付けるか。false なら SmartAdd 専用の1行入力。
+     *
+     * 狭い画面ではこの指定に関わらず複数行にする。キーボードの改行を
+     * 送信に使ってしまうと、本文（2行目以降）を書く手段が無くなるため。
+     */
     multiline?: boolean
     /** 最初から入れておくテキスト。共有の受付（/share）で使う。 */
     initialText?: string
@@ -47,39 +60,132 @@ const opened = ref(false)
 /** 重ねて出しているか。閉じている狭い画面では何も描かない。 */
 const asSheet = computed(() => compact.value && opened.value)
 
+/**
+ * 複数行を受け付けるか。
+ *
+ * 狭い画面では指定に関わらず複数行にする。キーボードの改行を送信に
+ * 使ってしまうと、本文（2行目以降）を書く手段が無くなるため。
+ * 送信はボタン（と ⌘ + Enter）で行う。
+ */
+const multiline = computed(() => props.multiline || narrow.value)
+
 function close() {
   opened.value = false
+  sheet.value = null
+  priorityOpen.value = false
 }
 
 const canSubmit = computed(() => text.value.trim().length > 0)
+
+// --- ボタンで選ぶ期限・重要度・タグ・繰り返し ------------------------------
+//
+// スマートフォンでは記号（`^` `!` `#` `*`）を打つのが手間なので、RTM と
+// 同じように入力欄とは別のボタンからも選べるようにする（8.4）。
+// 選んだ内容は SmartAdd の記法としてテキストへ書き戻す（composeSmartAddInput）。
+// 追加の経路をテキスト1本に保てるので、共有の受付・オフラインの送信列・
+// サーバーのどれにも手を入れずに済む。
+
+/** 開いている選択画面。重要度は行を広げるだけなので別に持つ。 */
+const sheet = ref<'due' | 'tags' | 'recurrence' | null>(null)
+const priorityOpen = ref(false)
+
+/** `undefined` はボタンを使っていないこと。その項目はテキストの記法に従う。 */
+const due = ref<SmartAddDue | null>()
+const priority = ref<Priority | null>()
+const tags = ref<string[]>()
+const recurrence = ref<Recurrence | null>()
+
+const overrides = computed<SmartAddOverrides>(() => ({
+  due: due.value,
+  priority: priority.value,
+  tags: tags.value,
+  recurrence: recurrence.value,
+}))
+
+/** 送信するテキスト。ボタンで選んだ内容を書き戻したもの。 */
+const composed = computed(() =>
+  composeSmartAddInput(text.value, overrides.value),
+)
 
 /**
  * 入力中のプレビュー（docs/08-todo-management.md 8.5）。
  *
  * サーバーと同じパーサを使うため、表示と保存結果が食い違わない。
+ * 書き戻したあとのテキストを読むので、ボタンで選んだ内容もここに出る。
  */
 const parsed = computed(() => {
-  const split = splitInput(text.value)
+  const split = splitInput(composed.value)
   if (!split) return null
   return { ...parseSmartAdd(split.titleLine), body: split.body }
 })
 
+/**
+ * いまの指定内容。テキストの記法とボタンで選んだ内容を重ねたもの。
+ *
+ * まだ何も書いていなくても、選んだ内容はボタンとプレビューに出したいので、
+ * 書き戻したテキストではなくこちらを見る。
+ */
+const values = computed(() =>
+  mergeSmartAddOverrides(parsed.value, overrides.value),
+)
+
+const recurrenceLabel = computed(() =>
+  values.value.recurrence ? describeRecurrence(values.value.recurrence) : null,
+)
+
+function selectPriority(value: Priority | null) {
+  priority.value = value
+  priorityOpen.value = false
+}
+
+function applyDue(value: SmartAddDue | null) {
+  due.value = value
+  sheet.value = null
+}
+
+function applyTags(changes: { add: string[]; remove: string[] }) {
+  const next = new Set(values.value.tags)
+  for (const name of changes.add) next.add(name)
+  for (const name of changes.remove) next.delete(name)
+  tags.value = [...next].sort()
+  sheet.value = null
+}
+
+function applyRecurrence(value: Recurrence | null) {
+  recurrence.value = value
+  sheet.value = null
+}
+
+/** 選んだ内容を捨てる。追加したものの設定を次の入力に持ち越さない。 */
+function clearOverrides() {
+  due.value = undefined
+  priority.value = undefined
+  tags.value = undefined
+  recurrence.value = undefined
+  priorityOpen.value = false
+  sheet.value = null
+}
+
 const dueLabel = computed(() => {
-  const dueAt = parsed.value?.dueAt
-  if (!dueAt) return null
+  const selected = values.value.due
+  if (!selected) return null
   return formatDue({
-    dueAt: dueAt.toISOString(),
-    dueHasTime: parsed.value?.dueHasTime ?? false,
+    dueAt: selected.date.toISOString(),
+    dueHasTime: selected.hasTime,
   } as never).label
 })
 
-/** 記法が使われたときだけプレビューを出す。普通の文章では邪魔になるため。 */
+/**
+ * 記法を使ったか、ボタンで選んだときだけプレビューを出す。
+ * 普通の文章では邪魔になるため。
+ */
 const showPreview = computed(
   () =>
-    Boolean(parsed.value) &&
-    (parsed.value!.dueAt !== null ||
-      parsed.value!.priority !== null ||
-      parsed.value!.warnings.length > 0),
+    values.value.due !== null ||
+    values.value.priority !== null ||
+    values.value.tags.length > 0 ||
+    values.value.recurrence !== null ||
+    (parsed.value?.warnings.length ?? 0) > 0,
 )
 
 function autoGrow() {
@@ -91,9 +197,10 @@ function autoGrow() {
 
 function submit() {
   if (!canSubmit.value) return
-  emit('submit', text.value)
+  emit('submit', composed.value)
   // 送信完了を待たずに空にする。続けて書けることを優先する。
   text.value = ''
+  clearOverrides()
 
   // 重ねて出していたなら閉じる。追加したものが一覧に出るのを見せたい
   if (compact.value) {
@@ -125,7 +232,7 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter') {
     if (isComposing(event)) return
     // 1行入力なら Enter で送信。複数行なら ⌘/Ctrl + Enter。
-    if (!props.multiline || event.metaKey || event.ctrlKey) {
+    if (!multiline.value || event.metaKey || event.ctrlKey) {
       event.preventDefault()
       submit()
     }
@@ -184,13 +291,19 @@ useComposerRegistration(focus)
       />
 
       <div v-if="showPreview" class="composer__preview">
-        <span class="composer__preview-title">{{ parsed!.title || '（タイトルなし）' }}</span>
-        <span v-if="parsed!.priority" class="composer__chip">
-          重要度{{ PRIORITY_LABELS[parsed!.priority] }}
+        <span class="composer__preview-title">{{ parsed?.title || '（タイトルなし）' }}</span>
+        <span v-if="values.priority" class="composer__chip">
+          重要度{{ PRIORITY_LABELS[values.priority] }}
         </span>
         <span v-if="dueLabel" class="composer__chip">期限 {{ dueLabel }}</span>
+        <span v-for="tag in values.tags" :key="tag" class="composer__chip">
+          #{{ tag }}
+        </span>
+        <span v-if="recurrenceLabel" class="composer__chip">
+          {{ recurrenceLabel }}
+        </span>
         <span
-          v-for="warning in parsed!.warnings"
+          v-for="warning in parsed?.warnings ?? []"
           :key="warning"
           class="composer__chip composer__chip--warning"
         >
@@ -198,10 +311,73 @@ useComposerRegistration(focus)
         </span>
       </div>
 
+      <!--
+        期限・重要度・タグ・繰り返しをボタンから選ぶ（8.4）。
+        記号を打ちにくい狭い画面だけに出す。出す・出さないを CSS で決めるのは
+        入力欄と同じ理由（幅の判定は最初の描画に間に合わない）。
+      -->
+      <div class="composer__tools">
+        <button
+          type="button"
+          class="composer__tool"
+          :class="{ 'composer__tool--on': values.due }"
+          @click="sheet = 'due'"
+        >
+          期限
+        </button>
+        <button
+          type="button"
+          class="composer__tool"
+          :class="{ 'composer__tool--on': values.priority }"
+          :aria-expanded="priorityOpen"
+          @click="priorityOpen = !priorityOpen"
+        >
+          重要度
+        </button>
+        <button
+          type="button"
+          class="composer__tool"
+          :class="{ 'composer__tool--on': values.tags.length > 0 }"
+          @click="sheet = 'tags'"
+        >
+          タグ
+        </button>
+        <button
+          type="button"
+          class="composer__tool"
+          :class="{ 'composer__tool--on': values.recurrence }"
+          @click="sheet = 'recurrence'"
+        >
+          繰り返し
+        </button>
+      </div>
+
+      <!-- 重要度は選択肢が4つしかないので、別画面にせずその場で開く -->
+      <div v-if="priorityOpen" class="composer__tools composer__tools--priority">
+        <button
+          v-for="value in PRIORITIES"
+          :key="value"
+          type="button"
+          class="composer__tool"
+          :class="{ 'composer__tool--on': values.priority === value }"
+          @click="selectPriority(value)"
+        >
+          {{ PRIORITY_LABELS[value] }}
+        </button>
+        <button
+          type="button"
+          class="composer__tool"
+          :class="{ 'composer__tool--on': !values.priority }"
+          @click="selectPriority(null)"
+        >
+          なし
+        </button>
+      </div>
+
       <div class="composer__actions">
         <span class="composer__hint">
           {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度 #タグ
-          <span v-if="!parsed?.dueAt" class="composer__default">
+          <span v-if="!values.due" class="composer__default">
             ・ 期限は今日
           </span>
         </span>
@@ -218,6 +394,30 @@ useComposerRegistration(focus)
         </button>
       </div>
     </form>
+
+    <!-- 一覧での設定と同じ画面を使う。覚えることを増やさないため -->
+    <DueDialog
+      v-if="sheet === 'due'"
+      :count="1"
+      @submit="applyDue"
+      @close="sheet = null"
+    />
+
+    <TagDialog
+      v-if="sheet === 'tags'"
+      :tags="values.tags"
+      :count="1"
+      @apply="applyTags"
+      @close="sheet = null"
+    />
+
+    <RecurrenceDialog
+      v-if="sheet === 'recurrence'"
+      :count="1"
+      :current="values.recurrence"
+      @submit="applyRecurrence"
+      @close="sheet = null"
+    />
   </template>
 </template>
 
@@ -309,6 +509,47 @@ useComposerRegistration(focus)
 .composer__chip--warning {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
+}
+
+/*
+ * 期限などを選ぶボタン。狭い画面だけに出す。
+ *
+ * 広い画面は記法（^ ! # *）を打つほうが速く、ヒントも出しているので置かない。
+ * 入力欄と同じく CSS で切り替える（幅の判定は最初の描画に間に合わない）。
+ */
+.composer__tools {
+  display: none;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+@media (max-width: 40rem) {
+  .composer__tools {
+    display: flex;
+  }
+}
+
+/* 重要度の選択肢。どのボタンから開いたかが分かるよう、少し右へ寄せる */
+.composer__tools--priority {
+  padding-left: 0.5rem;
+}
+
+.composer__tool {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  /* タップ目標として十分な大きさを確保する */
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* 設定済み。プレビューの内容と合わせて見る */
+.composer__tool--on {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .composer__actions {

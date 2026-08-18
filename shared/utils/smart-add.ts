@@ -2,7 +2,8 @@ import * as chrono from 'chrono-node'
 import { isPriority, type Priority } from '../types/item'
 import { normalizeTagName } from '../types/tag'
 import type { Recurrence } from '../types/recurrence'
-import { parseRecurrence } from './recurrence'
+import { describeRecurrence, parseRecurrence } from './recurrence'
+import { splitInput } from './text'
 
 /**
  * SmartAdd（docs/08-todo-management.md 8.5）。
@@ -80,6 +81,121 @@ export function parseSmartAdd(
     url: urlResult.url,
     warnings,
   }
+}
+
+/** 期限の指定。日付と、時刻まで指定されているか。 */
+export interface SmartAddDue {
+  date: Date
+  hasTime: boolean
+}
+
+/**
+ * ボタンから選んだ内容。
+ *
+ * `undefined` はボタンを使っていないことを表し、その項目はテキストの
+ * 記法に従う。`null` は「指定しない」を選んだことを表し、テキストに
+ * 記法が書かれていても打ち消す。
+ */
+export interface SmartAddOverrides {
+  due?: SmartAddDue | null
+  priority?: Priority | null
+  /** 付けるタグの全体。テキストに書かれた `#` はこれで置き換わる。 */
+  tags?: string[]
+  recurrence?: Recurrence | null
+}
+
+/** テキストの記法とボタンで選んだ内容を合わせた、いまの指定内容。 */
+export interface SmartAddValues {
+  due: SmartAddDue | null
+  priority: Priority | null
+  tags: string[]
+  recurrence: Recurrence | null
+}
+
+/**
+ * テキストの記法とボタンで選んだ内容を重ねる。ボタンが優先。
+ *
+ * 書き戻し（composeSmartAddInput）と、入力中の表示で同じ結果を使うために
+ * ここに置く。テキストがまだ空でも、選んだ内容は表示に出したい。
+ */
+export function mergeSmartAddOverrides(
+  parsed: SmartAddResult | null,
+  overrides: SmartAddOverrides,
+): SmartAddValues {
+  const typedDue = parsed?.dueAt
+    ? { date: parsed.dueAt, hasTime: parsed.dueHasTime }
+    : null
+
+  return {
+    due: overrides.due !== undefined ? overrides.due : typedDue,
+    priority:
+      overrides.priority !== undefined
+        ? overrides.priority
+        : (parsed?.priority ?? null),
+    tags: overrides.tags ?? parsed?.tags ?? [],
+    recurrence:
+      overrides.recurrence !== undefined
+        ? overrides.recurrence
+        : (parsed?.recurrence ?? null),
+  }
+}
+
+/**
+ * ボタンで選んだ内容を、SmartAdd の記法としてテキストに書き戻す
+ * （docs/08-todo-management.md 8.5）。
+ *
+ * スマートフォンでは記号を打つのが手間なので、期限や重要度をボタンから
+ * 選べるようにしている。選んだ結果を Item へ渡す経路をテキストとは別に
+ * 作ると、追加の経路（一覧の入力欄・共有の受付・オフラインの送信列・
+ * サーバー）すべてに構造化した値を通すことになる。記法に書き戻せば、
+ * これまでどおりテキスト1本のまま扱える。
+ *
+ * タイトルは `parseSmartAdd` が記法を取り除いたもの（`title`）から
+ * 組み立て直す。こうすると、テキストに書かれた記法とボタンで選んだ
+ * 内容が二重にならない。何も選んでいなければ書き換えない。
+ */
+export function composeSmartAddInput(
+  input: string,
+  overrides: SmartAddOverrides,
+  referenceDate: Date = new Date(),
+): string {
+  const untouched = Object.values(overrides).every(
+    (value) => value === undefined,
+  )
+  if (untouched) return input
+
+  const split = splitInput(input)
+  if (!split) return input
+
+  const parsed = parseSmartAdd(split.titleLine, referenceDate)
+  const { due, priority, tags, recurrence } = mergeSmartAddOverrides(
+    parsed,
+    overrides,
+  )
+
+  const parts = [parsed.title]
+  if (parsed.url) parts.push(parsed.url)
+  if (priority) parts.push(`!${priority}`)
+  if (due) parts.push(`^${formatDueExpression(due)}`)
+  for (const tag of tags) parts.push(`#${tag}`)
+  // 繰り返しは空白を含む（「毎週 月曜」）ので、他の記号より後ろに置く
+  if (recurrence) parts.push(`*${describeRecurrence(recurrence)}`)
+
+  const titleLine = parts.filter(Boolean).join(' ')
+  return split.body ? `${titleLine}\n${split.body}` : titleLine
+}
+
+/**
+ * 期限を、`^` の後ろに書ける形にする。
+ *
+ * 「明日」のような相対表現ではなく絶対表記にする。書き戻したテキストを
+ * 保存するのは送信時なので、日付をまたいでも指すものが変わらないように。
+ */
+function formatDueExpression(due: SmartAddDue): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const date = `${due.date.getFullYear()}/${pad(due.date.getMonth() + 1)}/${pad(due.date.getDate())}`
+  if (!due.hasTime) return date
+  return `${date} ${pad(due.date.getHours())}:${pad(due.date.getMinutes())}`
 }
 
 /**

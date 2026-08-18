@@ -750,7 +750,8 @@ async function removeSection(section: SectionDto) {
 
       <TagDialog
         v-if="tagOpen"
-        :items="[item]"
+        :tags="item.tags"
+        :count="1"
         @apply="applyTags"
         @close="tagOpen = false"
       />
