@@ -16,6 +16,7 @@
 | [08-todo-management.md](08-todo-management.md) | TODO管理（RTM相当のソート / ショートカット / SmartAdd） |
 | [09-tags.md](09-tags.md) | タグ分類 |
 | [10-recurrence.md](10-recurrence.md) | 繰り返しタスク（RTM の every / after） |
+| [11-scrapbox-notation.md](11-scrapbox-notation.md) | 本文の記法（Scrapbox 記法） |
 
 ## 基本コンセプト
 
@@ -27,6 +28,7 @@
 
 Diary と Section は直接紐付けず、**日付を介して疎結合に関連付ける**。
 Item は **Tag** で横断的に分類し、**繰り返し**にも対応する（いずれも Remember The Milk 相当）。
+本文は **Scrapbox 記法**のプレーンテキストとして保存する。
 
 ## 開発の進め方
 

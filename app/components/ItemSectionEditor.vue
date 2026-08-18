@@ -49,11 +49,10 @@ const dateLabel = computed(() => {
         削除
       </button>
     </header>
-    <textarea
+    <ScrapboxEditor
       v-model="body"
-      class="section__input"
-      rows="4"
       :aria-label="`${dateLabel} の作業記録`"
+      :min-rows="4"
     />
     <p v-if="errorMessage" class="section__error" role="alert">
       {{ errorMessage }}
@@ -96,22 +95,6 @@ const dateLabel = computed(() => {
   font-size: 0.8125rem;
   min-height: 2.25rem;
   padding: 0 0.375rem;
-}
-
-.section__input {
-  width: 100%;
-  resize: vertical;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.625rem 0.75rem;
-  outline: none;
-  line-height: 1.7;
-}
-
-.section__input:focus {
-  border-color: var(--accent);
 }
 
 .section__error {

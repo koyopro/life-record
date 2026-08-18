@@ -148,7 +148,8 @@ Section:
 
 ### body の形式
 
-Markdown を想定する。本文中に画像を埋め込めるようにする（[03-functional-spec.md](03-functional-spec.md) 参照）。
+**Scrapbox 記法のプレーンテキスト**として保存する（[11-scrapbox-notation.md](11-scrapbox-notation.md)）。
+HTML やリッチテキスト JSON にはしない。行頭の空白は階層を表すため、正規化しない。
 
 ---
 
@@ -417,7 +418,7 @@ CREATE TABLE diaries (
 ## 2.11 将来的に検討できること
 
 - Section に時刻を持たせる（`started_at` など）
-- Section の body を Markdown ではなくリッチテキスト / ブロック構造で保存する
+- Scrapbox 記法の対応範囲を広げる（テーブル・アイコンなど）
 - 全文検索インデックスを作り、Diary と Section を横断検索する
 - Diary 上で、その日に作業した Item を自動表示する
 - Item 上で、そのItemに関連する Diary へのリンクを日付ごとに表示する

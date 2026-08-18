@@ -42,7 +42,19 @@ const { data: item, error, refresh } = useFetch<ItemDetailDto>(
 
 // --- タイトル（リアルタイム保存） --------------------------------------
 
-const title = ref(item.value?.title ?? '')
+/**
+ * 編集中の値。まだ触っていなければ null で、取得結果をそのまま見せる。
+ *
+ * setup 時点の値を ref に固定してしまうと、取得が終わるのが後になる
+ * サーバー描画で空のまま出力され、ハイドレーションがずれる。
+ */
+const titleDraft = ref<string | null>(null)
+const title = computed({
+  get: () => titleDraft.value ?? item.value?.title ?? '',
+  set: (value: string) => {
+    titleDraft.value = value
+  },
+})
 
 const titleSave = useAutosave({
   source: title,
@@ -65,16 +77,18 @@ const titleSave = useAutosave({
 const sections = computed<SectionDto[]>(() => item.value?.sections ?? [])
 const primarySection = computed<SectionDto | null>(() => sections.value[0] ?? null)
 
-const body = ref(primarySection.value?.body ?? '')
-const bodyInput = ref<HTMLTextAreaElement | null>(null)
+const bodyDraft = ref<string | null>(null)
+const body = computed({
+  get: () => bodyDraft.value ?? primarySection.value?.body ?? '',
+  set: (value: string) => {
+    bodyDraft.value = value
+  },
+})
+const bodyEditor = ref<{ focus: () => void } | null>(null)
 
 /** 本文へフォーカスする。一覧の `y` から呼ばれる。 */
 function focusBody() {
-  const el = bodyInput.value
-  if (!el) return
-  el.focus()
-  // 続きから書けるよう末尾へ寄せる
-  el.setSelectionRange(el.value.length, el.value.length)
+  bodyEditor.value?.focus()
 }
 
 defineExpose({ focusBody })
@@ -396,11 +410,9 @@ async function removeSection(section: SectionDto) {
             {{ SAVE_STATE_LABELS[bodySave.state.value] }}
           </span>
         </div>
-        <textarea
-          ref="bodyInput"
+        <ScrapboxEditor
+          ref="bodyEditor"
           v-model="body"
-          class="body__input"
-          rows="6"
           placeholder="このタスクについてのメモ"
           aria-label="本文"
         />
@@ -609,23 +621,6 @@ async function removeSection(section: SectionDto) {
   font-size: 0.8125rem;
   color: var(--text-muted);
   font-weight: 600;
-}
-
-.body__input {
-  width: 100%;
-  min-height: 9rem;
-  resize: vertical;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.75rem;
-  outline: none;
-  line-height: 1.7;
-}
-
-.body__input:focus {
-  border-color: var(--accent);
 }
 
 .log,

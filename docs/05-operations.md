@@ -40,10 +40,13 @@ Vercel Cron や GitHub Actions での定期実行が候補。方式は [07-open-
 
 | 対象 | 形式 |
 |---|---|
-| Item / Section / Diary | SQL ダンプ、および JSON / Markdown |
+| Item / Section / Diary | SQL ダンプ、および JSON / テキスト |
 | 画像 | S3 上のオブジェクトをそのまま取得 |
 
-特に **Markdown へのエクスポート**を重視する。Section と Diary の本文は Markdown で保存されるため、日付ごとのファイル群として書き出せば、他のツール（Obsidian 等）へそのまま移せる。
+特に **テキストへのエクスポート**を重視する。Section と Diary の本文は Scrapbox 記法の
+プレーンテキストとして保存されるため（[11-scrapbox-notation.md](11-scrapbox-notation.md)）、
+日付ごとのファイル群として書き出せば、そのまま読める形で持ち出せる。
+Scrapbox へ取り込む場合も、記法をそろえてあるため変換がほぼ不要。
 
 エクスポート機能自体は後期マイルストーンで実装する。それまでは `pg_dump` で代替する。
 
