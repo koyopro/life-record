@@ -19,6 +19,31 @@
 
 ---
 
+## 現在地（2026-08-19）
+
+Milestone 1〜12 の機能実装は、以下を除いて完了している。
+
+**動いているもの**
+
+- Vercel + Neon で稼働。**Preview 環境を主に使い**、Vercel Deployment Protection で保護している（Q3）
+- 画像は本番の S3 で上げ下げできている（Milestone 8）
+- PWA としてインストールでき、オフラインでも TODO を読み書きできる（Milestone 11）
+- OS の共有シートから Inbox に入れられる（Milestone 12）
+
+**残っている作業**
+
+| | 内容 | 置き場所 |
+|---|---|---|
+| 1 | **バックアップの本番稼働**（S3 バケット・GitHub Secrets・復元の実演） | Milestone 10 |
+| 2 | 検索のタグ絞り込み | Milestone 9 |
+| 3 | Android 実機での共有シートの確認 | Milestone 12 |
+| 4 | 全文検索インデックスの検討（データ量が増えたら。Q9） | Milestone 9 |
+
+1 が最優先。**取れていないバックアップは、日常利用を続けるほど損失が大きくなる**ため、
+他の機能追加より先に片付ける。2〜3 は機能の穴埋め、4 は必要になってからでよい。
+
+---
+
 ## Milestone 1: 最小構成の決定
 
 目的：実装を開始できる状態にする。
@@ -31,10 +56,12 @@
 - [x] ローカル開発用 PostgreSQL を用意（Docker Compose）
 - [x] Nuxt プロジェクトを作成
 - [x] DBスキーマ定義とマイグレーションの仕組みを導入 → [02-data-model.md](02-data-model.md)
-- [ ] Neon プロジェクト作成
-- [ ] Vercel プロジェクト作成・Neon 連携
-- [ ] Deployment Protection が Production に効くかプランを確認 → Q3
-- [ ] 最初のデプロイを通す（疎通確認）
+- [x] Neon プロジェクト作成
+- [x] Vercel プロジェクト作成・Neon 連携
+- [x] Deployment Protection が Production に効くかプランを確認 → Q3
+      → **Preview 環境を主に使う**ことで解決。Preview は Hobby プランでも
+      Deployment Protection の対象になるため、有料プランに上げずに保護できている
+- [x] 最初のデプロイを通す（疎通確認）
 
 ---
 
@@ -220,16 +247,15 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 - [x] 開発用の S3 互換ストレージ（compose.yaml の MinIO）
 - [x] 孤児オブジェクトの扱いを整理（初期は許容）
 
-### 残っている作業（AWS 側の設定）
+### AWS 側の設定（完了）
 
-コードは動く状態になっている（ローカルは MinIO で確認済み）。
-本番で使うには、以下を AWS で行い、環境変数を設定する。
+ローカルは MinIO、本番は S3 で、実際に画像を上げて表示できることを確認済み。
 
-- [ ] S3 バケット作成（パブリックアクセス全ブロック・バージョニング有効）
-- [ ] IAM ユーザー / 最小権限ポリシー作成（対象は `<bucket>/images/*`、
+- [x] S3 バケット作成（パブリックアクセス全ブロック・バージョニング有効）
+- [x] IAM ユーザー / 最小権限ポリシー作成（対象は `<bucket>/images/*`、
       許可は `s3:PutObject` と `s3:GetObject` のみ）
-- [ ] CORS 設定（`PUT` を、アプリのオリジンからのみ許可する）
-- [ ] Vercel に `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY_ID` /
+- [x] CORS 設定（`PUT` を、アプリのオリジンからのみ許可する）
+- [x] Vercel に `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY_ID` /
       `S3_SECRET_ACCESS_KEY` を設定（`S3_ENDPOINT` は設定しない）
 
 ### 孤児オブジェクト
@@ -291,7 +317,23 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 - [x] 競合の検出（サーバー優先・検出したら知らせる）
 - [x] 再送で二重登録にならないようにする（API の冪等化）
 
-## Milestone 12 以降（将来検討）
+## Milestone 12: 共有からの取り込み（完了）
+
+スマートフォンの共有シートから、見ているページをそのまま Inbox に入れられるようにする。
+詳細は [13-share-target.md](13-share-target.md)。
+
+- [x] manifest の `share_target`（`GET /share`）
+- [x] 受付画面（`app/pages/share.vue`。一覧と同じ入力欄を使う）
+- [x] 受け取った `url` / `title` / `text` の組み立て（`shared/utils/share.ts`）
+- [x] 1行目の裸の URL を Item の url 欄へ移す（SmartAdd と共通）
+- [x] 保存は一覧と同じ経路（オフラインでも保存でき、後から送られる）
+- [x] 開き直しに備えて受け取った内容を `sessionStorage` に10分だけ控える
+- [x] インストールできる状態にする（`<VitePwaManifest />` / `useCredentials`）
+- [ ] Android 実機での確認（[13-share-target.md](13-share-target.md) 13.7）
+
+---
+
+## Milestone 13 以降（将来検討）
 
 - Section・日記のオフライン対応（いまは TODO 本体のみ）
 - Section への時刻の付与
