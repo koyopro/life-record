@@ -3,6 +3,66 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
   css: ['~/assets/css/main.css'],
+  modules: ['@vite-pwa/nuxt'],
+
+  routeRules: {
+    /*
+     * オフライン時に Service Worker が返す殻（app/pages/offline-shell.vue）。
+     * SSR せずに静的な HTML として書き出し、Service Worker に持たせる。
+     */
+    '/offline-shell': { ssr: false, prerender: true },
+  },
+
+  /*
+   * PWA（docs/12-offline.md 12.2）。
+   *
+   * Service Worker が受け持つのはアプリの起動だけ。TODO の中身は
+   * IndexedDB に置き、Cache Storage には入れない。
+   */
+  pwa: {
+    registerType: 'autoUpdate',
+    manifest: {
+      name: 'datalake',
+      short_name: 'datalake',
+      description: '個人用記録サービス',
+      lang: 'ja',
+      // ホーム画面から開いたら「今日」を出す
+      start_url: '/today',
+      scope: '/',
+      display: 'standalone',
+      background_color: '#f6f6f4',
+      theme_color: '#f6f6f4',
+      icons: [
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        {
+          src: '/icon-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'maskable',
+        },
+      ],
+    },
+    workbox: {
+      // アプリの起動に要るものだけを持つ
+      globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+      // 画面への移動はすべて殻で受ける（API と画像は素通し）
+      navigateFallback: '/offline-shell',
+      navigateFallbackDenylist: [/^\/api\//, /^\/images\//],
+      /*
+       * 新しい版を入れたら、古いキャッシュは残さず、待たずに入れ替える。
+       * 古い Service Worker が居座ると、消えた JS を読もうとして壊れる。
+       */
+      cleanupOutdatedCaches: true,
+      clientsClaim: true,
+      skipWaiting: true,
+    },
+    client: {
+      // 個人用なのでインストールの誘導は出さない
+      installPrompt: false,
+    },
+  },
+
   app: {
     head: {
       titleTemplate: '%s | datalake',
