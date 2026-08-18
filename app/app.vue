@@ -124,6 +124,7 @@ function isActive(to: string): boolean {
           {{ entry.label }}
         </NuxtLink>
       </nav>
+      <ThemeToggle />
     </header>
     <main class="shell__main">
       <NuxtPage />
@@ -145,12 +146,18 @@ function isActive(to: string): boolean {
 }
 
 .shell__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   padding-bottom: 0.75rem;
 }
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
+  /* 区分が増えても、テーマの切り替えは右端に残す */
+  flex: 1;
 }
 
 .nav__link {
