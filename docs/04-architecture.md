@@ -165,6 +165,14 @@ Item と Section をまとめて作る処理（クイックメモの作成）が
 Drizzle Kit で SQL ファイルベースのマイグレーションを生成し、リポジトリで管理する。
 スキーマ定義は `server/db/schema.ts`、生成物は `drizzle/`。DDL は [02-data-model.md](02-data-model.md) を参照。
 
+本番への適用は**手動**とする（手順は [README](../README.md) の「本番へのデプロイ」）。
+スキーマ変更の頻度が低く、変更時には必ず自分が居るため、破壊的な変更を目視で止められる方を採る。
+
+自動化するなら GitHub Actions（`main` への push 時）を採る。Vercel の Build Command に
+混ぜる案は、Preview デプロイのビルドまで本番DBへ DDL を打つため採らない。
+ただし Actions にしても Vercel のデプロイとの順序は保証されないので、
+「先に流す」という規律は結局必要になる。適用の手間より、その規律の方が本質。
+
 ## 4.5 画像 / S3
 
 ### バケット構成

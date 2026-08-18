@@ -76,6 +76,24 @@ docs/                 仕様書
 本番で使うには AWS 側の設定が要る。手順は
 [docs/06-roadmap.md](docs/06-roadmap.md) Milestone 8 を参照。
 
+## 本番へのデプロイ
+
+コードは Vercel が `main` への push で自動デプロイする。
+**マイグレーションは自動では流れない**ので、スキーマを変更したときは手元から適用する。
+
+```bash
+# Neon の direct 接続文字列（-pooler が付かない方）を使う。
+# pooler 経由では DDL が通らないことがある
+DATABASE_URL="postgres://...@ep-xxxx.aws.neon.tech/neondb?sslmode=require" \
+  npx drizzle-kit migrate
+```
+
+`drizzle.config.ts` は `.env` を読むが、`process.loadEnvFile()` は既存の環境変数を
+上書きしないため、上のように前置きすればローカルDBへ誤って適用されることはない。
+
+デプロイとの前後関係は自分で担保する。新しいカラムを使うコードを先に出すと、
+適用までの間だけ本番が 500 を返す。迷ったら**マイグレーションを先に流す**。
+
 ## バックアップとエクスポート
 
 DB は GitHub Actions で毎日 `pg_dump` を取り、S3 へ置く
