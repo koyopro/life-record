@@ -141,8 +141,15 @@ function onTouchEnd() {
         {{ item.title }}
       </button>
       <p v-if="bodyExcerpt" class="card__body">{{ bodyExcerpt }}</p>
+      <!--
+        重要度は左端の色で表している（.card--priority-*）。文字では出さないが、
+        色だけが手がかりになるのを避けるため、読み上げ用の名前だけ残す。
+      -->
+      <span v-if="item.priority" class="card__priority">
+        重要度{{ PRIORITY_LABELS[item.priority] }}
+      </span>
       <div
-        v-if="item.priority || due.state !== 'none' || item.tags.length || recurrenceLabel || pending"
+        v-if="due.state !== 'none' || item.tags.length || recurrenceLabel || pending"
         class="card__meta"
       >
         <!-- この端末にだけある変更。オフライン中に書いたものが分かるように -->
@@ -156,13 +163,6 @@ function onTouchEnd() {
         <span v-if="recurrenceLabel" class="card__recurrence" :title="recurrenceLabel">
           <span aria-hidden="true">↻</span>
           <span class="card__recurrence-text">{{ recurrenceLabel }}</span>
-        </span>
-        <span
-          v-if="item.priority"
-          class="card__priority"
-          :class="`card__priority--${item.priority}`"
-        >
-          重要度{{ PRIORITY_LABELS[item.priority] }}
         </span>
         <span
           v-if="due.state !== 'none'"
@@ -330,26 +330,20 @@ function onTouchEnd() {
   font-size: 0.8125rem;
 }
 
+/* 読み上げにだけ残す。場所を取らせない（表示は左端の色が担う） */
 .card__priority {
-  font-weight: 600;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* 未同期は状態の説明であって、優先度の高い情報ではない。控えめに出す */
 .card__pending {
   color: var(--text-muted);
   font-size: 0.75rem;
-}
-
-.card__priority--1 {
-  color: var(--danger);
-}
-
-.card__priority--2 {
-  color: var(--accent);
-}
-
-.card__priority--3 {
-  color: var(--text-muted);
 }
 
 .card__due {
