@@ -212,7 +212,7 @@ function onTouchEnd() {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   /* 左端の四角は自前で余白を持つので、その分だけ詰める */
-  padding: 0.75rem 0.75rem 0.75rem 0.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 0.5rem;
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
@@ -272,17 +272,17 @@ function onTouchEnd() {
 .card__select {
   background: transparent;
   border: 0;
-  padding: 0.25rem;
-  /* タップ目標を確保する */
-  min-width: 2.25rem;
-  min-height: 2.25rem;
+  padding: 0.125rem;
+  /* タップ目標を確保しつつ、行の高さはタイトルの文字サイズに近づける（RTM に倣う） */
+  min-width: 1.75rem;
+  min-height: 1.75rem;
   display: grid;
   place-items: center;
 }
 
 .card__select-box {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.125rem;
+  height: 1.125rem;
   border: 1.5px solid var(--border);
   border-radius: 4px;
   display: grid;
@@ -302,7 +302,7 @@ function onTouchEnd() {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: 0.125rem;
 }
 
 .card__head {

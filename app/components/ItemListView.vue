@@ -872,7 +872,7 @@ defineExpose({
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.375rem;
   /* スワイプ時にカードが横へずれても見切れないようにする */
   overflow-x: clip;
 }
