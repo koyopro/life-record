@@ -39,10 +39,28 @@ export async function deleteItem(id: string): Promise<void> {
   await db.delete('items', id)
 }
 
-/** サーバーから来た Item を、同期済みのローカル表現へ直す。 */
+/**
+ * サーバーから来た Item を、同期済みのローカル表現へ直す。
+ *
+ * IndexedDB へ入れるものは、Vue が包んだ値（Proxy）を含んでいてはいけない。
+ * 構造化複製ができず DataCloneError になるため、ここで素の値に直す。
+ */
 export function toLocalItem(item: ItemDto, syncState: SyncState = 'synced'): LocalItem {
   return {
-    ...item,
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    priority: item.priority,
+    url: item.url,
+    dueAt: item.dueAt,
+    dueHasTime: item.dueHasTime,
+    body: item.body,
+    tags: [...item.tags],
+    recurrenceRule: item.recurrenceRule,
+    recurrenceBasis: item.recurrenceBasis,
+    seriesId: item.seriesId,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
     syncState,
     baseUpdatedAt: syncState === 'synced' ? item.updatedAt : null,
   }

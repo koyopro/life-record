@@ -202,22 +202,6 @@ const bodySave = useAutosave({
   },
 })
 
-// 別画面での変更や再取得に追随する。編集中の内容は上書きしない。
-watch(item, (value) => {
-  if (!value) return
-  if (titleSave.state.value === 'idle' || titleSave.state.value === 'saved') {
-    title.value = value.title
-    titleSave.markSynced()
-  }
-  const latest = primarySection.value?.body ?? ''
-  if (bodySave.state.value === 'idle' || bodySave.state.value === 'saved') {
-    if (latest !== body.value) {
-      body.value = latest
-      bodySave.markSynced()
-    }
-  }
-})
-
 // --- URL（リアルタイム保存） -------------------------------------------
 
 const urlDraft = ref<string | null>(null)
@@ -235,6 +219,37 @@ const urlSave = useAutosave({
   save: async (value) => {
     await store.patch([id.value], { url: value.trim() || null })
   },
+})
+
+/**
+ * 別画面での変更や再取得に追随する。編集中の内容は上書きしない。
+ *
+ * 触っていない欄（下書きが null）は、届いた内容をそのまま見せる。
+ * このとき markSynced を忘れると、内容が届いただけで「変わった」と
+ * 見なされ、同じ値をそのまま保存してしまう（オフラインでは、触っても
+ * いないタスクに未同期の印が付く）。
+ */
+watch(item, (value) => {
+  if (!value) return
+
+  const titleIdle =
+    titleSave.state.value === 'idle' || titleSave.state.value === 'saved'
+  if (titleDraft.value === null || titleIdle) {
+    titleDraft.value = null
+    titleSave.markSynced()
+  }
+
+  const urlIdle = urlSave.state.value === 'idle' || urlSave.state.value === 'saved'
+  if (urlDraft.value === null || urlIdle) {
+    urlDraft.value = null
+    urlSave.markSynced()
+  }
+
+  const bodyIdle = bodySave.state.value === 'idle' || bodySave.state.value === 'saved'
+  if (bodyDraft.value === null || bodyIdle) {
+    bodyDraft.value = null
+    bodySave.markSynced()
+  }
 })
 
 // --- メタデータの操作 ---------------------------------------------------

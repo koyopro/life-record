@@ -39,7 +39,11 @@ export function useAutosave<T>(options: Options<T>) {
     if (options.enabled && !options.enabled()) return
 
     const value = source.value
-    if (value === lastSaved) return
+    if (value === lastSaved) {
+      // 送るものが無い。「未保存」の表示だけを残さない
+      if (state.value === 'pending') state.value = 'idle'
+      return
+    }
 
     // 前の保存が終わってから次を送る。順序が入れ替わらないようにするため。
     if (inFlight) await inFlight.catch(() => {})

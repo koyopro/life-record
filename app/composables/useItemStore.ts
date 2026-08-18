@@ -1,6 +1,7 @@
 import type { ItemDto, ItemPatch } from '~~/shared/types/item'
 import type { LocalItem } from '~/utils/offline/local-database'
 import { requestFlush } from '~/utils/offline/flush-signal'
+import { isNetworkError } from '~/utils/offline/sync-runner'
 import {
   allItems,
   lastFetchedAt,
@@ -42,7 +43,7 @@ export function useItemStore() {
 
   // イベントハンドラの中からも呼ばれるため、Nuxt の文脈が要るものは
   // ここで受け取っておく（あとから呼ぶと文脈が失われている）
-  const { online } = useOnline()
+  const { browserOnline, reachable } = useOnline()
 
   /**
    * 表示できるものが何も無く、まだ読み込み中。
@@ -88,9 +89,12 @@ export function useItemStore() {
 
       fetchedAt.value = now.toISOString()
       fetchError.value = null
+      reachable.value = true
       return true
-    } catch {
+    } catch (e) {
       fetchError.value = '最新の内容を取得できませんでした'
+      // 届かなかったのなら、オフラインの表示に切り替える
+      if (import.meta.client && isNetworkError(e)) reachable.value = false
       return false
     } finally {
       fetching.value = false
@@ -111,9 +115,14 @@ export function useItemStore() {
     await pruneConflicts()
   }
 
-  /** 前回の取得から時間が経っていれば取り直す。画面を開き直したときに呼ぶ。 */
+  /**
+   * 前回の取得から時間が経っていれば取り直す。画面を開き直したときに呼ぶ。
+   *
+   * 判断に使うのはブラウザの online だけにする。「届かない」と見なして
+   * いる間も試しに行くことで、繋がり直したことに自力で気づける。
+   */
   async function refreshIfStale(maxAgeMs = 30_000): Promise<void> {
-    if (!online.value) return
+    if (!browserOnline.value) return
     const previous = fetchedAt.value ? new Date(fetchedAt.value).getTime() : 0
     if (Date.now() - previous < maxAgeMs) return
     await fetchFromServer()

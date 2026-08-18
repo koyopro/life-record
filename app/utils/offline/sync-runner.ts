@@ -146,6 +146,16 @@ function classify(error: unknown, operation: PendingOperation): SyncOutcome {
   return { type: 'failed', message: message ?? '送信できませんでした' }
 }
 
+/**
+ * 応答そのものが返ってこなかったか（＝サーバーへ届いていない）。
+ *
+ * `navigator.onLine` は電波の有無しか見ていない。繋がっているのに
+ * 通信できない場合を捉えるため、実際の失敗の形から判断する。
+ */
+export function isNetworkError(error: unknown): boolean {
+  return statusOf(error) === undefined
+}
+
 function statusOf(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined
   const candidate = error as {

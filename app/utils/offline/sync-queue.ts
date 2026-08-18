@@ -64,8 +64,13 @@ export async function enqueueOperation(
   const record = {
     opId: crypto.randomUUID(),
     kind: operation.kind,
-    itemIds: operation.itemIds,
-    payload: operation.payload,
+    itemIds: [...operation.itemIds],
+    /*
+     * 画面から渡された値には Vue が包んだもの（Proxy）が混じりうる。
+     * そのままでは構造化複製できず DataCloneError になるので、
+     * ここで素の値に直す。中身はいずれも JSON で表せるものだけ。
+     */
+    payload: JSON.parse(JSON.stringify(operation.payload)) as unknown,
     createdAt: now.toISOString(),
     attempts: 0,
     nextAttemptAt: now.toISOString(),
