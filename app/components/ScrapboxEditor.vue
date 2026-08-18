@@ -103,9 +103,20 @@ function onInput(event?: Event) {
 }
 
 /** キャレット位置だけを動かす。行の入れ替えを伴わない操作で使う。 */
-async function setCaret(position: number) {
+async function setCaret(start: number, end: number = start) {
   await nextTick()
-  input.value?.setSelectionRange(position, position)
+  input.value?.setSelectionRange(start, end)
+}
+
+/** 編集中の行を丸ごと差し替える。 */
+function replaceActiveLine(text: string) {
+  const index = activeIndex.value
+  if (index === null) return
+  activeText.value = text
+  const lines = [...rawLines.value]
+  lines[index] = text
+  commit(lines)
+  resize()
 }
 
 /** 折り返しに合わせて高さを合わせる。 */
@@ -122,6 +133,86 @@ function resize() {
 // 行の分割として扱われてしまうため。
 
 const composing = ref(false)
+
+/**
+ * キー操作の入り口。
+ *
+ * Vue のキー修飾子は使わない。`.delete` が Backspace の別名になっている等、
+ * 名前と実際のキーが一致しない箇所があり、取り違えると事故になるため、
+ * `event.key` を直接見る。
+ */
+function onKeydown(event: KeyboardEvent) {
+  switch (event.key) {
+    case 'Enter':
+      return onEnter(event)
+    case 'Backspace':
+      return onBackspace(event)
+    case 'Delete':
+      return onForwardDelete(event)
+    case 'ArrowUp':
+      return onArrow(event, -1)
+    case 'ArrowDown':
+      return onArrow(event, 1)
+    case 'Tab':
+      return onTab(event)
+    case 'Escape':
+      event.preventDefault()
+      return deactivate()
+    case '[':
+      return onOpenBracket(event)
+    case 'd':
+      // macOS の Ctrl+D は「カーソルより後ろを1文字消す」
+      if (event.ctrlKey) return onForwardDelete(event)
+      return
+  }
+}
+
+/**
+ * `[` を打ったら `]` も添える。カーソルは `[` の直後に置く。
+ *
+ * Scrapbox の記法はほぼ角括弧なので、閉じ忘れを防ぐ。
+ * 選択範囲があるときは、それを囲んで選択を保つ。
+ */
+function onOpenBracket(event: KeyboardEvent) {
+  if (composing.value) return
+  const el = input.value
+  if (activeIndex.value === null || !el) return
+
+  event.preventDefault()
+
+  const start = el.selectionStart ?? 0
+  const end = el.selectionEnd ?? start
+  const value = activeText.value
+  const selected = value.slice(start, end)
+
+  replaceActiveLine(`${value.slice(0, start)}[${selected}]${value.slice(end)}`)
+  void setCaret(start + 1, start + 1 + selected.length)
+}
+
+/**
+ * カーソルより後ろを1文字消す（`Delete` / macOS の `Ctrl+D`）。
+ *
+ * 行末では消す文字がないが、そこにあるのは改行なので次の行と結合する。
+ * 行内なら何もせず、ブラウザ既定の削除に任せる。
+ */
+function onForwardDelete(event: KeyboardEvent) {
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+
+  const atEnd =
+    el.selectionStart === el.value.length && el.selectionEnd === el.value.length
+  if (!atEnd) return
+
+  const lines = [...rawLines.value]
+  if (index >= lines.length - 1) return
+
+  event.preventDefault()
+  const caret = el.value.length
+  lines.splice(index, 2, (lines[index] ?? '') + (lines[index + 1] ?? ''))
+  commit(lines)
+  void activate(index, caret, lines)
+}
 
 function onEnter(event: KeyboardEvent) {
   if (composing.value) return
@@ -260,12 +351,7 @@ defineExpose({
           @blur="deactivate"
           @compositionstart="composing = true"
           @compositionend="composing = false"
-          @keydown.enter="onEnter"
-          @keydown.backspace="onBackspace"
-          @keydown.up="onArrow($event, -1)"
-          @keydown.down="onArrow($event, 1)"
-          @keydown.tab="onTab"
-          @keydown.esc.prevent="deactivate"
+          @keydown="onKeydown"
         />
       </div>
 

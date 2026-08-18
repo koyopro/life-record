@@ -69,6 +69,25 @@ const actionTarget = ref<ItemDto | null>(null)
 const split = useSplitLayout()
 
 /**
+ * カーソルが動いたら、その行が見えるところまでスクロールする。
+ *
+ * `j` / `k` で送っていると画面外へ出てしまい、どこを操作しているのか
+ * 分からなくなるため。すでに見えているときは動かさない。
+ */
+const listEl = ref<HTMLElement | null>(null)
+
+watch(
+  () => list.cursorItem.value?.id,
+  async (id) => {
+    if (!id) return
+    await nextTick()
+    listEl.value
+      ?.querySelector(`[data-item-id="${id}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  },
+)
+
+/**
  * カーソル以外から明示的に選んだ Item。
  *
  * 系列の過去オカレンスなど、いま表示している一覧に含まれないものを
@@ -499,8 +518,12 @@ defineExpose({
         {{ emptyMessage }}
       </p>
 
-      <ul v-else class="list__items">
-        <li v-for="(item, index) in list.items.value" :key="item.id">
+      <ul v-else ref="listEl" class="list__items">
+        <li
+          v-for="(item, index) in list.items.value"
+          :key="item.id"
+          :data-item-id="item.id"
+        >
           <ItemCard
             :item="item"
             :focused="index === list.cursor.value"
