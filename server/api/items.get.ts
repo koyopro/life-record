@@ -10,7 +10,7 @@ import {
 } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { itemTags, items, tags } from '~~/server/db/schema'
-import { endOfAppDay } from '~~/server/utils/date'
+import { endOfAppDay } from '~~/shared/utils/date'
 import { assertUuid, orderByFor, toItemDtos } from '~~/server/utils/items'
 import {
   isItemStatus,

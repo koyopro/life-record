@@ -1,8 +1,7 @@
 import { useDb } from '~~/server/db'
 import { itemTags, items, sections } from '~~/server/db/schema'
-import { todayDueAt } from '~~/server/utils/date'
-import { toAppDate } from '~~/shared/utils/date'
-import { toItemDto } from '~~/server/utils/items'
+import { toAppDate, todayDueAt } from '~~/shared/utils/date'
+import { assertUuid, toItemDto } from '~~/server/utils/items'
 import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, type ItemDto, type ItemStatus } from '~~/shared/types/item'
 import { parseSmartAdd } from '~~/shared/utils/smart-add'
@@ -17,6 +16,14 @@ interface Body {
   text?: string
   /** 初期 status。省略時は inbox。 */
   status?: ItemStatus
+  /**
+   * クライアントが決めた id。省略時は DB が採番する。
+   *
+   * 画面は応答を待たずに一覧へ出すため、その時点で id が要る。
+   * 採番を任せると、返ってくるまで「まだ id のない Item」を抱えることになり、
+   * 続けて行う編集の宛先が決まらない。
+   */
+  id?: string
 }
 
 /**
@@ -64,6 +71,7 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
     const [item] = await tx
       .insert(items)
       .values({
+        id: payload?.id !== undefined ? assertUuid(payload.id) : undefined,
         title: parsed.title,
         status,
         priority: parsed.priority,

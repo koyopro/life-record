@@ -48,17 +48,17 @@ const untagged = computed(() => route.query.untagged === 'true')
 // RTM の「未完了 / 完了」の切り替えと同じ。いまの絞り込み（タグ・期限）は
 // そのままに、完了したものだけを出す。状態は URL に残す。
 //
-// status は進行状態を1つだけ持つ値なので、完了したものは inbox でも
-// backlog でもなくなる。そのため完了側では画面の status を見ない。
+// 両側とも useItemList があらかじめ取っておくので、切り替えは待たされない。
 
 const completed = computed(() => route.query.completed === 'true')
 
 const list = useItemList({
-  status: () => (completed.value ? 'closed' : props.status),
+  status: () => props.status,
+  completed: () => completed.value,
   tag: () => tag.value,
   untagged: () => untagged.value,
   dueUntilToday: () => Boolean(props.dueUntilToday),
-  openOnly: () => !completed.value && Boolean(props.openOnly),
+  openOnly: () => Boolean(props.openOnly),
   sortStorageKey: props.storageKey,
   defaultSort:
     props.defaultSort ?? (props.status === 'inbox' ? 'created' : 'priority'),
@@ -192,7 +192,8 @@ function openUrl() {
 
 function onDetailRemoved(id: string) {
   if (pinnedId.value === id) pinnedId.value = null
-  void list.refresh()
+  // 詳細側の削除も裏で送られる。取り直しはその後ろに並べる
+  void enqueue(() => list.refresh())
 }
 
 /** 右ペインで系列の別オカレンスを選んだとき。一覧にあればカーソルも合わせる。 */

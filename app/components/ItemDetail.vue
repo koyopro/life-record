@@ -194,15 +194,39 @@ const urlSave = useAutosave({
 
 const actionError = ref<string | null>(null)
 
-async function patch(values: Record<string, unknown>) {
+/**
+ * メタデータを変える。
+ *
+ * 画面には先に反映し、送信は裏で行う（一覧と同じ考え方）。
+ * 失敗したら、変えた項目だけを元の値へ戻す。
+ */
+async function patch(values: Partial<ItemDetailDto>) {
+  const before = item.value
+  if (!before) return
+
   actionError.value = null
-  try {
-    await $fetch(`/api/items/${id.value}`, { method: 'PATCH', body: values })
+  item.value = { ...before, ...values }
+
+  void enqueue(async () => {
+    try {
+      await $fetch(`/api/items/${id.value}`, { method: 'PATCH', body: values })
+    } catch {
+      actionError.value = '更新できませんでした'
+      if (item.value) {
+        const keys = Object.keys(values) as (keyof ItemDetailDto)[]
+        item.value = {
+          ...item.value,
+          ...(Object.fromEntries(
+            keys.map((key) => [key, before[key]]),
+          ) as Partial<ItemDetailDto>),
+        }
+      }
+      return
+    }
     await refresh()
+    // 一覧側は自分で先読みできないので、届いてから知らせる
     emit('changed')
-  } catch {
-    actionError.value = '更新できませんでした'
-  }
+  })
 }
 
 const dueOpen = ref(false)
@@ -269,17 +293,30 @@ const pastOccurrences = computed(() => {
 
 async function applyTags(changes: { add: string[]; remove: string[] }) {
   tagOpen.value = false
+  const before = item.value
+  if (!before) return
+
   actionError.value = null
-  try {
-    await $fetch('/api/items/tags', {
-      method: 'POST',
-      body: { ids: [id.value], add: changes.add, remove: changes.remove },
-    })
+  const next = new Set(
+    before.tags.filter((name) => !changes.remove.includes(name)),
+  )
+  for (const name of changes.add) next.add(name)
+  item.value = { ...before, tags: [...next].sort() }
+
+  void enqueue(async () => {
+    try {
+      await $fetch('/api/items/tags', {
+        method: 'POST',
+        body: { ids: [id.value], add: changes.add, remove: changes.remove },
+      })
+    } catch {
+      actionError.value = 'タグを変更できませんでした'
+      if (item.value) item.value = { ...item.value, tags: before.tags }
+      return
+    }
     await Promise.all([refresh(), tagList.refresh()])
     emit('changed')
-  } catch {
-    actionError.value = 'タグを変更できませんでした'
-  }
+  })
 }
 
 async function applyDue(due: { date: Date; hasTime: boolean } | null) {
@@ -296,7 +333,10 @@ const dueLabel = computed(() =>
 
 async function remove() {
   if (!confirm('このタスクを削除します。よろしいですか？')) return
-  await $fetch(`/api/items/${id.value}`, { method: 'DELETE' })
+  // 送信は裏で行い、画面はすぐ次へ移す
+  void enqueue(async () => {
+    await $fetch(`/api/items/${id.value}`, { method: 'DELETE' })
+  })
   emit('removed', id.value)
   // 消した詳細は履歴に残っているので、戻るのではなく一覧へ進める
   if (!props.embedded) await navigateTo(listOrigin.value)

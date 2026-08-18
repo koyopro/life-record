@@ -30,6 +30,33 @@
 - ライフサイクルルールで自動削除しない（長期保持が目的のため）
 - 別リージョンまたは別ストレージへの複製を検討する
 
+#### IAM ユーザーの権限
+
+アプリが S3 に対して行うのは、署名付き URL の発行に必要な
+`PutObject`（アップロード）と `GetObject`（表示）だけ
+（`server/utils/s3.ts`）。オブジェクトキーは `images/` 配下に固定されるため、
+権限もそこに絞る。
+
+削除は行わない。バージョニングと合わせて、誤操作で画像を失わないようにする。
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DatalakeImagesReadWrite",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": "arn:aws:s3:::life-records/images/*"
+    }
+  ]
+}
+```
+
+バケット一覧の取得（`s3:ListBucket`）は要らない。アプリはキーを
+自分で組み立てて直接アクセスするため、存在しないキーには
+`ListBucket` が無いと 403、あると 404 が返る、という違いしかない。
+
 ### 実行方法
 
 **GitHub Actions で毎日 `pg_dump` を取り、S3 へ置く**（[07-open-questions.md](07-open-questions.md) Q5）。

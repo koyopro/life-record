@@ -29,6 +29,16 @@ export function useUndo() {
     return entry.label
   }
 
+  /**
+   * 積んだ操作を取り下げる。
+   *
+   * 操作はローカルへ反映した時点で積むため、送信が失敗したものが
+   * 残ってしまう。戻す先がもう無いので、スタックから外す。
+   */
+  function remove(entry: UndoEntry) {
+    stack.value = stack.value.filter((item) => item !== entry)
+  }
+
   function clear() {
     stack.value = []
   }
@@ -38,6 +48,7 @@ export function useUndo() {
     lastLabel: computed(() => stack.value.at(-1)?.label ?? null),
     push,
     undo,
+    remove,
     clear,
   }
 }
