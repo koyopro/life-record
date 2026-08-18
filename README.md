@@ -9,6 +9,7 @@
 | レイヤ | 採用 |
 |---|---|
 | フレームワーク | Nuxt 4 (Vue 3 + TypeScript) |
+| オフライン | IndexedDB（`idb`）+ Service Worker（`@vite-pwa/nuxt`） |
 | API | Nitro server routes |
 | DB | PostgreSQL（本番: Neon / 開発: Docker） |
 | ORM | Drizzle ORM |
@@ -46,6 +47,7 @@ http://localhost:3000 で開く。
 | `npm run dev` | 開発サーバー |
 | `npm run build` | 本番ビルド |
 | `npm run preview` | ビルド結果のプレビュー |
+| `npm test` | テスト（vitest） |
 | `npm run db:generate` | スキーマ定義からマイグレーションSQLを生成 |
 | `npm run db:migrate` | マイグレーションを適用 |
 | `npm run db:studio` | Drizzle Studio でDBを閲覧 |
@@ -57,15 +59,31 @@ app/                  Nuxt アプリケーション（画面）
   pages/              ファイルベースルーティング
   components/
   composables/
+  utils/offline/      IndexedDB とサーバーへの同期（docs/12-offline.md）
 server/               Nitro server routes（API）
   api/
   routes/             API 以外の経路（画像の解決など）
   db/                 Drizzle のスキーマ定義と接続
   utils/
 shared/               画面と API で共有する型・処理
+tests/                テスト（vitest）
 drizzle/              生成されたマイグレーションSQL
 docs/                 仕様書
 ```
+
+## オフライン
+
+TODO はブラウザの IndexedDB にも保存し、オフラインでも一覧・追加・編集・
+状態変更ができる。行った操作は列にたまり、繋がったときに順に送られる。
+アプリ本体は Service Worker が持つので、圏外でも起動できる。
+
+サーバーの DB が正本で、IndexedDB はその写しと未送信の操作の置き場。
+仕組みと方針（競合の扱い・再送・テスト）は
+[docs/12-offline.md](docs/12-offline.md) を参照。
+
+Service Worker は本番ビルドでのみ動く。手元で確かめるときは
+`npm run build && npm run preview` してから、DevTools の Network を
+Offline にする。
 
 ## 画像
 

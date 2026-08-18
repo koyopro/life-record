@@ -17,6 +17,7 @@
 | [09-tags.md](09-tags.md) | タグ分類 |
 | [10-recurrence.md](10-recurrence.md) | 繰り返しタスク（RTM の every / after） |
 | [11-scrapbox-notation.md](11-scrapbox-notation.md) | 本文の記法（Scrapbox 記法） |
+| [12-offline.md](12-offline.md) | オフライン対応（IndexedDB / Service Worker / 同期） |
 
 ## 基本コンセプト
 
