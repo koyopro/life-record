@@ -19,6 +19,18 @@ const status = computed<ItemStatus | 'all'>(() => {
   return 'backlog'
 })
 
+/**
+ * 完了だけを見ている状態（`h`）。一覧コンポーネント側が URL に置く。
+ *
+ * タブの見た目はこちらを優先する。完了を見ている間に「未着手」が
+ * 選ばれたままだと、一覧と選択中のタブが食い違って見えるため。
+ */
+const completed = computed(() => route.query.completed === 'true')
+
+const activeTab = computed<ItemStatus | 'all'>(() =>
+  completed.value ? 'closed' : status.value,
+)
+
 const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null)
 
 useHead({ title: 'タスク' })
@@ -28,6 +40,8 @@ function selectStatus(value: ItemStatus | 'all') {
   const query: Record<string, unknown> = { ...route.query, status: value }
   // 一覧の中身が変わるので、選択は持ち越さない
   delete query.selected
+  // タブを選んだらそれが指す status に従う。完了の表示は解く
+  delete query.completed
   router.replace({ query: query as Record<string, string> })
 }
 
@@ -44,8 +58,8 @@ async function add(text: string) {
         :key="item.value"
         type="button"
         class="tabs__item"
-        :class="{ 'tabs__item--active': status === item.value }"
-        :aria-current="status === item.value ? 'page' : undefined"
+        :class="{ 'tabs__item--active': activeTab === item.value }"
+        :aria-current="activeTab === item.value ? 'page' : undefined"
         @click="selectStatus(item.value)"
       >
         {{ item.label }}

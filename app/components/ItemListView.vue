@@ -43,12 +43,22 @@ const tag = computed<string | undefined>(() => {
 
 const untagged = computed(() => route.query.untagged === 'true')
 
+// --- 完了済みの表示（`h`） -----------------------------------------------
+//
+// RTM の「未完了 / 完了」の切り替えと同じ。いまの絞り込み（タグ・期限）は
+// そのままに、完了したものだけを出す。状態は URL に残す。
+//
+// status は進行状態を1つだけ持つ値なので、完了したものは inbox でも
+// backlog でもなくなる。そのため完了側では画面の status を見ない。
+
+const completed = computed(() => route.query.completed === 'true')
+
 const list = useItemList({
-  status: () => props.status,
+  status: () => (completed.value ? 'closed' : props.status),
   tag: () => tag.value,
   untagged: () => untagged.value,
   dueUntilToday: () => Boolean(props.dueUntilToday),
-  openOnly: () => Boolean(props.openOnly),
+  openOnly: () => !completed.value && Boolean(props.openOnly),
   sortStorageKey: props.storageKey,
   defaultSort:
     props.defaultSort ?? (props.status === 'inbox' ? 'created' : 'priority'),
@@ -191,7 +201,7 @@ function onSelectSeries(id: string) {
   list.focusItem(id)
 }
 
-function setFilter(patch: { tag?: string; untagged?: string }) {
+function setFilter(patch: { tag?: string; untagged?: string; completed?: string }) {
   const query: Record<string, unknown> = { ...route.query, ...patch }
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined) delete query[key]
@@ -215,6 +225,12 @@ function toggleUntagged() {
     untagged: untagged.value ? undefined : 'true',
     tag: undefined,
   })
+}
+
+/** 未完了 / 完了 を切り替える（`h`）。 */
+function showCompleted(value: boolean) {
+  if (value === completed.value) return
+  setFilter({ completed: value ? 'true' : undefined })
 }
 
 /**
@@ -247,16 +263,23 @@ const shortcuts = computed<Shortcut[]>(() => [
     },
   },
   {
+    keys: ['h'],
+    label: '完了 / 未完了を切り替え',
+    group: '移動',
+    run: () => showCompleted(!completed.value),
+  },
+  {
     keys: ['i'],
     label: 'タスクを選択',
     group: '選択',
     run: () => list.toggleSelect(),
   },
   {
+    // 完了側を見ているときは戻す操作のほうが要る。RTM も同じキーで両方を担う
     keys: ['c'],
-    label: '完了にする',
+    label: completed.value ? '未完了に戻す' : '完了にする',
     group: '編集',
-    run: () => list.complete(),
+    run: () => (completed.value ? list.setStatus('backlog') : list.complete()),
   },
   {
     keys: ['d'],
@@ -488,6 +511,28 @@ defineExpose({
       </nav>
 
       <div class="list__bar">
+      <!-- キーボードを使わなくても切り替えられるようにする（`h` と同じ） -->
+      <div class="list__view" role="group" aria-label="完了 / 未完了">
+        <button
+          type="button"
+          class="list__view-item"
+          :class="{ 'list__view-item--active': !completed }"
+          :aria-pressed="!completed"
+          @click="showCompleted(false)"
+        >
+          未完了
+        </button>
+        <button
+          type="button"
+          class="list__view-item"
+          :class="{ 'list__view-item--active': completed }"
+          :aria-pressed="completed"
+          @click="showCompleted(true)"
+        >
+          完了
+        </button>
+      </div>
+
       <div class="list__status" role="status">
         <span v-if="list.selectedIds.value.size" class="list__selected">
           {{ list.selectedIds.value.size }}件を選択中
@@ -530,7 +575,7 @@ defineExpose({
       </p>
 
       <p v-else-if="!list.items.value.length" class="list__placeholder">
-        {{ emptyMessage }}
+        {{ completed ? '完了したタスクはありません。' : emptyMessage }}
       </p>
 
       <ul v-else ref="listEl" class="list__items">
@@ -666,6 +711,12 @@ defineExpose({
 .list {
   min-width: 0;
   display: grid;
+  /*
+   * 列は必ず親の幅に収める。既定（auto）だと、中身のいちばん広いもの
+   * （並び替えのセレクトなど）の最小幅まで列が広がり、分割表示で
+   * 一覧が詳細に重なる。はみ出させず、中身のほうを折り返させる。
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.625rem;
 }
 
@@ -709,13 +760,18 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  /* 一覧が狭いとき（分割表示の左側）は、操作を次の行へ送る */
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
   min-height: 2rem;
 }
 
 .list__status {
   color: var(--text-muted);
   font-size: 0.8125rem;
+  /* 左の切り替えと右の並び替えのあいだを埋める */
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -730,14 +786,42 @@ defineExpose({
 .list__controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.5rem;
-  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* 未完了 / 完了。いま何を見ているかが一目で分かるよう、両方を出す */
+.list__view {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.list__view-item {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  min-height: 2.25rem;
+  padding: 0 0.625rem;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.list__view-item--active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .list__sort {
   display: flex;
   align-items: center;
   gap: 0.375rem;
+  min-width: 0;
 }
 
 .list__sort-label {
@@ -748,6 +832,9 @@ defineExpose({
 .list__sort-select {
   font: inherit;
   font-size: 0.875rem;
+  /* 選択肢の文字数ぶんの幅を要求させない。狭いときは縮める */
+  min-width: 0;
+  max-width: 100%;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);

@@ -8,18 +8,10 @@ const props = withDefaults(
     placeholder?: string
     /** 複数行を受け付けるか。false なら SmartAdd 専用の1行入力。 */
     multiline?: boolean
-    /**
-     * 開いた直後に入力欄へフォーカスするか。
-     *
-     * 一覧のキーボード操作が主目的の画面では、フォーカスされていると
-     * ショートカットが入力欄に吸われるため既定は false。
-     */
-    autofocus?: boolean
   }>(),
   {
     placeholder: '思いついたことを書く\n1行目がタイトルになります',
     multiline: true,
-    autofocus: false,
   },
 )
 
@@ -93,10 +85,12 @@ function focus() {
 
 defineExpose({ focus })
 
-onMounted(() => {
-  // スマートフォンでは勝手にキーボードが出ると邪魔なのでフォーカスしない
-  if (props.autofocus && !matchMedia('(hover: none)').matches) focus()
-})
+/*
+ * 開いた直後の自動フォーカスは持たない。フォーカスされていると一覧の
+ * キーボード操作が入力欄に吸われ、スマートフォンでは勝手にキーボードが出る。
+ * 書き始めるときは `t` でここへ移る（docs/08-todo-management.md 8.4）。
+ */
+useComposerRegistration(focus)
 </script>
 
 <template>

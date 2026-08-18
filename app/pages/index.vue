@@ -13,8 +13,12 @@ async function add(text: string) {
 
 <template>
   <div class="page">
-    <!-- Inbox は素早く書き込むことが目的なので、開いたらすぐ入力できるようにする -->
-    <ItemComposer autofocus @submit="add" />
+    <!--
+      開いただけでは入力欄にフォーカスしない。フォーカスされていると
+      一覧のキーボード操作が入力欄に吸われて使えなくなる。
+      書き始めるときは `t` で入力欄へ移る（docs/08-todo-management.md 8.4）。
+    -->
+    <ItemComposer @submit="add" />
     <ItemListView
       ref="listView"
       status="inbox"

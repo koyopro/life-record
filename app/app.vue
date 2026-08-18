@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Shortcut } from '~/composables/useShortcuts'
+
 const route = useRoute()
 
 /**
@@ -11,9 +13,89 @@ const NAV = [
   { to: '/today', label: '今日' },
   { to: '/', label: 'Inbox' },
   { to: '/items', label: 'タスク' },
+  { to: '/tags', label: 'タグ' },
   { to: '/diary', label: '日記' },
   { to: '/search', label: '検索' },
 ]
+
+// --- 画面をまたぐショートカット（docs/08-todo-management.md 8.4） ---------
+//
+// 一覧の操作は ItemListView が持つが、追加と移動はどの画面からでも
+// 効いてほしいのでここに置く。RTM の `t` / `g` に合わせる。
+
+const composerFocus = provideComposer()
+
+/**
+ * タスクを追加する（`t`）。
+ *
+ * 入力欄のある画面ではそこへ移る。ない画面（日記・検索・詳細）からは、
+ * 思いついたことを書き留める場所である Inbox へ移ってから入力欄へ移る。
+ */
+async function addTask() {
+  if (composerFocus.value) {
+    composerFocus.value()
+    return
+  }
+  await navigateTo('/')
+  const focus = await composerReady()
+  focus?.()
+}
+
+/**
+ * 入力欄が現れるまで待つ。
+ *
+ * 画面を移ってすぐには描画されていない。一覧の取得を待つあいだ
+ * ページごと出ないため、その場で呼んでも間に合わない。
+ */
+function composerReady(): Promise<(() => void) | null> {
+  if (composerFocus.value) return Promise.resolve(composerFocus.value)
+
+  return new Promise((resolve) => {
+    const stop = watch(composerFocus, (focus) => {
+      if (!focus) return
+      stop()
+      clearTimeout(timer)
+      resolve(focus)
+    })
+    // 現れないまま待ち続けても意味がないのであきらめる
+    const timer = setTimeout(() => {
+      stop()
+      resolve(null)
+    }, 3000)
+  })
+}
+
+const shortcuts: Shortcut[] = [
+  {
+    keys: ['t'],
+    label: 'タスクを追加',
+    group: '追加',
+    run: () => addTask(),
+  },
+  {
+    prefix: 'g',
+    keys: ['t'],
+    label: '今日へ移動',
+    group: '移動',
+    run: () => void navigateTo('/today'),
+  },
+  {
+    prefix: 'g',
+    keys: ['s'],
+    label: 'タグへ移動',
+    group: '移動',
+    run: () => void navigateTo('/tags'),
+  },
+  {
+    prefix: 'g',
+    keys: ['i'],
+    label: 'Inbox へ移動',
+    group: '移動',
+    run: () => void navigateTo('/'),
+  },
+]
+
+useShortcuts(shortcuts)
 
 /**
  * いまどの区分にいるか。
