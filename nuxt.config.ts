@@ -87,10 +87,17 @@ export default defineNuxtConfig({
     head: {
       titleTemplate: '%s | datalake',
       meta: [
-        // スマートフォンでの表示を基準にする
+        /*
+         * スマートフォンでの表示を基準にする。
+         *
+         * interactive-widget=resizes-content は、画面キーボードが出たときに
+         * 表示領域そのものを縮める指定。これがないと、下端に固定している
+         * 入力欄（ItemComposer のシート）がキーボードの裏に隠れる。
+         */
         {
           name: 'viewport',
-          content: 'width=device-width, initial-scale=1, viewport-fit=cover',
+          content:
+            'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content',
         },
         // 実際の値は表示中のテーマに合わせて ThemeToggle が差し替える
         { name: 'theme-color', content: '#f6f6f4' },

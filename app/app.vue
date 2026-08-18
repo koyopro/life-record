@@ -145,6 +145,20 @@ function isActive(to: string): boolean {
     <main class="shell__main">
       <NuxtPage />
     </main>
+
+    <!--
+      タスクを追加する（`t` と同じ入り口）。狭い画面ではキーボードが
+      使えないので、どの画面からでも押せる場所に置く。入力欄のない画面
+      （日記・検索・詳細）からは Inbox へ移ってから開く。
+    -->
+    <button
+      type="button"
+      class="add"
+      aria-label="タスクを追加"
+      @click="addTask"
+    >
+      <span aria-hidden="true">＋</span>
+    </button>
   </div>
 </template>
 
@@ -154,6 +168,48 @@ function isActive(to: string): boolean {
   max-width: 40rem;
   margin: 0 auto;
   padding: 0.75rem 1rem 4rem;
+}
+
+/* 右下のボタンが一覧の最後を覆わないように、その分だけ下を空ける */
+@media (max-width: 40rem) {
+  .shell {
+    padding-bottom: 6rem;
+  }
+}
+
+/*
+ * タスクを追加するボタン。狭い画面だけに出す。
+ *
+ * 出す・出さないは CSS で決める。幅の判定はハイドレーションのあとなので、
+ * v-if にすると最初の描画に間に合わない。
+ * 片手で押せる右下に固定する。シート（z-index 20）より下に置く。
+ */
+.add {
+  display: none;
+  position: fixed;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 10;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+  font-size: 1.5rem;
+  line-height: 1;
+  place-items: center;
+}
+
+@media (max-width: 40rem) {
+  .add {
+    display: grid;
+  }
+}
+
+.add:active {
+  transform: scale(0.96);
 }
 
 /* 一覧と詳細を並べる画面だけ、必要な幅まで広げる */

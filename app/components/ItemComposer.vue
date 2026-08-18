@@ -12,12 +12,20 @@ const props = withDefaults(
     initialText?: string
     /** 送信ボタンの文字。 */
     submitLabel?: string
+    /**
+     * 狭い画面でも入力欄をそのまま置くか。
+     *
+     * 既定では狭い画面では隠し、右下の「＋」から開く。書くことが目的の画面
+     * （共有の受付）では、開く操作を挟まずそのまま出す。
+     */
+    inline?: boolean
   }>(),
   {
     placeholder: '思いついたことを書く\n1行目がタイトルになります',
     multiline: true,
     initialText: '',
     submitLabel: '追加',
+    inline: false,
   },
 )
 
@@ -25,6 +33,23 @@ const emit = defineEmits<{ submit: [text: string] }>()
 
 const text = ref(props.initialText)
 const textarea = ref<HTMLTextAreaElement | null>(null)
+
+/**
+ * 狭い画面では、入力欄を置く代わりに下から重ねて出す。
+ *
+ * 一覧をできるだけ広く見せたいので、書いていない間は場所を取らせない。
+ * 開くのは右下の「＋」（app.vue）か `t`（docs/08-todo-management.md 8.4）。
+ */
+const narrow = useCompactLayout()
+const compact = computed(() => narrow.value && !props.inline)
+const opened = ref(false)
+
+/** 重ねて出しているか。閉じている狭い画面では何も描かない。 */
+const asSheet = computed(() => compact.value && opened.value)
+
+function close() {
+  opened.value = false
+}
 
 const canSubmit = computed(() => text.value.trim().length > 0)
 
@@ -69,6 +94,13 @@ function submit() {
   emit('submit', text.value)
   // 送信完了を待たずに空にする。続けて書けることを優先する。
   text.value = ''
+
+  // 重ねて出していたなら閉じる。追加したものが一覧に出るのを見せたい
+  if (compact.value) {
+    close()
+    return
+  }
+
   nextTick(() => {
     autoGrow()
     textarea.value?.focus()
@@ -100,8 +132,15 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+/**
+ * 書き始める。狭い画面では、まず入力欄を出してからフォーカスする。
+ *
+ * 右下の「＋」（app.vue）と `t` の行き先。
+ */
 function focus() {
-  textarea.value?.focus()
+  if (compact.value) opened.value = true
+  // 描かれる前にフォーカスしても効かない
+  nextTick(() => textarea.value?.focus())
 }
 
 // 最初から入っているテキストは、高さを合わせないと後ろが隠れる
@@ -120,45 +159,66 @@ useComposerRegistration(focus)
 </script>
 
 <template>
-  <form class="composer" @submit.prevent="submit">
-    <textarea
-      ref="textarea"
-      v-model="text"
-      class="composer__input"
-      :rows="multiline ? 2 : 1"
-      :placeholder="placeholder"
-      autocapitalize="off"
-      @input="autoGrow"
-      @keydown="onKeydown"
-    />
+  <!--
+    狭い画面で閉じている間は何も描かない。一覧に場所を譲る。
+    書き始めるのは右下の「＋」（app.vue）か `t`。
+  -->
+  <template v-if="!compact || opened">
+    <div v-if="asSheet" class="scrim" @click="close" />
 
-    <div v-if="showPreview" class="composer__preview">
-      <span class="composer__preview-title">{{ parsed!.title || '（タイトルなし）' }}</span>
-      <span v-if="parsed!.priority" class="composer__chip">
-        重要度{{ PRIORITY_LABELS[parsed!.priority] }}
-      </span>
-      <span v-if="dueLabel" class="composer__chip">期限 {{ dueLabel }}</span>
-      <span
-        v-for="warning in parsed!.warnings"
-        :key="warning"
-        class="composer__chip composer__chip--warning"
-      >
-        {{ warning }}
-      </span>
-    </div>
+    <form
+      class="composer"
+      :class="{ 'composer--sheet': asSheet, 'composer--inline': inline }"
+      @submit.prevent="submit"
+    >
+      <textarea
+        ref="textarea"
+        v-model="text"
+        class="composer__input"
+        :rows="multiline ? 2 : 1"
+        :placeholder="placeholder"
+        autocapitalize="off"
+        @input="autoGrow"
+        @keydown="onKeydown"
+        @keydown.esc="close"
+      />
 
-    <div class="composer__actions">
-      <span class="composer__hint">
-        {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度 #タグ
-        <span v-if="!parsed?.dueAt" class="composer__default">
-          ・ 期限は今日
+      <div v-if="showPreview" class="composer__preview">
+        <span class="composer__preview-title">{{ parsed!.title || '（タイトルなし）' }}</span>
+        <span v-if="parsed!.priority" class="composer__chip">
+          重要度{{ PRIORITY_LABELS[parsed!.priority] }}
         </span>
-      </span>
-      <button type="submit" class="composer__submit" :disabled="!canSubmit">
-        {{ submitLabel }}
-      </button>
-    </div>
-  </form>
+        <span v-if="dueLabel" class="composer__chip">期限 {{ dueLabel }}</span>
+        <span
+          v-for="warning in parsed!.warnings"
+          :key="warning"
+          class="composer__chip composer__chip--warning"
+        >
+          {{ warning }}
+        </span>
+      </div>
+
+      <div class="composer__actions">
+        <span class="composer__hint">
+          {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度 #タグ
+          <span v-if="!parsed?.dueAt" class="composer__default">
+            ・ 期限は今日
+          </span>
+        </span>
+        <button
+          v-if="asSheet"
+          type="button"
+          class="composer__cancel"
+          @click="close"
+        >
+          閉じる
+        </button>
+        <button type="submit" class="composer__submit" :disabled="!canSubmit">
+          {{ submitLabel }}
+        </button>
+      </div>
+    </form>
+  </template>
 </template>
 
 <style scoped>
@@ -170,6 +230,42 @@ useComposerRegistration(focus)
   padding: 0.75rem;
   display: grid;
   gap: 0.5rem;
+}
+
+/*
+ * 狭い画面では、開いていない入力欄を出さない。
+ *
+ * 幅の判定（compact）が効くのはハイドレーションのあとなので、それに任せると
+ * サーバーが描いた入力欄が一瞬見えて消え、その分だけ画面がずれる。
+ * 最初の描画から隠れているように、CSS でも同じ境目を持つ。
+ */
+@media (max-width: 40rem) {
+  .composer:not(.composer--sheet):not(.composer--inline) {
+    display: none;
+  }
+}
+
+/*
+ * 狭い画面では、一覧の上に重ねて下端から出す（他のシートと同じ形）。
+ * キーボードが出ても隠れないよう、viewport の
+ * interactive-widget=resizes-content と組み合わせている（nuxt.config.ts）。
+ */
+.composer--sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  border-radius: 16px 16px 0 0;
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+  /* シートより下、フローティングボタンより上 */
+  z-index: 19;
 }
 
 .composer__input {
@@ -263,5 +359,15 @@ useComposerRegistration(focus)
 .composer__submit:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* 重ねて出しているときだけ。書かずに閉じる導線 */
+.composer__cancel {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
+  flex: 0 0 auto;
 }
 </style>

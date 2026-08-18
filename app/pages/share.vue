@@ -172,7 +172,9 @@ function release() {
         一覧と同じ入力欄。1行目がタイトル、2行目以降が本文になる。
         書き直してからでも保存できる（SmartAdd の記法もそのまま効く）。
       -->
+      <!-- 共有を受け取ったあとに書く画面なので、狭い画面でもそのまま出す -->
       <ItemComposer
+        inline
         :initial-text="composed.text"
         submit-label="保存"
         placeholder="1行目がタイトルになります"

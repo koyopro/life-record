@@ -23,7 +23,7 @@ async function add(text: string) {
       ref="listView"
       status="inbox"
       storage-key="sort:inbox"
-      empty-message="Inbox は空です。思いついたことを上の欄に書いてください。"
+      empty-message="Inbox は空です。思いついたことを書き留めてください。"
     />
   </div>
 </template>
