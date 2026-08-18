@@ -112,6 +112,15 @@ function isActive(to: string): boolean {
 
 <template>
   <div class="shell" :class="{ 'shell--wide': wide }">
+    <!--
+      <link rel="manifest"> を出す（@vite-pwa/nuxt の部品）。モジュールを
+      入れるだけでは出ないので、ここで置く。これが無いとブラウザは manifest を
+      読まず、インストールできる条件を満たさない。Android の「ホーム画面に
+      追加」が「ショートカットを作成」になり、共有先にも出てこない
+      （docs/13-share-target.md 13.1）。
+    -->
+    <VitePwaManifest />
+
     <header class="shell__header">
       <nav class="nav">
         <NuxtLink

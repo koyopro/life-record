@@ -36,6 +36,22 @@ Service Worker で受け取って渡し直す仕組みが要る（ファイル�
 インストールしていないブラウザ表示でも、`/share` を直接開けば「共有された内容が
 ありません」と出るだけで、アプリの他の部分には影響しない。
 
+### インストールできる状態にしておく
+
+Android で「ホーム画面に追加」が **「ショートカットを作成」** になる場合、ブラウザが
+manifest を読めていない。ショートカットは単にブラウザで URL を開くだけのもので、
+共有先にも出てこない。次の2つが要る。
+
+- `<link rel="manifest">` が最初の HTML に入っていること。
+  `@vite-pwa/nuxt` はモジュールを入れるだけでは出さないので、`<VitePwaManifest />` を
+  app.vue に置く。判定は最初の HTML を見た時点で行われるため、後から足しても遅い。
+- その取得に Cookie が付くこと（`crossorigin="use-credentials"`。`pwa.useCredentials`）。
+  Deployment Protection で守っているため、Cookie 無しの取得には認証の画面が返る。
+
+確認するには、PC の Chrome で対象の URL を開き DevTools の Application → Manifest を
+見る。読めていれば name やアイコンが表示され、Installability に問題があればそこに出る。
+Android 実機は `chrome://inspect` で PC から同じように見られる。
+
 ## 13.2 受付画面（app/pages/share.vue）
 
 出すものは4つだけ。

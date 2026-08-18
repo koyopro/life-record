@@ -21,6 +21,15 @@ export default defineNuxtConfig({
    */
   pwa: {
     registerType: 'autoUpdate',
+    /*
+     * manifest の取得に Cookie を付ける（`crossorigin="use-credentials"`）。
+     *
+     * サイト全体を Vercel の Deployment Protection で守っているため
+     * （docs/07-open-questions.md Q3）、Cookie の付かない取得には認証の画面が
+     * 返る。既定では manifest だけが Cookie 無しで取得されるので、これを
+     * 付けないとブラウザは manifest を読めず、インストールできない。
+     */
+    useCredentials: true,
     manifest: {
       name: 'datalake',
       short_name: 'datalake',
