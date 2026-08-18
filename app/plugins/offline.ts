@@ -5,12 +5,15 @@
  * IndexedDB を読んでから最新を取りに行く（docs/12-offline.md 12.4）。
  * 画面はどちらの経路でも useItemStore を見るだけでよい。
  */
-export default defineNuxtPlugin(async () => {
+export default defineNuxtPlugin(async (nuxtApp) => {
   const store = useItemStore()
 
   if (import.meta.server) {
-    // 最初の描画に間に合わせる。取れなくても画面は出し、続きはブラウザ側で
-    await store.fetchFromServer()
+    // 最初の描画に間に合わせる。取れなくても画面は出し、続きはブラウザ側で。
+    // 一覧を出さない画面（日記・検索・タグ）でまで引くと、その都度
+    // 無駄に DB を叩くことになるので、必要な画面だけにする
+    const path = nuxtApp.$router.currentRoute.value.path
+    if (showsItems(path)) await store.fetchFromServer()
     return
   }
 
@@ -26,3 +29,13 @@ export default defineNuxtPlugin(async () => {
     await store.refreshIfStale(15_000)
   })()
 })
+
+/**
+ * TODO の一覧を出す画面か。
+ *
+ * 外れていても壊れない（ブラウザ側で取り直す）。サーバー描画のときに
+ * 引くかどうかだけを決める。
+ */
+function showsItems(path: string): boolean {
+  return path === '/' || path === '/today' || path.startsWith('/items')
+}
