@@ -137,9 +137,22 @@ function onTouchEnd() {
     </button>
 
     <div class="card__main">
-      <button type="button" class="card__title" @click.stop="emit('open')">
-        {{ item.title }}
-      </button>
+      <!--
+        タイトルが短ければ、期限は右側に同じ行で収まる（RTM に倣う）。
+        長いタイトルは折り返すが、期限はその1行目の高さに留まる。
+      -->
+      <div class="card__head">
+        <button type="button" class="card__title" @click.stop="emit('open')">
+          {{ item.title }}
+        </button>
+        <span
+          v-if="due.state !== 'none'"
+          class="card__due"
+          :class="`card__due--${due.state}`"
+        >
+          {{ due.label }}
+        </span>
+      </div>
       <p v-if="bodyExcerpt" class="card__body">{{ bodyExcerpt }}</p>
       <!--
         重要度は左端の色で表している（.card--priority-*）。文字では出さないが、
@@ -149,7 +162,7 @@ function onTouchEnd() {
         重要度{{ PRIORITY_LABELS[item.priority] }}
       </span>
       <div
-        v-if="due.state !== 'none' || item.tags.length || recurrenceLabel || pending"
+        v-if="item.tags.length || recurrenceLabel || pending"
         class="card__meta"
       >
         <!-- この端末にだけある変更。オフライン中に書いたものが分かるように -->
@@ -163,13 +176,6 @@ function onTouchEnd() {
         <span v-if="recurrenceLabel" class="card__recurrence" :title="recurrenceLabel">
           <span aria-hidden="true">↻</span>
           <span class="card__recurrence-text">{{ recurrenceLabel }}</span>
-        </span>
-        <span
-          v-if="due.state !== 'none'"
-          class="card__due"
-          :class="`card__due--${due.state}`"
-        >
-          {{ due.label }}
         </span>
         <a
           v-if="item.url"
@@ -299,7 +305,15 @@ function onTouchEnd() {
   gap: 0.25rem;
 }
 
+.card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
 .card__title {
+  flex: 1;
+  min-width: 0;
   background: transparent;
   border: 0;
   padding: 0;
@@ -347,6 +361,8 @@ function onTouchEnd() {
 }
 
 .card__due {
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
