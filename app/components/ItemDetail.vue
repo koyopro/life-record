@@ -581,17 +581,7 @@ async function removeSection(section: SectionDto) {
         </div>
 
         <div class="meta__row">
-          <span class="meta__label">
-            URL
-            <a
-              v-if="item.url && isOpenableUrl(item.url)"
-              class="meta__open"
-              :href="item.url"
-              target="_blank"
-              rel="noopener noreferrer"
-            >開く</a>
-            <span class="meta__save">{{ SAVE_STATE_LABELS[urlSave.state.value] }}</span>
-          </span>
+          <span class="meta__label">URL</span>
           <input
             ref="urlInput"
             v-model="url"
@@ -601,6 +591,14 @@ async function removeSection(section: SectionDto) {
             placeholder="https://..."
             aria-label="URL"
           />
+          <a
+            v-if="item.url && isOpenableUrl(item.url)"
+            class="meta__open"
+            :href="item.url"
+            target="_blank"
+            rel="noopener noreferrer"
+          >開く</a>
+          <span class="meta__save">{{ SAVE_STATE_LABELS[urlSave.state.value] }}</span>
         </div>
 
         <div class="meta__row">
@@ -831,43 +829,54 @@ async function removeSection(section: SectionDto) {
   color: var(--danger);
 }
 
+/*
+ * RTM のように、ラベルと値を同じ行に収めて縦を詰める。
+ * ラベルは行ごとの折り返し行を持たせず、値（チップ）とまとめて
+ * 1つの flex 行にする。狭い画面ではチップだけ次の行へ折り返す。
+ */
 .meta {
   display: grid;
-  gap: 0.625rem;
+  gap: 0.375rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem;
+  padding: 0.625rem 0.75rem;
 }
 
 .meta__row {
-  display: grid;
-  gap: 0.375rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .meta__label {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  flex: 0 0 auto;
+  min-width: 3.25rem;
   font-size: 0.8125rem;
   color: var(--text-muted);
 }
 
 .meta__open {
+  flex: 0 0 auto;
   color: var(--accent);
+  font-size: 0.8125rem;
 }
 
 .meta__save {
+  flex: 0 0 auto;
   font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .meta__url {
   font: inherit;
   /* iOS でフォーカス時に自動ズームされないよう 16px を保つ */
   font-size: 1rem;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0 0.75rem;
+  flex: 1 1 10rem;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0 0.625rem;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -885,9 +894,9 @@ async function removeSection(section: SectionDto) {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text);
-  min-height: 2.25rem;
-  padding: 0 0.75rem;
-  font-size: 0.875rem;
+  min-height: 2rem;
+  padding: 0 0.625rem;
+  font-size: 0.8125rem;
 }
 
 .chip--active {
