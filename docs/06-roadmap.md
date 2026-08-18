@@ -208,15 +208,35 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 
 ## Milestone 8: 画像アップロード
 
+- [x] 画像の配信方式を確定 → [07-open-questions.md](07-open-questions.md) Q4
+- [x] 署名付きアップロードURL発行 API（`POST /api/images`）
+- [x] 表示の解決（`GET /images/<ID>.<拡張子>` → 302 → 署名付き取得URL）
+- [x] ドラッグ&ドロップ・貼り付けによる画像追加（Section / Diary 両方）
+- [x] スマートフォンからの画像追加（選択・撮影）
+- [x] 本文への Scrapbox 記法での埋め込みと表示（[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.7）
+- [x] 開発用の S3 互換ストレージ（compose.yaml の MinIO）
+- [x] 孤児オブジェクトの扱いを整理（初期は許容）
+
+### 残っている作業（AWS 側の設定）
+
+コードは動く状態になっている（ローカルは MinIO で確認済み）。
+本番で使うには、以下を AWS で行い、環境変数を設定する。
+
 - [ ] S3 バケット作成（パブリックアクセス全ブロック・バージョニング有効）
-- [ ] IAM ユーザー / 最小権限ポリシー作成
-- [ ] CORS 設定
-- [ ] 署名付きアップロードURL発行 API
-- [ ] 画像の配信方式を確定 → [07-open-questions.md](07-open-questions.md) Q4
-- [ ] ドラッグ&ドロップによる画像追加（Section / Diary 両方）
-- [ ] スマートフォンからの画像追加（選択・撮影）
-- [ ] 本文への Scrapbox 記法での埋め込みと表示（[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.7）
-- [ ] 孤児オブジェクトの扱いを整理（初期は許容）
+- [ ] IAM ユーザー / 最小権限ポリシー作成（対象は `<bucket>/images/*`、
+      許可は `s3:PutObject` と `s3:GetObject` のみ）
+- [ ] CORS 設定（`PUT` を、アプリのオリジンからのみ許可する）
+- [ ] Vercel に `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY_ID` /
+      `S3_SECRET_ACCESS_KEY` を設定（`S3_ENDPOINT` は設定しない）
+
+### 孤児オブジェクト
+
+本文から画像の記法を消しても、S3 のオブジェクトは残る。
+初期実装ではこれを許容する（[03-functional-spec.md](03-functional-spec.md) 3.5）。
+
+個人利用の量では実害がなく、消す仕組みを持つと「まだ他の本文から
+参照されている画像を消してしまう」危険のほうが大きいため。
+必要になった時点で、本文を走査して未参照のものを見つける方式を検討する。
 
 ---
 

@@ -13,7 +13,7 @@
 | DB | PostgreSQL（本番: Neon / 開発: Docker） |
 | ORM | Drizzle ORM |
 | ホスティング | Vercel |
-| 画像ストレージ | Amazon S3（Milestone 6 以降） |
+| 画像ストレージ | Amazon S3（開発: MinIO / Docker） |
 
 ## 開発環境のセットアップ
 
@@ -24,7 +24,7 @@ npm install
 # 2. 環境変数を用意
 cp .env.example .env
 
-# 3. 開発用 PostgreSQL を起動
+# 3. 開発用の PostgreSQL と S3 互換ストレージ（MinIO）を起動
 docker compose up -d
 
 # 4. マイグレーションを適用
@@ -59,11 +59,22 @@ app/                  Nuxt アプリケーション（画面）
   composables/
 server/               Nitro server routes（API）
   api/
+  routes/             API 以外の経路（画像の解決など）
   db/                 Drizzle のスキーマ定義と接続
   utils/
+shared/               画面と API で共有する型・処理
 drizzle/              生成されたマイグレーションSQL
 docs/                 仕様書
 ```
+
+## 画像
+
+本文の画像は S3 に置き、本文には `[/images/<ID>.<拡張子>]` だけを書く。
+開発環境では compose.yaml の MinIO が S3 の代わりになるので、AWS の
+バケットがなくても動く（http://localhost:9001 が MinIO のコンソール）。
+
+本番で使うには AWS 側の設定が要る。手順は
+[docs/06-roadmap.md](docs/06-roadmap.md) Milestone 8 を参照。
 
 ## 認証
 

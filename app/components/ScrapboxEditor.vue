@@ -389,13 +389,83 @@ watch(model, () => {
   if (line.raw !== editing) activeText.value = line.content
 })
 
+// --- 画像（docs/11-scrapbox-notation.md 11.7） ---------------------------
+
+const images = useImageUpload()
+const filePicker = ref<HTMLInputElement | null>(null)
+/** 本文の上に画像が乗っているか。落とせることが分かるようにする。 */
+const dragging = ref(false)
+
+/**
+ * 画像を1行として差し込む。
+ *
+ * 編集中の行の次に入れる。行の途中に混ぜると、書きかけの文が
+ * 画像記法で割られてしまう。編集していなければ末尾に足す。
+ */
+function insertImage(path: string) {
+  const lines = [...rawLines.value]
+  const at = activeIndex.value === null ? lines.length : activeIndex.value + 1
+
+  // 空の本文に足すときは、先頭の空行をそのまま使う
+  const replaceEmpty = lines.length === 1 && lines[0] === ''
+  if (replaceEmpty) lines.splice(0, 1, `[${path}]`)
+  else lines.splice(at, 0, `[${path}]`)
+
+  commit(lines)
+  deactivate()
+}
+
+async function uploadAll(files: File[]) {
+  for (const file of files) {
+    const path = await images.upload(file)
+    if (path) insertImage(path)
+  }
+}
+
+function onDrop(event: DragEvent) {
+  const files = images.imagesFrom(event.dataTransfer)
+  dragging.value = false
+  if (files.length === 0) return
+  event.preventDefault()
+  void uploadAll(files)
+}
+
+function onDragOver(event: DragEvent) {
+  // 画像を落とせる場所であることをブラウザに伝える
+  if (!event.dataTransfer?.types.includes('Files')) return
+  event.preventDefault()
+  dragging.value = true
+}
+
+function onPaste(event: ClipboardEvent) {
+  const files = images.imagesFrom(event.clipboardData)
+  if (files.length === 0) return
+  event.preventDefault()
+  void uploadAll(files)
+}
+
+function onPick(event: Event) {
+  const input = event.target as HTMLInputElement
+  void uploadAll([...(input.files ?? [])])
+  // 同じ画像をもう一度選べるようにしておく
+  input.value = ''
+}
+
 defineExpose({
   focus: () => activate(rawLines.value.length - 1),
 })
 </script>
 
 <template>
-  <div class="editor" :aria-label="props.ariaLabel">
+  <div
+    class="editor"
+    :class="{ 'editor--dragging': dragging }"
+    :aria-label="props.ariaLabel"
+    @dragover="onDragOver"
+    @dragleave="dragging = false"
+    @drop="onDrop"
+    @paste="onPaste"
+  >
     <button
       v-if="isEmpty && activeIndex === null"
       type="button"
@@ -447,6 +517,33 @@ defineExpose({
         v-html="renderLine(line)"
       />
     </template>
+
+    <!--
+      画像の追加。PC はドラッグ&ドロップと貼り付けで足りるが、
+      スマートフォンにはどちらもないのでボタンを置く。
+      order で常に末尾に置く（行は order で並べているため）。
+    -->
+    <footer class="editor__foot">
+      <button
+        type="button"
+        class="editor__image"
+        :disabled="images.uploading.value > 0"
+        @click="filePicker?.click()"
+      >
+        {{ images.uploading.value > 0 ? '画像を追加中…' : '画像を追加' }}
+      </button>
+      <span v-if="images.errorMessage.value" class="editor__error" role="alert">
+        {{ images.errorMessage.value }}
+      </span>
+      <input
+        ref="filePicker"
+        class="editor__picker"
+        type="file"
+        accept="image/*"
+        multiple
+        @change="onPick"
+      />
+    </footer>
   </div>
 </template>
 
@@ -465,6 +562,12 @@ defineExpose({
   overflow-wrap: anywhere;
 }
 
+/* 画像を落とせる場所であることを示す */
+.editor--dragging {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
 .editor__start {
   background: transparent;
   border: 0;
@@ -473,6 +576,39 @@ defineExpose({
   font: inherit;
   text-align: left;
   cursor: text;
+}
+
+.editor__foot {
+  /* 行は order で並べるので、足元は必ず最後に来るよう大きな値を置く */
+  order: 9999;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.editor__image {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.editor__image:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.editor__error {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.editor__picker {
+  display: none;
 }
 
 .editor__input {
