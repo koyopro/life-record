@@ -60,10 +60,24 @@ export function formatDue(item: ItemDto, now = new Date()): DueDisplay {
   return { label: `${date}${time}`, state: 'later' }
 }
 
-/** 期限を1日延ばす（`p`）。期限がなければ明日にする。 */
+/**
+ * 延期（`p`）したときの期限。**今日から見た明日**にする。
+ *
+ * 元の期限を1日ずらすのではない。期限切れのタスクを延期したときに、
+ * 期限が過去のままになってしまい、延期した意味がなくなるため。
+ *
+ * 時刻の指定があるものはその時刻を保つ。日付だけの期限は 23:59
+ * （docs/08-todo-management.md 8.5）。
+ */
 export function postponedDue(item: ItemDto, now = new Date()): Date {
-  const base = item.dueAt ? new Date(item.dueAt) : new Date(now)
-  if (!item.dueAt) base.setHours(23, 59, 0, 0)
-  base.setDate(base.getDate() + 1)
-  return base
+  const next = new Date(now)
+  next.setDate(next.getDate() + 1)
+
+  if (item.dueAt && item.dueHasTime) {
+    const due = new Date(item.dueAt)
+    next.setHours(due.getHours(), due.getMinutes(), 0, 0)
+  } else {
+    next.setHours(23, 59, 0, 0)
+  }
+  return next
 }

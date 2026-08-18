@@ -54,7 +54,7 @@ const emit = defineEmits<{
         期限を設定
       </button>
       <button type="button" class="sheet__action" @click="emit('postpone')">
-        期限を1日延ばす
+        期限を明日にする
       </button>
       <button type="button" class="sheet__action" @click="emit('tags')">
         タグを変更

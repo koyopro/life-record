@@ -226,7 +226,7 @@ export function useItemList(options: Options) {
     )
   }
 
-  /** 期限を1日延ばす。Item ごとに元の期限が違うので個別に計算する。 */
+  /** 期限を明日にする（`p`）。時刻の扱いが Item ごとに違うので個別に計算する。 */
   async function postpone() {
     const list = targets.value
     if (list.length === 0) return
@@ -253,7 +253,7 @@ export function useItemList(options: Options) {
     }
 
     undoStack.push({
-      label: '期限を延ばした',
+      label: '期限を明日にした',
       revert: async () => {
         for (const snapshot of before) {
           await $fetch(itemPath(snapshot.id), {
@@ -265,7 +265,7 @@ export function useItemList(options: Options) {
       },
     })
 
-    message.value = describe(list.length, '期限を1日延ばした')
+    message.value = describe(list.length, '期限を明日にした')
     clearSelection()
     await refresh()
   }

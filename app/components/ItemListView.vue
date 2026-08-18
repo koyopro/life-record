@@ -268,7 +268,7 @@ const shortcuts = computed<Shortcut[]>(() => [
   {
     keys: ['p', 'P'],
     display: 'p',
-    label: '延期（1日）',
+    label: '延期（明日にする）',
     group: '編集',
     run: () => list.postpone(),
   },
