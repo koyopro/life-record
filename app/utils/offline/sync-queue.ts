@@ -60,7 +60,8 @@ export async function enqueueOperation(
   operation: NewOperation,
   now: Date = new Date(),
 ): Promise<PendingOperation> {
-  const record: PendingOperation = {
+  // seq は IndexedDB が採番する（積んだ順そのもの）
+  const record = {
     opId: crypto.randomUUID(),
     kind: operation.kind,
     itemIds: operation.itemIds,
@@ -70,17 +71,17 @@ export async function enqueueOperation(
     nextAttemptAt: now.toISOString(),
     givenUp: false,
     lastError: null,
-  }
+  } as PendingOperation
 
   const db = await openLocalDatabase()
-  await db.put('operations', record)
-  return record
+  const seq = await db.add('operations', record)
+  return { ...record, seq }
 }
 
 /** 積まれた順に並べて返す。 */
 export async function listOperations(): Promise<PendingOperation[]> {
   const db = await openLocalDatabase()
-  return await db.getAllFromIndex('operations', 'by-created-at')
+  return await db.getAll('operations')
 }
 
 /**
@@ -98,9 +99,9 @@ export async function nextOperation(
   return head.nextAttemptAt <= now.toISOString() ? head : null
 }
 
-export async function removeOperation(opId: string): Promise<void> {
+export async function removeOperation(seq: number): Promise<void> {
   const db = await openLocalDatabase()
-  await db.delete('operations', opId)
+  await db.delete('operations', seq)
 }
 
 /**
@@ -111,14 +112,14 @@ export async function removeOperation(opId: string): Promise<void> {
  * UI から手で送り直せるようにする。
  */
 export async function recordFailure(
-  opId: string,
+  seq: number,
   message: string,
   options: { permanent?: boolean; now?: Date } = {},
 ): Promise<void> {
   const now = options.now ?? new Date()
   const db = await openLocalDatabase()
   const tx = db.transaction('operations', 'readwrite')
-  const operation = await tx.store.get(opId)
+  const operation = await tx.store.get(seq)
 
   if (operation) {
     const attempts = operation.attempts + 1
@@ -166,7 +167,7 @@ export async function cancelOperations(
   let cancelled = 0
   for (const operation of await tx.store.getAll()) {
     if (!matches(operation)) continue
-    await tx.store.delete(operation.opId)
+    await tx.store.delete(operation.seq)
     cancelled += 1
   }
   await tx.done

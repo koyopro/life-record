@@ -1,17 +1,20 @@
-import type { ItemDetailDto, ItemDto, ItemPatch } from '~~/shared/types/item'
+import type { ItemDto, ItemPatch } from '~~/shared/types/item'
 import type { LocalItem } from '~/utils/offline/local-database'
 import { requestFlush } from '~/utils/offline/flush-signal'
-import { takeDeletedSnapshot } from '~/utils/offline/deleted-snapshots'
 import {
   allItems,
-  getItem,
   lastFetchedAt,
   mergeServerItems,
   pruneConflicts,
-  putItem,
   toLocalItem,
 } from '~/utils/offline/todo-repository'
-import { cancelOperations, enqueueOperation } from '~/utils/offline/sync-queue'
+import {
+  applyTodoTags,
+  createTodo,
+  patchTodos,
+  removeTodos,
+  restoreTodos,
+} from '~/utils/offline/todo-actions'
 
 /**
  * 画面が見る TODO の置き場。
@@ -116,128 +119,13 @@ export function useItemStore() {
     await fetchFromServer()
   }
 
-  // --- 操作（ローカルへ先に反映し、送信は列へ積む） ----------------------
+  // --- 操作 -----------------------------------------------------------
+  //
+  // ローカルへ書いて読み直し、送信は列へ積むだけ（app/utils/offline/todo-actions.ts）。
+  // オンラインかどうかで呼び分けない。
 
-  /**
-   * 追加する。
-   *
-   * id と内容はクライアントで決める（既存の仕様どおり）。サーバーには
-   * 入力そのままを送り、SmartAdd の解釈はサーバー側でも同じ結果になる。
-   */
-  async function create(draft: ItemDto, text: string): Promise<void> {
-    await putItem(toLocalItem(draft, 'pending_create'))
-    await enqueueOperation({
-      kind: 'create',
-      itemIds: [draft.id],
-      payload: { id: draft.id, text },
-    })
-    await reload()
-    requestFlush()
-  }
-
-  /** 指定した Item をまとめて変更する。 */
-  async function patch(ids: string[], values: ItemPatch): Promise<void> {
-    const now = new Date().toISOString()
-
-    for (const id of ids) {
-      const local = await getItem(id)
-      if (!local) continue
-      await putItem(withPatch(local, values, now))
-      await enqueueOperation({
-        kind: 'patch',
-        itemIds: [id],
-        // 競合の基準は送る直前に useSync が入れ直す。
-        // 前の操作が通れば基準は進むため、ここでの値は控えにすぎない
-        payload: { id, patch: values, baseUpdatedAt: local.baseUpdatedAt },
-      })
-    }
-
-    await reload()
-    requestFlush()
-  }
-
-  /** タグを付け外しする。付ける・外すは集合の操作なので、何度送っても同じ。 */
-  async function applyTags(
-    ids: string[],
-    add: string[],
-    remove: string[],
-  ): Promise<void> {
-    if (add.length === 0 && remove.length === 0) return
-    const now = new Date().toISOString()
-
-    for (const id of ids) {
-      const local = await getItem(id)
-      if (!local) continue
-      const tags = new Set(local.tags.filter((name) => !remove.includes(name)))
-      for (const name of add) tags.add(name)
-
-      await putItem({
-        ...local,
-        tags: [...tags].sort(),
-        updatedAt: now,
-        syncState: local.syncState === 'pending_create' ? 'pending_create' : 'pending_update',
-      })
-      await enqueueOperation({
-        kind: 'tags',
-        itemIds: [id],
-        payload: { ids: [id], add, remove },
-      })
-    }
-
-    await reload()
-    requestFlush()
-  }
-
-  /**
-   * 削除する。
-   *
-   * 記録はすぐには消さず、`pending_delete` の印を付けて残す。送信が通るまでは
-   * 取り消せるようにしておきたいため。一覧は印を見て隠す。
-   */
-  async function remove(ids: string[]): Promise<void> {
-    for (const id of ids) {
-      const local = await getItem(id)
-      if (!local) continue
-      await putItem({ ...local, syncState: 'pending_delete' })
-      await enqueueOperation({ kind: 'delete', itemIds: [id], payload: { id } })
-    }
-    await reload()
-    requestFlush()
-  }
-
-  /**
-   * 削除を取り消す。
-   *
-   * まだ送っていなければ、送らずに取り消す。すでに送ってしまっていたら、
-   * 削除の応答として受け取った控えをサーバーへ戻す。
-   */
-  async function restore(ids: string[]): Promise<void> {
-    for (const id of ids) {
-      const cancelled = await cancelOperations(
-        (operation) =>
-          operation.kind === 'delete' && operation.itemIds.includes(id),
-      )
-      const local = await getItem(id)
-
-      if (local && cancelled > 0) {
-        await putItem({
-          ...local,
-          syncState: local.baseUpdatedAt ? 'synced' : 'pending_create',
-        })
-        continue
-      }
-
-      const snapshot = takeDeletedSnapshot(id) ?? (local ? toSnapshot(local) : null)
-      if (!snapshot) continue
-
-      await putItem(toLocalItem(pickItemFields(snapshot), 'pending_create'))
-      await enqueueOperation({
-        kind: 'restore',
-        itemIds: [id],
-        payload: { snapshot },
-      })
-    }
-
+  async function apply(action: () => Promise<void>): Promise<void> {
+    await action()
     await reload()
     requestFlush()
   }
@@ -254,60 +142,11 @@ export function useItemStore() {
     hydrateFromLocal,
     fetchFromServer,
     refreshIfStale,
-    create,
-    patch,
-    applyTags,
-    remove,
-    restore,
-  }
-}
-
-/**
- * ローカルの Item へ変更を当てる。
- *
- * サーバー（server/utils/item-patch.ts）と同じ結果になるようにする。
- * ずれていると、送信が通って取り直した瞬間に表示が変わってしまう。
- */
-function withPatch(local: LocalItem, values: ItemPatch, now: string): LocalItem {
-  const defined = Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value !== undefined),
-  ) as ItemPatch
-
-  const next: LocalItem = {
-    ...local,
-    ...defined,
-    updatedAt: now,
-    syncState:
-      local.syncState === 'pending_create' ? 'pending_create' : 'pending_update',
-  }
-
-  // 期限を消したら、時刻指定の有無も意味を失う
-  if (defined.dueAt === null) next.dueHasTime = false
-
-  return next
-}
-
-/** ローカルの記録から、復元に渡せる形を作る。Section は持っていない。 */
-function toSnapshot(local: LocalItem): ItemDetailDto {
-  return { ...pickItemFields(local), sections: [], primarySectionId: null }
-}
-
-/** ItemDto の項目だけを取り出す。同期の印や Section を混ぜて保存しないため。 */
-function pickItemFields(source: ItemDto): ItemDto {
-  return {
-    id: source.id,
-    title: source.title,
-    status: source.status,
-    priority: source.priority,
-    url: source.url,
-    dueAt: source.dueAt,
-    dueHasTime: source.dueHasTime,
-    body: source.body,
-    tags: source.tags,
-    recurrenceRule: source.recurrenceRule,
-    recurrenceBasis: source.recurrenceBasis,
-    seriesId: source.seriesId,
-    createdAt: source.createdAt,
-    updatedAt: source.updatedAt,
+    create: (draft: ItemDto, text: string) => apply(() => createTodo(draft, text)),
+    patch: (ids: string[], values: ItemPatch) => apply(() => patchTodos(ids, values)),
+    applyTags: (ids: string[], add: string[], remove: string[]) =>
+      apply(() => applyTodoTags(ids, add, remove)),
+    remove: (ids: string[]) => apply(() => removeTodos(ids)),
+    restore: (ids: string[]) => apply(() => restoreTodos(ids)),
   }
 }

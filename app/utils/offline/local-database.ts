@@ -40,6 +40,14 @@ export type OperationKind = 'create' | 'patch' | 'delete' | 'tags' | 'restore'
 
 export interface PendingOperation {
   /**
+   * 積んだ順の通し番号。IndexedDB が採番する。
+   *
+   * 時刻で並べると、同じミリ秒に積んだ操作の前後が決まらない。
+   * 続けざまの操作（完了にしてすぐ取り消す）が入れ替わってしまうため、
+   * 順序はこの番号で持つ。
+   */
+  seq: number
+  /**
    * 操作ID。クライアントが発行する冪等キー。
    *
    * 送信は成功したが応答を受け取れなかった場合、同じ操作をもう一度送る。
@@ -84,10 +92,11 @@ interface LifeRecordDb extends DBSchema {
     value: LocalItem
     indexes: { 'by-sync-state': SyncState }
   }
+  /** 主キーが積んだ順（seq）。getAll() がそのまま送る順になる。 */
   operations: {
-    key: string
+    key: number
     value: PendingOperation
-    indexes: { 'by-created-at': string }
+    indexes: { 'by-op-id': string }
   }
   conflicts: { key: string; value: ConflictRecord }
   /** 最終取得日時などの雑多な値。 */
@@ -104,7 +113,8 @@ let connection: Promise<LocalDatabase> | null = null
  * ブラウザにしか無い API なので、SSR 中に呼んではいけない。
  */
 export function openLocalDatabase(): Promise<LocalDatabase> {
-  if (!import.meta.client) {
+  // サーバー描画中は存在しない。呼ぶ側の取りこぼしをここで止める
+  if (typeof indexedDB === 'undefined') {
     return Promise.reject(new Error('IndexedDB はブラウザでのみ使える'))
   }
 
@@ -117,9 +127,10 @@ export function openLocalDatabase(): Promise<LocalDatabase> {
           items.createIndex('by-sync-state', 'syncState')
 
           const operations = db.createObjectStore('operations', {
-            keyPath: 'opId',
+            keyPath: 'seq',
+            autoIncrement: true,
           })
-          operations.createIndex('by-created-at', 'createdAt')
+          operations.createIndex('by-op-id', 'opId', { unique: true })
 
           db.createObjectStore('conflicts', { keyPath: 'itemId' })
           db.createObjectStore('meta', { keyPath: 'key' })
