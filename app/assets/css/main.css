@@ -20,9 +20,9 @@
    * 帯が消えていると、色が付いていないのか単に無いのか区別できないため。
    * 暗い側は背景に沈むので、明るい側へ寄せた値にする。
    */
-  --priority-1: light-dark(#d24632, #e0685a);
-  --priority-2: light-dark(#2f6fbf, #5e97dd);
-  --priority-3: light-dark(#62aed8, #79c1e0);
+  --priority-1: light-dark(#e05a5a, color-mix(in srgb, #e05a5a 80%, white));
+  --priority-2: light-dark(#d99a45, color-mix(in srgb, #d99a45 80%, white));
+  --priority-3: light-dark(#5688c7, color-mix(in srgb, #5688c7 80%, white));
   --priority-none: light-dark(#c9c9c1, #4a4943);
   /* 土曜の色。日本のカレンダーの慣習に合わせる（日曜は --danger） */
   --saturday: light-dark(#2f6fbf, #6ea8e0);
