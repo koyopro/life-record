@@ -90,6 +90,7 @@ async function activate(
   activeText.value = line.content
   closeEmojiPicker()
   lastDateInsert = null
+  lastCaret = null
 
   await nextTick()
   const el = input.value
@@ -101,7 +102,22 @@ async function activate(
   resize()
 }
 
+/** 直前まで編集していた位置。フォーカスが外れたときに、その位置を覚えておく。 */
+let lastCaret: { index: number; offset: number } | null = null
+
+function captureCaret() {
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+  lastCaret = { index, offset: el.selectionStart ?? activeText.value.length }
+}
+
 function deactivate() {
+  // ドラッグ＆ドロップは、開始した時点で入力欄からフォーカスが外れる
+  // （ドラッグ元の要素へ移るため）。「カーソル位置に挿入」を、外れた後の
+  // drop 時点でも再現できるよう、外れる直前の位置を控えておく
+  // （insertItemLink が使う）。
+  captureCaret()
   activeIndex.value = null
   activeLine.value = null
   closeEmojiPicker()
@@ -714,10 +730,20 @@ async function uploadAll(files: File[]) {
 // 「カーソル位置に挿入する」操作なので、テキストカーソルのある場所へ
 // そのままはめ込む。編集中の行が無ければ、画像と同じく末尾に足す。
 
-function insertItemLink(payload: ItemDragPayload) {
+async function insertItemLink(payload: ItemDragPayload) {
   const link = `[/items/${payload.id} ${payload.title}]`
-  const el = input.value
 
+  /*
+   * ドラッグの開始でフォーカスが外れ、drop の時点では activeIndex が
+   * すでに null になっている（deactivate 済み）。その場合は、外れる直前に
+   * 控えた位置（lastCaret）へ一度戻ってから差し込む。
+   */
+  if (activeIndex.value === null && lastCaret) {
+    await activate(lastCaret.index, lastCaret.offset)
+  }
+  lastCaret = null
+
+  const el = input.value
   if (activeIndex.value !== null && el) {
     const start = el.selectionStart ?? activeText.value.length
     const end = el.selectionEnd ?? start
@@ -728,6 +754,7 @@ function insertItemLink(payload: ItemDragPayload) {
     return
   }
 
+  // 一度も編集していなければ、カーソル位置が無いので画像と同じく末尾に足す
   const lines = [...rawLines.value]
   const replaceEmpty = lines.length === 1 && lines[0] === ''
   if (replaceEmpty) lines.splice(0, 1, link)
@@ -740,7 +767,7 @@ function onDrop(event: DragEvent) {
   if (itemLink) {
     event.preventDefault()
     dragging.value = false
-    insertItemLink(itemLink)
+    void insertItemLink(itemLink)
     return
   }
 
