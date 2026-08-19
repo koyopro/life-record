@@ -256,7 +256,7 @@ RTM に合わせ、画面の移動は `g` を押してから行き先のキー�
 |---|---|---|
 | `g` `t` | 今日 | Go to Today |
 | `g` `i` | Inbox | Go to Inbox |
-| `g` `s` | タグ一覧（[09-tags.md](09-tags.md) 9.3） | Go to Tags |
+| `g` `s` | タグを選ぶダイアログ（[09-tags.md](09-tags.md) 9.3） | Go to Tags |
 | `g` `d` | 今日の日記（[03-functional-spec.md](03-functional-spec.md) 3.3） | Go to Diary |
 
 - `g` を押したあと 1.5 秒以内に次を押さなければ、押したことは忘れる

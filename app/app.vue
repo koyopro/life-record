@@ -36,6 +36,19 @@ const NAV = [
 const composerFocus = provideComposer()
 
 /**
+ * 「タグに移動」（`g s`）。
+ *
+ * RTM に合わせ、タグ一覧のページへ送るのではなく、その場で選んで
+ * 直接そのタグのタスク一覧（`/items?tag=...`）へ移れるようにする。
+ */
+const tagSwitcherOpen = ref(false)
+
+function goToTag(name: string) {
+  tagSwitcherOpen.value = false
+  void navigateTo({ path: '/items', query: { status: 'all', tag: name } })
+}
+
+/**
  * タスクを追加する（`t`）。
  *
  * 入力欄のある画面ではそこへ移る。ない画面（日記・検索・詳細）からは、
@@ -92,9 +105,11 @@ const shortcuts: Shortcut[] = [
   {
     prefix: 'g',
     keys: ['s'],
-    label: 'タグへ移動',
+    label: 'タグに移動',
     group: '移動',
-    run: () => void navigateTo('/tags'),
+    run: () => {
+      tagSwitcherOpen.value = true
+    },
   },
   {
     prefix: 'g',
@@ -176,6 +191,12 @@ function isActive(to: string): boolean {
     >
       <span aria-hidden="true">＋</span>
     </button>
+
+    <GoToTagDialog
+      v-if="tagSwitcherOpen"
+      @select="goToTag"
+      @close="tagSwitcherOpen = false"
+    />
   </div>
 </template>
 
