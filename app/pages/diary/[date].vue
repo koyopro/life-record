@@ -34,15 +34,24 @@ const { data: diary, error: fetchError, refresh } = useFetch<DiaryDetailDto>(
 
 /**
  * 日記は Item と違ってオフライン用の永続キャッシュ（IndexedDB）を持たないが、
- * セッション中に開いた日は控えておき、取得が終わるまでの間だけ初期表示に使う。
- * 正本はサーバーなので、届き次第 `diary`（本物）に切り替わる。
+ * 直近に開いた日は控えておき（リロードしても消えないよう localStorage にも
+ * 書き戻す）、取得が終わるまでの間だけ初期表示に使う。正本はサーバーなので、
+ * 届き次第 `diary`（本物）に切り替わる。
  * 初めて開く日は、控えが無いので届くまで読み込み中の表示になる。
  */
-const diaryCache = useState<Record<string, DiaryDetailDto>>('diary-detail-cache', () => ({}))
+const { cache: diaryCache, set: setDiaryCache } = usePersistedRecordCache<DiaryDetailDto>(
+  'diary-detail-cache',
+)
 
-watch(diary, (value) => {
-  if (value) diaryCache.value[date.value] = value
-})
+// immediate: true にしておく。SSR で diary が最初から入っている画面では
+// 値が変わる瞬間が無く、immediate 無しだと watch が一度も走らない
+watch(
+  diary,
+  (value) => {
+    if (value) setDiaryCache(date.value, value)
+  },
+  { immediate: true },
+)
 
 const cachedDiary = computed(() => diary.value ?? diaryCache.value[date.value] ?? null)
 

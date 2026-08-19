@@ -53,15 +53,24 @@ const { data: detail, error: detailError, refresh } = useFetch<ItemDetailDto>(
 
 /**
  * 本文・作業記録（Section）は Item のメタデータと違い IndexedDB に無いため、
- * 開くたびに取得を待つとラグになる。セッション中に見た分だけここに控え、
- * 取得が終わるまでの間だけ初期表示に使う。正本はサーバーなので、届き次第
- * `detail` 側（本物）に切り替わる。取得は毎回行う。
+ * 開くたびに取得を待つとラグになる。直近に見た分だけここに控え（リロード
+ * しても消えないよう localStorage にも書き戻す）、取得が終わるまでの間だけ
+ * 初期表示に使う。正本はサーバーなので、届き次第 `detail` 側（本物）に
+ * 切り替わる。取得は毎回行う。
  */
-const detailCache = useState<Record<string, ItemDetailDto>>('item-detail-cache', () => ({}))
+const { cache: detailCache, set: setDetailCache } = usePersistedRecordCache<ItemDetailDto>(
+  'item-detail-cache',
+)
 
-watch(detail, (value) => {
-  if (value) detailCache.value[id.value] = value
-})
+// immediate: true にしておく。SSR で detail が最初から入っている画面では
+// 値が変わる瞬間が無く、immediate 無しだと watch が一度も走らない
+watch(
+  detail,
+  (value) => {
+    if (value) setDetailCache(id.value, value)
+  },
+  { immediate: true },
+)
 
 const cachedDetail = computed(() => detail.value ?? detailCache.value[id.value] ?? null)
 
