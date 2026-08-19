@@ -45,6 +45,19 @@ export const SORT_LABELS: Record<SortKey, string> = {
   title: 'タイトル順',
 }
 
+/**
+ * グループ順（RTM の Group by に合わせる）。並びより上位の区切りで、
+ * 選ぶと見出し付きの塊に分けて出す。並び自体は各グループの中で効く。
+ */
+export const GROUP_KEYS = ['none', 'priority', 'status'] as const
+export type GroupKey = (typeof GROUP_KEYS)[number]
+
+export const GROUP_LABELS: Record<GroupKey, string> = {
+  none: 'なし',
+  priority: '重要度',
+  status: 'ステータス',
+}
+
 export interface ItemDto {
   id: string
   title: string
@@ -109,6 +122,10 @@ export function isItemStatus(value: unknown): value is ItemStatus {
 
 export function isSortKey(value: unknown): value is SortKey {
   return SORT_KEYS.includes(value as SortKey)
+}
+
+export function isGroupKey(value: unknown): value is GroupKey {
+  return GROUP_KEYS.includes(value as GroupKey)
 }
 
 export function isPriority(value: unknown): value is Priority {

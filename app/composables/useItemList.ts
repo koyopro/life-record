@@ -1,7 +1,9 @@
 import type { UndoEntry } from '~/composables/useUndo'
 import type { LocalItem } from '~/utils/offline/local-database'
 import {
+  isGroupKey,
   isSortKey,
+  type GroupKey,
   type ItemDto,
   type ItemPatch,
   type ItemStatus,
@@ -52,6 +54,7 @@ export function useItemList(options: Options) {
   const untagged = computed(() => toValue(options.untagged ?? false))
   const dueUntilToday = computed(() => toValue(options.dueUntilToday ?? false))
   const sort = ref<SortKey>(options.defaultSort ?? 'priority')
+  const groupBy = ref<GroupKey>('none')
 
   const store = useItemStore()
   const sync = useSync()
@@ -406,15 +409,27 @@ export function useItemList(options: Options) {
     return true
   }
 
-  // --- ソート ---------------------------------------------------------
+  // --- ソート・グループ順 -----------------------------------------------
+  //
+  // グループ順は並びより上位の区切り（RTM の Group by）。同じ画面を
+  // また開いたときも同じ見え方になるよう、並びと同じく覚えておく。
+
+  const groupByStorageKey = `${options.sortStorageKey}:group`
 
   onMounted(() => {
-    const stored = localStorage.getItem(options.sortStorageKey)
-    if (isSortKey(stored)) sort.value = stored
+    const storedSort = localStorage.getItem(options.sortStorageKey)
+    if (isSortKey(storedSort)) sort.value = storedSort
+
+    const storedGroup = localStorage.getItem(groupByStorageKey)
+    if (isGroupKey(storedGroup)) groupBy.value = storedGroup
   })
 
   watch(sort, (value) => {
     if (import.meta.client) localStorage.setItem(options.sortStorageKey, value)
+  })
+
+  watch(groupBy, (value) => {
+    if (import.meta.client) localStorage.setItem(groupByStorageKey, value)
   })
 
   return {
@@ -424,6 +439,7 @@ export function useItemList(options: Options) {
     message,
     errorMessage,
     sort,
+    groupBy,
     cursor,
     cursorItem,
     selectedIds,

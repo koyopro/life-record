@@ -1,4 +1,12 @@
-import type { ItemDto, SortKey } from '~~/shared/types/item'
+import {
+  PRIORITY_LABELS,
+  STATUS_LABELS,
+  type GroupKey,
+  type ItemDto,
+  type ItemStatus,
+  type Priority,
+  type SortKey,
+} from '~~/shared/types/item'
 
 /**
  * 一覧の並び（docs/08-todo-management.md 8.2）。
@@ -81,3 +89,45 @@ const byCreatedAsc: Compare = (a, b) => compareText(a.createdAt, b.createdAt)
 const byCreatedDesc: Compare = (a, b) => compareText(b.createdAt, a.createdAt)
 
 const byTitle: Compare = (a, b) => compareText(a.title, b.title)
+
+/**
+ * グループ順（docs/08-todo-management.md 8.2、RTM の Group by）。
+ *
+ * 並びより上位の区切り。並び替え済みの配列をグループごとに分けるだけで、
+ * 中身の順序は変えない（＝各グループの中は、選んでいる並びのまま）。
+ * 元の配列での位置（index）も持たせる。一覧のキーボードのカーソルは
+ * グループをまたいだ1本の並びに対して動くため、表示側で見出しを
+ * 挟んでも同じ index で参照できるようにするため。
+ */
+export interface ItemGroup<T> {
+  key: string
+  /** グループなし（GroupKey が 'none'）のときは空文字。見出しを出さない目印。 */
+  label: string
+  items: { item: T; index: number }[]
+}
+
+const PRIORITY_GROUP_ORDER: (Priority | null)[] = [1, 2, 3, null]
+const STATUS_GROUP_ORDER: ItemStatus[] = ['inbox', 'backlog', 'in_progress', 'closed']
+
+export function groupItems<T extends ItemDto>(
+  items: T[],
+  groupBy: GroupKey,
+): ItemGroup<T>[] {
+  const indexed = items.map((item, index) => ({ item, index }))
+
+  if (groupBy === 'none') return [{ key: 'none', label: '', items: indexed }]
+
+  if (groupBy === 'priority') {
+    return PRIORITY_GROUP_ORDER.map((priority) => ({
+      key: String(priority),
+      label: priority ? `重要度: ${PRIORITY_LABELS[priority]}` : '重要度なし',
+      items: indexed.filter(({ item }) => item.priority === priority),
+    })).filter((group) => group.items.length > 0)
+  }
+
+  return STATUS_GROUP_ORDER.map((status) => ({
+    key: status,
+    label: STATUS_LABELS[status],
+    items: indexed.filter(({ item }) => item.status === status),
+  })).filter((group) => group.items.length > 0)
+}

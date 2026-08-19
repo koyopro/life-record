@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Shortcut } from '~/composables/useShortcuts'
 import {
+  GROUP_KEYS,
+  GROUP_LABELS,
   SORT_KEYS,
   SORT_LABELS,
   type ItemDto,
@@ -8,6 +10,7 @@ import {
   type SortKey,
   isOpenableUrl,
 } from '~~/shared/types/item'
+import { groupItems } from '~/utils/item-order'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { normalizeTagName } from '~~/shared/types/tag'
 
@@ -75,6 +78,13 @@ const list = useItemList({
   defaultSort:
     props.defaultSort ?? (props.status === 'inbox' ? 'created' : 'priority'),
 })
+
+/**
+ * グループ順（並びより上位の区切り、RTM の Group by）。並び替え済みの
+ * `list.items` を、選んでいる軸で見出し付きの塊に分けるだけで、
+ * 各グループの中の順序は並びのまま変えない。
+ */
+const groupedItems = computed(() => groupItems(list.items.value, list.groupBy.value))
 
 const helpOpen = ref(false)
 const dueOpen = ref(false)
@@ -596,6 +606,14 @@ defineExpose({
 
           <div class="list__controls">
             <label v-if="showSort" class="list__sort">
+              <span class="list__sort-label">グループ</span>
+              <select v-model="list.groupBy.value" class="list__sort-select">
+                <option v-for="key in GROUP_KEYS" :key="key" :value="key">
+                  {{ GROUP_LABELS[key] }}
+                </option>
+              </select>
+            </label>
+            <label v-if="showSort" class="list__sort">
               <span class="list__sort-label">並び</span>
               <select v-model="list.sort.value" class="list__sort-select">
                 <option v-for="key in SORT_KEYS" :key="key" :value="key">
@@ -633,26 +651,31 @@ defineExpose({
         {{ completed ? '完了したタスクはありません。' : emptyMessage }}
       </p>
 
-      <ul v-else ref="listEl" class="list__items">
-        <li
-          v-for="(item, index) in list.items.value"
-          :key="item.id"
-          :data-item-id="item.id"
-        >
-          <ItemCard
-            :item="item"
-            :focused="index === list.cursor.value"
-            :selected="list.selectedIds.value.has(item.id)"
-            :pending="item.syncState !== 'synced'"
-            @focus="list.focusItem(item.id)"
-            @select="list.toggleSelect(item.id)"
-            @complete="toggleComplete(item)"
-            @open="open(item)"
-            @longpress="actionTarget = item"
-            @filter-tag="selectTag"
-          />
-        </li>
-      </ul>
+      <div v-else ref="listEl" class="list__groups">
+        <section v-for="group in groupedItems" :key="group.key" class="list__group">
+          <h2 v-if="group.label" class="list__group-title">{{ group.label }}</h2>
+          <ul class="list__items">
+            <li
+              v-for="{ item, index } in group.items"
+              :key="item.id"
+              :data-item-id="item.id"
+            >
+              <ItemCard
+                :item="item"
+                :focused="index === list.cursor.value"
+                :selected="list.selectedIds.value.has(item.id)"
+                :pending="item.syncState !== 'synced'"
+                @focus="list.focusItem(item.id)"
+                @select="list.toggleSelect(item.id)"
+                @complete="toggleComplete(item)"
+                @open="open(item)"
+                @longpress="actionTarget = item"
+                @filter-tag="selectTag"
+              />
+            </li>
+          </ul>
+        </section>
+      </div>
     </div>
 
     <aside v-if="selectedId" class="split__detail">
@@ -914,6 +937,23 @@ defineExpose({
   .list__help {
     display: none;
   }
+}
+
+/*
+ * グループ順（RTM の Group by）。見出しが無い（グループ順「なし」）ときは
+ * 1つの塊だけになるので、これまでの単一の一覧と見た目が変わらないように、
+ * 余白は見出しの有無に関わらず .list__group 側にまとめる。
+ */
+.list__groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.list__group-title {
+  margin: 0 0 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .list__items {
