@@ -94,7 +94,8 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
         priority: parsed.priority,
         // 期限の指定がなければ今日にする。
         // 追加したタスクが「今日」リストに出ないまま埋もれるのを避ける。
-        dueAt: parsed.dueAt ?? todayDueAt(),
+        // ただし `^なし` / `^x` で明示的に外していれば、その指定に従う。
+        dueAt: parsed.dueCleared ? null : (parsed.dueAt ?? todayDueAt()),
         dueHasTime: parsed.dueAt ? parsed.dueHasTime : false,
         url: parsed.url,
         recurrenceRule: parsed.recurrence?.rule ?? null,

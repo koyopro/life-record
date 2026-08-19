@@ -115,6 +115,46 @@ describe('composeSmartAddInput', () => {
   })
 })
 
+/**
+ * `^なし` / `^x`（期限を明示的に「なし」にする）。
+ *
+ * 期限を書かなかった場合は既定で今日になる（8.5）ため、
+ * それを打ち消す唯一の書き方として区別できる必要がある。
+ */
+describe('^なし / ^x（期限の明示的な打ち消し）', () => {
+  const now = new Date(2026, 7, 18, 10, 0)
+
+  it('^なし は期限なし・dueCleared を立てて解釈する', () => {
+    const parsed = parseSmartAdd('観葉植物を見に行く ^なし', now)
+    expect(parsed.title).toBe('観葉植物を見に行く')
+    expect(parsed.dueAt).toBeNull()
+    expect(parsed.dueCleared).toBe(true)
+  })
+
+  it('^x / ^X も同じ扱いにする（大文字小文字を問わない）', () => {
+    expect(parseSmartAdd('牛乳を買う ^x', now).dueCleared).toBe(true)
+    expect(parseSmartAdd('牛乳を買う ^X', now).dueCleared).toBe(true)
+  })
+
+  it('何も書かなければ dueCleared は立たない（既定の今日に任せる）', () => {
+    expect(parseSmartAdd('牛乳を買う', now).dueCleared).toBe(false)
+  })
+
+  it('実際の日付を書いたときは dueCleared にならない', () => {
+    expect(parseSmartAdd('牛乳を買う ^明日', now).dueCleared).toBe(false)
+  })
+
+  it('「期限を外す」ボタン（due: null）は、書き戻しても ^なし として残る', () => {
+    const composed = composeSmartAddInput('請求書を出す ^明日 !1', { due: null }, now)
+    const parsed = parseSmartAdd(composed, now)
+
+    expect(parsed.dueAt).toBeNull()
+    expect(parsed.dueCleared).toBe(true)
+    // 他の記法（重要度）は影響を受けない
+    expect(parsed.priority).toBe(1)
+  })
+})
+
 /** 入力欄の表示（ボタンの状態とプレビュー）が見る、重ねた結果。 */
 describe('mergeSmartAddOverrides', () => {
   it('まだ何も書いていなくても、選んだ内容を返す', () => {
@@ -131,5 +171,23 @@ describe('mergeSmartAddOverrides', () => {
 
     expect(values.priority).toBeNull()
     expect(values.tags).toEqual(['仕事'])
+  })
+
+  it('テキストの ^なし を dueCleared として伝える', () => {
+    const parsed = parseSmartAdd('観葉植物を見に行く ^なし', new Date(2026, 7, 18))
+    const values = mergeSmartAddOverrides(parsed, {})
+
+    expect(values.due).toBeNull()
+    expect(values.dueCleared).toBe(true)
+  })
+
+  it('「期限を外す」ボタン（due: null）も dueCleared にする', () => {
+    const values = mergeSmartAddOverrides(null, { due: null })
+    expect(values.dueCleared).toBe(true)
+  })
+
+  it('何も指定していなければ dueCleared にならない', () => {
+    const values = mergeSmartAddOverrides(null, {})
+    expect(values.dueCleared).toBe(false)
   })
 })

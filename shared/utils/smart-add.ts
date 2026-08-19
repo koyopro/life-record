@@ -18,6 +18,13 @@ export interface SmartAddResult {
   dueAt: Date | null
   /** 期限に時刻の指定があったか。false なら日付のみ。 */
   dueHasTime: boolean
+  /**
+   * `^なし` / `^x` で、期限を明示的に「なし」にしたか。
+   *
+   * 期限を書かなかった場合は既定で今日になる（8.5）が、これはその既定を
+   * 打ち消す指定。`dueAt` はどちらも null になるため、区別にはこちらを見る。
+   */
+  dueCleared: boolean
   priority: Priority | null
   /** 正規化済みのタグ名。 */
   tags: string[]
@@ -75,6 +82,7 @@ export function parseSmartAdd(
     title,
     dueAt: dueResult.dueAt,
     dueHasTime: dueResult.dueHasTime,
+    dueCleared: dueResult.cleared,
     priority: priorityResult.priority,
     tags: tagResult.tags,
     recurrence: recurrenceResult.recurrence,
@@ -107,6 +115,11 @@ export interface SmartAddOverrides {
 /** テキストの記法とボタンで選んだ内容を合わせた、いまの指定内容。 */
 export interface SmartAddValues {
   due: SmartAddDue | null
+  /**
+   * 期限を明示的に「なし」にしたか（`^なし` / `^x`、または「期限を外す」）。
+   * `due` はどちらの場合も null になるため、既定の「今日」を出すかはこちらで判断する。
+   */
+  dueCleared: boolean
   priority: Priority | null
   tags: string[]
   recurrence: Recurrence | null
@@ -128,6 +141,9 @@ export function mergeSmartAddOverrides(
 
   return {
     due: overrides.due !== undefined ? overrides.due : typedDue,
+    dueCleared:
+      overrides.due === null ||
+      (overrides.due === undefined && Boolean(parsed?.dueCleared)),
     priority:
       overrides.priority !== undefined
         ? overrides.priority
@@ -168,7 +184,7 @@ export function composeSmartAddInput(
   if (!split) return input
 
   const parsed = parseSmartAdd(split.titleLine, referenceDate)
-  const { due, priority, tags, recurrence } = mergeSmartAddOverrides(
+  const { due, dueCleared, priority, tags, recurrence } = mergeSmartAddOverrides(
     parsed,
     overrides,
   )
@@ -177,6 +193,8 @@ export function composeSmartAddInput(
   if (parsed.url) parts.push(parsed.url)
   if (priority) parts.push(`!${priority}`)
   if (due) parts.push(`^${formatDueExpression(due)}`)
+  // 期限の既定（今日）を打ち消す指定は、書き戻さないと消えてしまう
+  else if (dueCleared) parts.push('^なし')
   for (const tag of tags) parts.push(`#${tag}`)
   // 繰り返しは空白を含む（「毎週 月曜」）ので、他の記号より後ろに置く
   if (recurrence) parts.push(`*${describeRecurrence(recurrence)}`)
@@ -300,6 +318,14 @@ function extractPriority(input: string, warnings: string[]) {
 }
 
 /**
+ * `^なし` / `^x` ＝ 期限を明示的に「なし」にする。
+ *
+ * 期限を書かなかった場合の既定（今日、8.5「期限を書かなかった場合」）を
+ * 打ち消すための指定。RTM の `!4`（重要度なしの明示）と同じ考え方。
+ */
+const NO_DUE_PATTERN = /^(なし|x)$/i
+
+/**
  * `^` に続く自然言語の日付表現を取り出す。
  *
  * 日本語・英語の両方を受け付ける。`^` の後ろから次の記号までを
@@ -310,9 +336,11 @@ function extractDue(
   input: string,
   referenceDate: Date,
   warnings: string[],
-): { rest: string; dueAt: Date | null; dueHasTime: boolean } {
+): { rest: string; dueAt: Date | null; dueHasTime: boolean; cleared: boolean } {
   const caret = input.indexOf('^')
-  if (caret === -1) return { rest: input, dueAt: null, dueHasTime: false }
+  if (caret === -1) {
+    return { rest: input, dueAt: null, dueHasTime: false, cleared: false }
+  }
 
   const after = input.slice(caret + 1)
   const boundary = after.search(TOKEN_BOUNDARY)
@@ -320,21 +348,37 @@ function extractDue(
 
   if (!candidate) {
     warnings.push('^ の後ろに日付が書かれていません')
-    return { rest: removeAt(input, caret, 1), dueAt: null, dueHasTime: false }
+    return {
+      rest: removeAt(input, caret, 1),
+      dueAt: null,
+      dueHasTime: false,
+      cleared: false,
+    }
+  }
+
+  const leadingSpaces = after.length - after.trimStart().length
+
+  if (NO_DUE_PATTERN.test(candidate)) {
+    const rest = removeAt(input, caret, 1 + leadingSpaces + candidate.length)
+    return { rest, dueAt: null, dueHasTime: false, cleared: true }
   }
 
   const parsed = parseDate(candidate, referenceDate)
   if (!parsed) {
     warnings.push(`「${candidate}」を日付として解釈できませんでした`)
-    return { rest: removeAt(input, caret, 1), dueAt: null, dueHasTime: false }
+    return {
+      rest: removeAt(input, caret, 1),
+      dueAt: null,
+      dueHasTime: false,
+      cleared: false,
+    }
   }
 
   // `^` と、日付として解釈できた範囲だけを取り除く。
   // 「^明日 牛乳を買う」のように後ろに続く語はタイトルに残す。
-  const leadingSpaces = after.length - after.trimStart().length
   const rest = removeAt(input, caret, 1 + leadingSpaces + parsed.consumed)
 
-  return { rest, dueAt: parsed.date, dueHasTime: parsed.hasTime }
+  return { rest, dueAt: parsed.date, dueHasTime: parsed.hasTime, cleared: false }
 }
 
 function removeAt(input: string, index: number, length: number): string {

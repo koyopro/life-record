@@ -182,6 +182,7 @@ const dueLabel = computed(() => {
 const showPreview = computed(
   () =>
     values.value.due !== null ||
+    values.value.dueCleared ||
     values.value.priority !== null ||
     values.value.tags.length > 0 ||
     values.value.recurrence !== null ||
@@ -296,6 +297,7 @@ useComposerRegistration(focus)
           重要度{{ PRIORITY_LABELS[values.priority] }}
         </span>
         <span v-if="dueLabel" class="composer__chip">期限 {{ dueLabel }}</span>
+        <span v-else-if="values.dueCleared" class="composer__chip">期限なし</span>
         <span v-for="tag in values.tags" :key="tag" class="composer__chip">
           #{{ tag }}
         </span>
@@ -377,7 +379,7 @@ useComposerRegistration(focus)
       <div class="composer__actions">
         <span class="composer__hint">
           {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度 #タグ
-          <span v-if="!values.due" class="composer__default">
+          <span v-if="!values.due && !values.dueCleared" class="composer__default">
             ・ 期限は今日
           </span>
         </span>

@@ -46,6 +46,18 @@ describe('buildItemDraft', () => {
     })
   })
 
+  it('^なし / ^x を書けば、既定の今日を当てずに期限なしで作る', () => {
+    const withNashi = buildItemDraft('観葉植物を見に行く ^なし')
+    expect(withNashi).toMatchObject({
+      draft: { title: '観葉植物を見に行く', dueAt: null },
+    })
+
+    const withX = buildItemDraft('観葉植物を見に行く ^x')
+    expect(withX).toMatchObject({
+      draft: { title: '観葉植物を見に行く', dueAt: null },
+    })
+  })
+
   it('中身が無ければ組み立てない', () => {
     expect(buildItemDraft('   ')).toEqual({ error: 'タイトルが空です' })
   })

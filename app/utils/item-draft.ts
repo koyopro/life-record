@@ -35,7 +35,9 @@ export function buildItemDraft(text: string, now: Date = new Date()): DraftResul
       status: 'inbox',
       priority: parsed.priority,
       url: parsed.url,
-      dueAt: (parsed.dueAt ?? todayDueAt(now)).toISOString(),
+      // サーバー（items.post.ts）と同じく、期限の指定がなければ今日にする。
+      // `^なし` / `^x` で明示的に外していれば、その指定に従う。
+      dueAt: parsed.dueCleared ? null : (parsed.dueAt ?? todayDueAt(now)).toISOString(),
       dueHasTime: parsed.dueAt ? parsed.dueHasTime : false,
       body: split.body ?? null,
       tags: [...parsed.tags].sort(),
