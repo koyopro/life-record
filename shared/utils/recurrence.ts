@@ -1,10 +1,15 @@
-// rrule は CJS パッケージで named export の静的検出ができない環境があるため
-// （scripts/import-rtm.ts のような素の Node ESM 実行時など）、default import から取り出す。
-import rrulePkg from 'rrule'
+// rrule は環境によって解決されるビルドが変わり、import の形を1つに決められない。
+// - Nuxt の本番ビルド（Vite/Rollup）: ESM 版（named export のみ、default なし）
+// - scripts/import-rtm.ts のような素の Node ESM 実行時（tsx）: CJS 版を interop 経由で
+//   読むため、named export の静的検出ができず default 経由になる
+// どちらの形でも読めるよう、名前空間 import からその場で拾う。
+import * as rruleNamespace from 'rrule'
 import type { RRule as RRuleType } from 'rrule'
 import type { Recurrence, RecurrenceBasis } from '../types/recurrence'
 
-const { RRule } = rrulePkg
+const RRule: typeof RRuleType =
+  (rruleNamespace as { RRule?: typeof RRuleType }).RRule ??
+  (rruleNamespace as unknown as { default: { RRule: typeof RRuleType } }).default.RRule
 
 /**
  * 繰り返し規則の解釈と次回期限の計算（docs/10-recurrence.md）。
