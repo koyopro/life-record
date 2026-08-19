@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SAVE_STATE_LABELS } from '~/composables/useAutosave'
+import type { SaveDotState } from '~/components/SaveDot.vue'
 import type { Shortcut } from '~/composables/useShortcuts'
 import {
   ITEM_STATUSES,
@@ -174,6 +174,11 @@ const titleSave = useAutosave({
     await store.patch([id.value], { title: value.trim() })
   },
 })
+
+/** タイトル横の●に出す状態。ローカル保存が済んでいても、サーバーへ未送信なら伝える。 */
+const titleIndicatorState = computed<SaveDotState>(() =>
+  titleSave.state.value === 'idle' && unsynced.value ? 'unsynced' : titleSave.state.value,
+)
 
 /**
  * タイトルは複数行での編集を想定していないため、`Enter` は改行ではなく
@@ -678,10 +683,7 @@ async function removeSection(section: SectionDto) {
             </li>
           </ul>
         </div>
-        <span class="head__save" :class="`head__save--${titleSave.state.value}`">
-          {{ SAVE_STATE_LABELS[titleSave.state.value] }}
-          <span v-if="unsynced" class="head__pending">・未同期</span>
-        </span>
+        <SaveDot class="head__save" :state="titleIndicatorState" />
       </header>
 
       <p v-if="actionError" class="page__error" role="alert">{{ actionError }}</p>
@@ -767,7 +769,7 @@ async function removeSection(section: SectionDto) {
             target="_blank"
             rel="noopener noreferrer"
           >開く</a>
-          <span class="meta__save">{{ SAVE_STATE_LABELS[urlSave.state.value] }}</span>
+          <SaveDot class="meta__save" :state="urlSave.state.value" />
         </div>
 
         <div class="meta__row">
@@ -828,9 +830,7 @@ async function removeSection(section: SectionDto) {
           >
             {{ formatAppDate(primarySection.date) }} の日記
           </NuxtLink>
-          <span class="body__save" :class="`body__save--${bodySave.state.value}`">
-            {{ SAVE_STATE_LABELS[bodySave.state.value] }}
-          </span>
+          <SaveDot class="body__save" :state="bodySave.state.value" />
         </div>
         <ScrapboxEditor
           ref="bodyEditor"
@@ -944,10 +944,6 @@ async function removeSection(section: SectionDto) {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8125rem;
-}
-
-.head__pending {
-  color: var(--text-muted);
 }
 
 .page__placeholder {
@@ -1079,16 +1075,8 @@ async function removeSection(section: SectionDto) {
   background: var(--priority-3);
 }
 
-.head__save,
 .body__save {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  min-height: 1rem;
-}
-
-.head__save--error,
-.body__save--error {
-  color: var(--danger);
+  align-self: center;
 }
 
 /*
@@ -1123,12 +1111,6 @@ async function removeSection(section: SectionDto) {
   flex: 0 0 auto;
   color: var(--accent);
   font-size: 0.8125rem;
-}
-
-.meta__save {
-  flex: 0 0 auto;
-  font-size: 0.75rem;
-  color: var(--text-muted);
 }
 
 .meta__url {

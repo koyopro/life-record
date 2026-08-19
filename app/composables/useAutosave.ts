@@ -106,14 +106,6 @@ export function useAutosave<T>(options: Options<T>) {
   return { state, errorMessage, flush, markSynced }
 }
 
-export const SAVE_STATE_LABELS: Record<SaveState, string> = {
-  idle: '',
-  pending: '未保存',
-  saving: '保存中…',
-  saved: '保存しました',
-  error: '保存に失敗しました',
-}
-
 function extractSaveError(e: unknown): string {
   if (typeof e === 'object' && e !== null) {
     // サーバーは message で返す。statusMessage は HTTP ステータス行に載るため

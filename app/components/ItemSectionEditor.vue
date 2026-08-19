@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { SAVE_STATE_LABELS } from '~/composables/useAutosave'
 import type { SectionDto } from '~~/shared/types/item'
 import { formatAppDate, isAppDate } from '~~/shared/utils/date'
 
@@ -79,8 +78,8 @@ defineExpose({ focus: () => editor.value?.focus() })
       >
         日記
       </NuxtLink>
-      <span class="section__save" :class="`section__save--${state}`">
-        {{ SAVE_STATE_LABELS[state] }}
+      <span class="section__save">
+        <SaveDot :state="state" />
       </span>
       <button
         v-if="canMoveUp"
@@ -161,12 +160,6 @@ defineExpose({ focus: () => editor.value?.focus() })
 
 .section__save {
   flex: 1;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.section__save--error {
-  color: var(--danger);
 }
 
 .section__button {

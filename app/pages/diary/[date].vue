@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { SAVE_STATE_LABELS } from '~/composables/useAutosave'
 import type { DiaryDetailDto } from '~~/shared/types/diary'
 import { STATUS_LABELS, type ItemDto } from '~~/shared/types/item'
 import {
@@ -122,9 +121,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
     <template v-else>
       <header class="head">
         <h1 class="head__title">{{ formatAppDate(date) }}</h1>
-        <span class="head__save" :class="`head__save--${save.state.value}`">
-          {{ SAVE_STATE_LABELS[save.state.value] }}
-        </span>
+        <SaveDot class="head__save" :state="save.state.value" />
       </header>
 
       <nav class="nav" aria-label="日付">
@@ -219,12 +216,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 }
 
 .head__save {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.head__save--error {
-  color: var(--danger);
+  align-self: center;
 }
 
 .nav {

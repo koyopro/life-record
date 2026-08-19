@@ -14,12 +14,15 @@ const CONFLICT_REASONS = {
   server_deleted: '他の端末で削除されていたため、こちらでも削除しました',
 } as const
 
+/*
+ * 送信中かどうかは文字ではなく●の点滅で示す（下記 sync__dot--syncing）。
+ * 数字（件数）は変わらないので、送信の開始・終了で文字幅が変わって
+ * 周りがずれることもない。
+ */
 const label = computed(() => {
   if (!online.value) return 'オフライン'
   if (sync.givenUp.value > 0) return `送れていません（${sync.givenUp.value}）`
-  if (sync.pending.value > 0) {
-    return sync.syncing.value ? '同期中…' : `未同期（${sync.pending.value}）`
-  }
+  if (sync.pending.value > 0) return `未同期（${sync.pending.value}）`
   return null
 })
 
@@ -39,7 +42,10 @@ const title = computed(() => {
 <template>
   <div v-if="label || sync.conflicts.value.length" class="sync">
     <div v-if="label" class="sync__state" :class="{ 'sync__state--stuck': stuck }">
-      <span class="sync__dot" :class="{ 'sync__dot--offline': !online }" />
+      <span
+        class="sync__dot"
+        :class="{ 'sync__dot--offline': !online, 'sync__dot--syncing': sync.syncing.value }"
+      />
       <span :title="title">{{ label }}</span>
       <button v-if="stuck" type="button" class="sync__retry" @click="sync.retryFailed()">
         送り直す
@@ -94,6 +100,20 @@ const title = computed(() => {
 
 .sync__dot--offline {
   background: var(--priority-none);
+}
+
+.sync__dot--syncing {
+  animation: sync-dot-pulse 1s ease-in-out infinite;
+}
+
+@keyframes sync-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .sync__retry {
