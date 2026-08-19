@@ -22,7 +22,7 @@ export const IMAGE_CONTENT_TYPES: Record<string, string> = {
  * 署名付き URL では実際のサイズを縛れないため、これは投稿側の目安。
  * 桁違いのものを誤って上げないための歯止めとして置く。
  */
-export const IMAGE_MAX_BYTES = 20 * 1024 * 1024
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024
 
 /** 本文に書くパス。この形以外は画像として扱わない。 */
 export const IMAGE_PATH_PATTERN =
