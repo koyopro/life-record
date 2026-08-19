@@ -15,7 +15,7 @@ import { startItemLinkDrag } from '~/utils/item-drag'
  *
  * 日付を変えたら作り直す。前の日の下書きを持ち越さないため。
  */
-definePageMeta({ key: (route) => route.fullPath })
+definePageMeta({ key: (route) => route.fullPath, wide: 'reading' })
 
 const route = useRoute()
 const date = computed(() => String(route.params.date))

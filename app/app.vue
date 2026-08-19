@@ -12,8 +12,12 @@ function goToTodayDiary() {
 /**
  * 分割表示を使う画面は、既定の読みやすい幅（40rem）では狭すぎるため広げる。
  * 画面側が `definePageMeta({ wide: true })` で申告する。
+ *
+ * `wide: 'reading'` は分割はしないが長文を読み書きする画面向け
+ * （日記など）。Scrapbox の本文表示幅（862px ≒ 53.875rem）に合わせる。
  */
-const wide = computed(() => Boolean(route.meta.wide))
+const wide = computed(() => route.meta.wide === true)
+const reading = computed(() => route.meta.wide === 'reading')
 
 const NAV = [
   { to: '/today', label: '今日' },
@@ -124,7 +128,7 @@ function isActive(to: string): boolean {
 </script>
 
 <template>
-  <div class="shell" :class="{ 'shell--wide': wide }">
+  <div class="shell" :class="{ 'shell--wide': wide, 'shell--reading': reading }">
     <!--
       <link rel="manifest"> を出す（@vite-pwa/nuxt の部品）。モジュールを
       入れるだけでは出ないので、ここで置く。これが無いとブラウザは manifest を
@@ -228,6 +232,11 @@ function isActive(to: string): boolean {
 /* 一覧と詳細を並べる画面だけ、必要な幅まで広げる */
 .shell--wide {
   max-width: 76rem;
+}
+
+/* 長文を読み書きする画面（日記など）。Scrapbox の本文幅に合わせる */
+.shell--reading {
+  max-width: 53.875rem;
 }
 
 .shell__header {
