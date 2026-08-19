@@ -116,6 +116,20 @@ function onTouchEnd() {
     </div>
 
     <!--
+      この端末にだけある変更。オフライン中に書いたものが分かるように
+      （docs/12-offline.md 12.8）。角に小さく出すだけにして、文字にすると
+      タグの位置が（未同期かどうかで）ずれてしまうため、他の要素とは
+      独立にカードの角へ絶対配置する。
+    -->
+    <span
+      v-if="pending"
+      class="card__pending"
+      title="まだサーバーへ送れていない変更があります"
+    >
+      <span class="sr-only">未同期</span>
+    </span>
+
+    <!--
       左端はタスクの選択。完了は `c` / スワイプ / 長押しメニューで行う
       （docs/08-todo-management.md 8.4）。同じ形の四角を2つ並べると
       どちらが何なのか読み取れないため、押せる四角はこれ1つにする。
@@ -151,21 +165,13 @@ function onTouchEnd() {
         重要度は左端の色で表している（.card--priority-*）。文字では出さないが、
         色だけが手がかりになるのを避けるため、読み上げ用の名前だけ残す。
       -->
-      <span v-if="item.priority" class="card__priority">
+      <span v-if="item.priority" class="sr-only">
         重要度{{ PRIORITY_LABELS[item.priority] }}
       </span>
       <div
-        v-if="item.tags.length || recurrenceLabel || pending"
+        v-if="item.tags.length || recurrenceLabel"
         class="card__meta"
       >
-        <!-- この端末にだけある変更。オフライン中に書いたものが分かるように -->
-        <span
-          v-if="pending"
-          class="card__pending"
-          title="まだサーバーへ送れていない変更があります"
-        >
-          <span aria-hidden="true">●</span> 未同期
-        </span>
         <span v-if="recurrenceLabel" class="card__recurrence" :title="recurrenceLabel">
           <span aria-hidden="true">↻</span>
           <span class="card__recurrence-text">{{ recurrenceLabel }}</span>
@@ -324,8 +330,8 @@ function onTouchEnd() {
   font-size: 0.8125rem;
 }
 
-/* 読み上げにだけ残す。場所を取らせない（表示は左端の色が担う） */
-.card__priority {
+/* 読み上げにだけ残す。場所を取らせない */
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -334,10 +340,20 @@ function onTouchEnd() {
   white-space: nowrap;
 }
 
-/* 未同期は状態の説明であって、優先度の高い情報ではない。控えめに出す */
+/*
+ * この端末にだけある変更があることを示す小さな点。カードの角に絶対配置し、
+ * タイトル・期限・タグなど他の要素の位置には一切影響しないようにする
+ * （文字で出すと、未同期かどうかでタグの開始位置がずれてしまうため）。
+ */
 .card__pending {
-  color: var(--text-muted);
-  font-size: 0.75rem;
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 2px solid var(--surface);
 }
 
 .card__due {
