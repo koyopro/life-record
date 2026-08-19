@@ -54,6 +54,9 @@ const activePrefix = computed(() => activeLine.value?.prefix ?? '')
  */
 const input = ref<HTMLTextAreaElement | null>(null)
 
+/** 複数行選択の範囲を描く土台。`Cmd`/`Ctrl`+`A` や `Shift`+矢印の続きを拾うため、フォーカスを持たせる。 */
+const editorRoot = ref<HTMLDivElement | null>(null)
+
 const isEmpty = computed(() => !model.value.trim())
 
 function commit(lines: string[]) {
@@ -83,6 +86,9 @@ async function activate(
   caret: 'start' | 'end' | number = 'end',
   lines: string[] = rawLines.value,
 ) {
+  // 1行だけの編集に戻るので、複数行選択の状態は捨てる
+  shiftSelectAnchor = null
+
   const target = Math.min(Math.max(index, 0), lines.length - 1)
   const line = lineAt(lines, target)
   activeIndex.value = target
@@ -114,6 +120,16 @@ let lastCaret: { index: number; offset: number } | null = null
  * 次に上下キーを押したときの実際のカーソル位置を使い直す。
  */
 let desiredColumn: number | null = null
+
+/**
+ * `Shift`+矢印で複数行選択をしている間の起点行。していなければ null。
+ *
+ * 1行編集用の textarea を複数行にまたがって選択することはできないため、
+ * 複数行を選ぶ間は編集を抜けて（`deactivate`）表示側の行を
+ * `Selection`/`Range` で直接選択する。この行番号は、選択を続けて
+ * 伸び縮みさせるときの固定端として使う。
+ */
+let shiftSelectAnchor: number | null = null
 
 function captureCaret() {
   const index = activeIndex.value
@@ -574,6 +590,11 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
   if (event.altKey) return moveBlock(event, delta)
   if (event.ctrlKey) return moveLine(event, delta)
 
+  // Shift を押しながらの複数行選択は、コンテナ側の onContainerKeydown に
+  // 任せる（ここで preventDefault すると、そちらまでイベントが届いても
+  // 判断できなくなる）
+  if (event.shiftKey) return
+
   // 保ちたい横位置は、一連の上下移動が始まった時点のものを使い続ける。
   // 行をまたいだ直後は、既にその行の端にいるため、ここで捉え直しては
   // 意味がない（捉え直すと、そこ止まりの位置に固定されてしまう）
@@ -772,6 +793,165 @@ function onCopy(event: ClipboardEvent) {
   event.preventDefault()
 }
 
+/** 要素の中で最初/最後に見つかるテキストノード。`Range` の起点・終点に使う。 */
+function firstTextNode(el: Element): Text | null {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  return walker.nextNode() as Text | null
+}
+
+function lastTextNode(el: Element): Text | null {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let node: Node | null
+  let last: Text | null = null
+  while ((node = walker.nextNode())) last = node as Text
+  return last
+}
+
+/**
+ * `anchor` 行から `focus` 行までを、ブラウザの選択として実際に選ぶ。
+ *
+ * 行の前後関係ではなく `anchor`/`focus` の指定順を保つ
+ * （`Selection.setBaseAndExtent` を使うと、上へ伸ばす選択も表現できる）。
+ * こう組み立てておくと、コピーは既存の `onCopy` がそのまま拾える。
+ */
+async function applyLineSelection(anchor: number, focus: number) {
+  await nextTick()
+  const anchorEl = document.querySelector(`[data-line-index="${anchor}"]`)
+  const focusEl = document.querySelector(`[data-line-index="${focus}"]`)
+  if (!anchorEl || !focusEl) return
+
+  const forward = anchor <= focus
+  const anchorNode = forward ? firstTextNode(anchorEl) : lastTextNode(anchorEl)
+  const focusNode = forward ? lastTextNode(focusEl) : firstTextNode(focusEl)
+  if (!anchorNode || !focusNode) return
+
+  const anchorOffset = forward ? 0 : anchorNode.length
+  const focusOffset = forward ? focusNode.length : 0
+  window.getSelection()?.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+
+  // Shift+矢印を続けて押せるよう、フォーカスをコンテナへ移しておく
+  // （1行編集用の textarea は複数行にまたがれないため、すでに外れている）
+  editorRoot.value?.focus({ preventScroll: true })
+}
+
+/**
+ * 複数行選択を1行分だけ伸ばす/縮める。
+ *
+ * `shiftSelectAnchor`（固定端）はそのままに、もう一方の端だけ動かす。
+ * まだ1行を編集中なら、ここで抜けて表示側の選択に持ち替える。
+ */
+async function extendLineSelection(delta: -1 | 1) {
+  const anchor = shiftSelectAnchor
+  if (anchor === null) return
+
+  if (activeIndex.value !== null) deactivate()
+
+  const current = window.getSelection()
+  const currentFocus = current ? closestLine(current.focusNode)?.index : undefined
+  const base = currentFocus ?? anchor
+  const focus = Math.min(Math.max(base + delta, 0), rawLines.value.length - 1)
+
+  await applyLineSelection(anchor, focus)
+}
+
+/** `Cmd`/`Ctrl`+`A` で本文全体を選択する。 */
+async function selectAllLines() {
+  if (rawLines.value.length === 0) return
+  if (activeIndex.value !== null) deactivate()
+  shiftSelectAnchor = 0
+  await applyLineSelection(0, rawLines.value.length - 1)
+}
+
+/**
+ * 複数行選択したまま `Tab` を押すと、選んだ行すべての字下げを1段
+ * まとめて増減する（Scrapbox と同じ）。
+ */
+function indentSelectedLines(delta: 1 | -1) {
+  const anchor = shiftSelectAnchor
+  if (anchor === null) return
+
+  const current = window.getSelection()
+  const focus = closestLine(current?.focusNode ?? null)?.index ?? anchor
+  const start = Math.min(anchor, focus)
+  const end = Math.max(anchor, focus)
+
+  const lines = [...rawLines.value]
+  for (let i = start; i <= end; i++) {
+    if (delta === 1) {
+      lines[i] = ` ${lines[i]}`
+    } else if (/^[ \t　]/.test(lines[i]!)) {
+      lines[i] = lines[i]!.slice(1)
+    }
+  }
+  commit(lines)
+
+  // 行の中身は変わっても番号は変わらないので、同じ範囲で選択し直す
+  void applyLineSelection(anchor, focus)
+}
+
+/**
+ * 複数行選択の間だけ効くキー操作。
+ *
+ * 1行編集用の textarea から抜けている間は、キー入力を受け取る先が
+ * 無くなってしまうため、`.editor` 自身にフォーカスを持たせて拾う。
+ */
+function onContainerKeydown(event: KeyboardEvent) {
+  // 全選択。1行だけの選択（textarea の既定動作）を上書きする
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+    event.preventDefault()
+    void selectAllLines()
+    return
+  }
+
+  if (shiftSelectAnchor !== null && event.key === 'Tab') {
+    event.preventDefault()
+    indentSelectedLines(event.shiftKey ? -1 : 1)
+    return
+  }
+
+  if (shiftSelectAnchor !== null && event.key === 'Escape') {
+    event.preventDefault()
+    shiftSelectAnchor = null
+    window.getSelection()?.removeAllRanges()
+    return
+  }
+
+  if (!event.shiftKey) return
+
+  const vertical = event.key === 'ArrowDown' || event.key === 'ArrowUp'
+  const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
+  if (!vertical && !horizontal) return
+
+  const delta: -1 | 1 = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1
+
+  // すでに複数行選択が始まっていれば、そのまま伸ばす/縮める
+  if (shiftSelectAnchor !== null) {
+    event.preventDefault()
+    void extendLineSelection(delta)
+    return
+  }
+
+  // まだ1行を編集中なら、行の端まで来ているときだけ複数行選択を始める。
+  // 行内をまだ選べるうちは、textarea の既定の選択に任せる
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+
+  const atBoundary = vertical
+    ? delta === -1
+      ? isOnFirstRow(el)
+      : isOnLastRow(el)
+    : delta === -1
+      ? el.selectionStart === 0
+      : el.selectionEnd === el.value.length
+
+  if (!atBoundary) return
+
+  event.preventDefault()
+  shiftSelectAnchor = index
+  void extendLineSelection(delta)
+}
+
 /**
  * 外から本文が入れ替わったとき（別画面での更新など）に追随する。
  *
@@ -932,14 +1112,17 @@ defineExpose({
 
 <template>
   <div
+    ref="editorRoot"
     class="editor"
     :class="{ 'editor--dragging': dragging }"
     :aria-label="props.ariaLabel"
+    tabindex="-1"
     @dragover="onDragOver"
     @dragleave="dragging = false"
     @drop="onDrop"
     @paste="onPaste"
     @copy="onCopy"
+    @keydown="onContainerKeydown"
   >
     <button
       v-if="isEmpty && activeIndex === null"
@@ -1065,6 +1248,15 @@ defineExpose({
   line-height: 1.7;
   cursor: text;
   overflow-wrap: anywhere;
+}
+
+/*
+ * 複数行選択の間、Shift+矢印の続きを拾うために .editor 自身へ
+ * フォーカスを移す（tabindex="-1"）。選択自体がブラウザの標準ハイライトで
+ * 見えるので、枠線は不要。
+ */
+.editor:focus {
+  outline: none;
 }
 
 /* 画像を落とせる場所であることを示す */
