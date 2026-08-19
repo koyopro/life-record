@@ -524,6 +524,34 @@ function onBackspace(event: KeyboardEvent) {
   void activate(index - 1, previous.content.length, lines)
 }
 
+/**
+ * 折り返しを考えた上で、`upto` 文字目までがテキストエリア内で
+ * 何行ぶんの高さになるかを測る。
+ *
+ * textarea はキャレットの折り返し行を DOM から直接読めないため、
+ * 値を一時的に切り詰めて高さ（`scrollHeight`）を測る。同期的に
+ * 元の値へ戻すので、描画にもキャレット位置にも影響しない。
+ */
+function wrappedHeight(el: HTMLTextAreaElement, upto: number): number {
+  const original = el.value
+  el.value = original.slice(0, upto)
+  const height = el.scrollHeight
+  el.value = original
+  return height
+}
+
+/** キャレットが折り返しの最初の行にあるか。 */
+function isOnFirstRow(el: HTMLTextAreaElement): boolean {
+  const caret = el.selectionStart ?? 0
+  return wrappedHeight(el, caret) <= wrappedHeight(el, 0)
+}
+
+/** キャレットが折り返しの最後の行にあるか。 */
+function isOnLastRow(el: HTMLTextAreaElement): boolean {
+  const caret = el.selectionEnd ?? el.value.length
+  return wrappedHeight(el, caret) >= wrappedHeight(el, el.value.length)
+}
+
 function onArrow(event: KeyboardEvent, delta: -1 | 1) {
   const index = activeIndex.value
   const el = input.value
@@ -533,23 +561,21 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
   if (event.altKey) return moveBlock(event, delta)
   if (event.ctrlKey) return moveLine(event, delta)
 
-  // 行内を移動できるうちは、行をまたがない。ただし、ブラウザが端で
-  // 先頭/末尾へ詰めてしまう前に、保ちたい横位置をここで控えておく
-  if (delta === -1 && el.selectionStart !== 0) {
-    desiredColumn = el.selectionStart
-    return
-  }
-  if (delta === 1 && el.selectionStart !== el.value.length) {
-    desiredColumn = el.selectionStart
-    return
-  }
+  // 保ちたい横位置は、一連の上下移動が始まった時点のものを使い続ける。
+  // 行をまたいだ直後は、既にその行の端にいるため、ここで捉え直しては
+  // 意味がない（捉え直すと、そこ止まりの位置に固定されてしまう）
+  desiredColumn ??= el.selectionStart
+
+  // 折り返しも含め、行内をまだ上下に動けるうちは行をまたがない
+  if (delta === -1 && !isOnFirstRow(el)) return
+  if (delta === 1 && !isOnLastRow(el)) return
 
   const next = index + delta
   if (next < 0 || next >= rawLines.value.length) return
 
   event.preventDefault()
   // 次の行が短ければ、setSelectionRange が末尾へ丸めてくれる
-  void activate(next, desiredColumn ?? el.selectionStart)
+  void activate(next, desiredColumn)
 }
 
 /**
@@ -1061,8 +1087,8 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: auto;
-  padding-top: 0.5rem;
+  /* margin-top: auto だと本文が短いときに1行を超えて余白が広がるため、固定値にする */
+  margin-top: 0.5rem;
 }
 
 .editor__image {
