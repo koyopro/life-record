@@ -52,6 +52,13 @@ async function add(text: string) {
 
 <template>
   <div class="page">
+    <header class="head">
+      <h1 class="head__title">タスク</h1>
+      <!-- list__bar（未完了/完了・並び・ヘルプ）をここへテレポートする。
+           一覧側の別行にすると、その分だけ表示エリアが押し下がるため -->
+      <div id="items-list-bar" class="head__bar" />
+    </header>
+
     <nav class="tabs" aria-label="status">
       <button
         v-for="item in TABS"
@@ -78,6 +85,8 @@ async function add(text: string) {
       :status="status"
       storage-key="sort:items"
       show-sort
+      :show-tag-filter="false"
+      bar-target="#items-list-bar"
       empty-message="該当するタスクはありません。"
     />
   </div>
@@ -87,6 +96,26 @@ async function add(text: string) {
 .page {
   display: grid;
   gap: 1rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.head__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.head__bar {
+  /* list__bar（未完了/完了・並び・ヘルプ）がテレポートされてくる場所。
+     残りの幅をここへ持たせ、タイトルの右側に並べる */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .tabs {

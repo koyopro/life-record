@@ -11,19 +11,31 @@ import {
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { normalizeTagName } from '~~/shared/types/tag'
 
-const props = defineProps<{
-  status: ItemStatus | 'all'
-  storageKey: string
-  /** 並べ替えを操作させるか。Inbox は追加順で十分なので隠す。 */
-  showSort?: boolean
-  /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
-  dueUntilToday?: boolean
-  /** 未完了のものだけに絞るか。 */
-  openOnly?: boolean
-  /** 既定のソート軸。 */
-  defaultSort?: SortKey
-  emptyMessage: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    status: ItemStatus | 'all'
+    storageKey: string
+    /** 並べ替えを操作させるか。Inbox は追加順で十分なので隠す。 */
+    showSort?: boolean
+    /** タグの絞り込みバーを出すか。タスク一覧はタブで十分なので隠す。 */
+    showTagFilter?: boolean
+    /**
+     * 指定すると、未完了/完了・並び・ヘルプボタンの行（list__bar）を
+     * ここへ描画する（テレポート）。呼び出し側の header に含め、
+     * 一覧の表示エリアを押し下げないようにするため。
+     * CSS セレクタで渡す（SSR でも解決できるように）。
+     */
+    barTarget?: string
+    /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
+    dueUntilToday?: boolean
+    /** 未完了のものだけに絞るか。 */
+    openOnly?: boolean
+    /** 既定のソート軸。 */
+    defaultSort?: SortKey
+    emptyMessage: string
+  }>(),
+  { showTagFilter: true },
+)
 
 const route = useRoute()
 const router = useRouter()
@@ -527,7 +539,7 @@ defineExpose({
 <template>
   <div class="split" :class="{ 'split--active': selectedId }">
     <div class="list">
-      <nav v-if="allTags.length" class="tags" aria-label="タグで絞り込む">
+      <nav v-if="showTagFilter && allTags.length" class="tags" aria-label="タグで絞り込む">
         <button
           type="button"
           class="tags__item"
@@ -551,55 +563,57 @@ defineExpose({
         </button>
       </nav>
 
-      <div class="list__bar">
-      <!-- キーボードを使わなくても切り替えられるようにする（`h` と同じ） -->
-      <div class="list__view" role="group" aria-label="完了 / 未完了">
-        <button
-          type="button"
-          class="list__view-item"
-          :class="{ 'list__view-item--active': !completed }"
-          :aria-pressed="!completed"
-          @click="showCompleted(false)"
-        >
-          未完了
-        </button>
-        <button
-          type="button"
-          class="list__view-item"
-          :class="{ 'list__view-item--active': completed }"
-          :aria-pressed="completed"
-          @click="showCompleted(true)"
-        >
-          完了
-        </button>
-      </div>
+      <Teleport :disabled="!barTarget" :to="barTarget || 'body'">
+        <div class="list__bar">
+          <!-- キーボードを使わなくても切り替えられるようにする（`h` と同じ） -->
+          <div class="list__view" role="group" aria-label="完了 / 未完了">
+            <button
+              type="button"
+              class="list__view-item"
+              :class="{ 'list__view-item--active': !completed }"
+              :aria-pressed="!completed"
+              @click="showCompleted(false)"
+            >
+              未完了
+            </button>
+            <button
+              type="button"
+              class="list__view-item"
+              :class="{ 'list__view-item--active': completed }"
+              :aria-pressed="completed"
+              @click="showCompleted(true)"
+            >
+              完了
+            </button>
+          </div>
 
-      <div class="list__status" role="status">
-        <span v-if="list.selectedIds.value.size" class="list__selected">
-          {{ list.selectedIds.value.size }}件を選択中
-        </span>
-        <span v-else-if="list.message.value">{{ list.message.value }}</span>
-      </div>
+          <div class="list__status" role="status">
+            <span v-if="list.selectedIds.value.size" class="list__selected">
+              {{ list.selectedIds.value.size }}件を選択中
+            </span>
+            <span v-else-if="list.message.value">{{ list.message.value }}</span>
+          </div>
 
-      <div class="list__controls">
-          <label v-if="showSort" class="list__sort">
-            <span class="list__sort-label">並び</span>
-            <select v-model="list.sort.value" class="list__sort-select">
-              <option v-for="key in SORT_KEYS" :key="key" :value="key">
-                {{ SORT_LABELS[key] }}
-              </option>
-            </select>
-          </label>
-          <button
-            type="button"
-            class="list__help"
-            aria-label="キーボードショートカット"
-            @click="helpOpen = true"
-          >
-            ?
-          </button>
+          <div class="list__controls">
+            <label v-if="showSort" class="list__sort">
+              <span class="list__sort-label">並び</span>
+              <select v-model="list.sort.value" class="list__sort-select">
+                <option v-for="key in SORT_KEYS" :key="key" :value="key">
+                  {{ SORT_LABELS[key] }}
+                </option>
+              </select>
+            </label>
+            <button
+              type="button"
+              class="list__help"
+              aria-label="キーボードショートカット"
+              @click="helpOpen = true"
+            >
+              ?
+            </button>
+          </div>
         </div>
-      </div>
+      </Teleport>
 
       <p v-if="list.errorMessage.value" class="list__error" role="alert">
         {{ list.errorMessage.value }}
