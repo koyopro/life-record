@@ -916,11 +916,31 @@ function onContainerKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (!event.shiftKey) return
-
   const vertical = event.key === 'ArrowDown' || event.key === 'ArrowUp'
   const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
   if (!vertical && !horizontal) return
+
+  /*
+   * 複数行選択中に Shift なしで矢印キーを押したときは、選択をやめて
+   * その行の編集に戻る（カーソル位置だけが変わる、という見た目の期待に合わせる）。
+   *
+   * ここで止めないと、textarea が無くなっている間はどの行にもフォーカスが
+   * 無いため、イベントが外側（一覧の j/k 移動など、window に登録された
+   * ショートカット）まで漏れて、隣の Item へ移ってしまう。
+   */
+  if (shiftSelectAnchor !== null && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    event.preventDefault()
+    event.stopPropagation()
+    const current = window.getSelection()
+    const focus = closestLine(current?.focusNode ?? null)?.index ?? shiftSelectAnchor
+    shiftSelectAnchor = null
+    current?.removeAllRanges()
+    const toStart = event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+    void activate(focus, toStart ? 'start' : 'end')
+    return
+  }
+
+  if (!event.shiftKey) return
 
   const delta: -1 | 1 = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1
 
