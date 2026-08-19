@@ -322,15 +322,19 @@ function onDateInput(event: Event) {
 .day__preview {
   flex: 1;
   min-height: 0;
-  border-radius: 6px;
   overflow: hidden;
   display: flex;
+  /* 画像は 4:3 の高さで足りるので、下に余っても伸ばして引き延ばさない */
+  align-items: flex-start;
 }
 
 .day__image {
   width: 100%;
-  height: 100%;
+  /* 横長 4:3 の枠に収め、縦が長い画像は下側を切り取る（上端は常に見せる） */
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
   object-fit: cover;
+  object-position: top;
 }
 
 .day__excerpt {
