@@ -1,5 +1,10 @@
-import { RRule } from 'rrule'
+// rrule は CJS パッケージで named export の静的検出ができない環境があるため
+// （scripts/import-rtm.ts のような素の Node ESM 実行時など）、default import から取り出す。
+import rrulePkg from 'rrule'
+import type { RRule as RRuleType } from 'rrule'
 import type { Recurrence, RecurrenceBasis } from '../types/recurrence'
+
+const { RRule } = rrulePkg
 
 /**
  * 繰り返し規則の解釈と次回期限の計算（docs/10-recurrence.md）。
@@ -199,7 +204,7 @@ function parseOptions(rule: string) {
   }
 }
 
-function safeRule(rule: string, dtstart: Date): RRule | null {
+function safeRule(rule: string, dtstart: Date): RRuleType | null {
   const parsed = parseOptions(rule)
   if (!parsed) return null
   try {
