@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DiaryDetailDto } from '~~/shared/types/diary'
-import { STATUS_LABELS, type ItemDto } from '~~/shared/types/item'
+import type { ItemDto } from '~~/shared/types/item'
 import {
   formatAppDate,
   isAppDate,
@@ -194,7 +194,11 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
               @dragstart="onWorkedOnDragStart(item, $event)"
             >
               <span class="worked__name">{{ item.title }}</span>
-              <span class="worked__status">{{ STATUS_LABELS[item.status] }}</span>
+              <span v-if="item.tags.length" class="worked__tags">
+                <span v-for="tag in item.tags" :key="tag" class="worked__tag">
+                  #{{ tag }}
+                </span>
+              </span>
             </NuxtLink>
           </li>
         </ul>
@@ -315,9 +319,20 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   font-size: 0.875rem;
 }
 
-.worked__status {
+.worked__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worked__tags {
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.worked__tag {
   color: var(--text-muted);
   font-size: 0.8125rem;
-  flex-shrink: 0;
 }
 </style>
