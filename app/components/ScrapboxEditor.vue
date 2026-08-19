@@ -1184,15 +1184,24 @@ defineExpose({
   background: var(--text-muted);
 }
 
+/*
+ * 引用・コードブロックはリストに埋め込まれても、箱ごとリストの内側から
+ * 表示する（Scrapbox と同じ）。文字だけを padding で詰めると、枠線や
+ * 背景がリストの外まで広がって、入れ子になって見えなくなるため、
+ * 箱そのものを margin で字下げの分だけ右へ寄せる
+ */
 .editor :deep(.sb-line--quote) {
+  margin-left: calc(var(--sb-indent, 0) * 1.25rem);
   border-left: 3px solid var(--border);
-  padding-left: calc(var(--sb-indent, 0) * 1.25rem + 0.625rem);
+  padding-left: 0.625rem;
   color: var(--text-muted);
 }
 
 /* コードブロックは行が連なって1つの箱に見えるようにする */
 .editor :deep(.sb-line--code-header),
 .editor :deep(.sb-line--code-body) {
+  margin-left: calc(var(--sb-indent, 0) * 1.25rem);
+  padding-left: 0;
   background: var(--bg);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -1210,9 +1219,17 @@ defineExpose({
   border-bottom-right-radius: 6px;
 }
 
-.editor :deep(.sb-line--code-header)::before,
+/* 中身の行は見出しにぶら下がる続きなので、中黒は出さない */
 .editor :deep(.sb-line--code-body)::before {
   content: none;
+}
+
+/*
+ * 見出し行はリストの1項目として中黒を出す。箱自体が margin で
+ * 字下げの分だけ寄っているので、中黒の位置もそこからの相対値に直す
+ */
+.editor :deep(.sb-line--code-header.sb-line--indented)::before {
+  left: -0.75rem;
 }
 
 .editor :deep(.sb-code__name) {
