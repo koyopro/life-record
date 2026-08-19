@@ -272,7 +272,7 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
   if (double) {
     // `[[画像URL]]` は横幅いっぱいの画像、それ以外は強調
     if (isImage(content)) {
-      return [{ type: 'image', src: content, large: true }]
+      return [{ type: 'image', src: normalizeImageSrc(content), large: true }]
     }
     return [
       {
@@ -308,10 +308,10 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
   if (tokens.length === 2) {
     const [a, b] = tokens as [string, string]
     if (isImage(a) && isUrl(b)) {
-      return [{ type: 'image', src: a, large: false, href: b }]
+      return [{ type: 'image', src: normalizeImageSrc(a), large: false, href: b }]
     }
     if (isUrl(a) && isImage(b)) {
-      return [{ type: 'image', src: b, large: false, href: a }]
+      return [{ type: 'image', src: normalizeImageSrc(b), large: false, href: a }]
     }
   }
 
@@ -340,7 +340,7 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
   }
 
   if (isImage(content)) {
-    return [{ type: 'image', src: content, large: false }]
+    return [{ type: 'image', src: normalizeImageSrc(content), large: false }]
   }
   if (isUrl(content)) {
     return [
@@ -382,10 +382,26 @@ function firstImageIn(nodes: Inline[]): ImageNode | null {
   return null
 }
 
+/** Gyazo の共有ページ（`gyazo.com/<id>`）・画像ID（`i.gyazo.com/<id>`）の URL。 */
+const GYAZO_URL_PATTERN = /^https?:\/\/(?:i\.)?gyazo\.com\/([0-9a-f]{32})(\.[a-z0-9]+)?(?:\?.*)?$/i
+
 function isImage(value: string): boolean {
   if (APP_IMAGE_PATH.test(value)) return true
   if (!URL_PATTERN.test(value)) return false
   // Gyazo は拡張子なしでも画像を指す
-  if (/^https?:\/\/(i\.)?gyazo\.com\//i.test(value)) return true
+  if (GYAZO_URL_PATTERN.test(value)) return true
   return IMAGE_EXTENSIONS.test(value)
+}
+
+/**
+ * Gyazo の共有ページ URL を、実体画像の URL に直す。
+ *
+ * `gyazo.com/<id>` はHTMLページで、画像そのものは `i.gyazo.com/<id>.<拡張子>` にある。
+ * 拡張子は共有ページからは分からないため、Gyazo の既定形式である png を仮定する。
+ */
+function normalizeImageSrc(value: string): string {
+  const match = GYAZO_URL_PATTERN.exec(value)
+  if (!match) return value
+  const [, id, extension] = match
+  return `https://i.gyazo.com/${id}${extension ?? '.png'}`
 }
