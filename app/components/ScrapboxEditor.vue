@@ -896,8 +896,10 @@ function indentSelectedLines(delta: 1 | -1) {
  * 無くなってしまうため、`.editor` 自身にフォーカスを持たせて拾う。
  */
 function onContainerKeydown(event: KeyboardEvent) {
-  // 全選択。1行だけの選択（textarea の既定動作）を上書きする
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+  // 全選択（Cmd+A）。1行だけの選択（textarea の既定動作）を上書きする。
+  // Ctrl+A は含めない。macOS では Ctrl+A は「行頭へ移動」という
+  // OS 標準の Emacs 風操作なので、そちらを奪ってはいけない
+  if (event.metaKey && !event.ctrlKey && event.key.toLowerCase() === 'a') {
     event.preventDefault()
     void selectAllLines()
     return
