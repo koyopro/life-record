@@ -1,9 +1,10 @@
 import { and, desc, gte, lte } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { diaries } from '~~/server/db/schema'
-import { excerptOf, itemCountsByDate } from '~~/server/utils/diaries'
+import { excerptOf } from '~~/server/utils/diaries'
 import type { DiarySummaryDto } from '~~/shared/types/diary'
 import { isAppDate } from '~~/shared/utils/date'
+import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 200
@@ -44,14 +45,9 @@ export default defineEventHandler(async (event): Promise<DiarySummaryDto[]> => {
     .orderBy(desc(diaries.date))
     .limit(limit)
 
-  const counts = await itemCountsByDate(
-    db,
-    rows.map((row) => row.date),
-  )
-
   return rows.map((row) => ({
     date: row.date,
     excerpt: excerptOf(row.body),
-    itemCount: counts.get(row.date) ?? 0,
+    imageSrc: firstImageSrc(row.body),
   }))
 })

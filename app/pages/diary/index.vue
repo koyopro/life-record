@@ -20,7 +20,11 @@ import {
  * 日記は日付が主キーなので、一覧も**カレンダー**で見せる。
  * 縦に並べるだけだと、書いていない日が詰められて見えず、
  * どこが空いているのか分からない。
+ *
+ * 各日の枠には、本文の画像（あれば）か冒頭の文章をプレビューとして出す。
+ * 枠が狭いと読みやすいプレビューにならないため、通常の画面幅より広げる。
  */
+definePageMeta({ wide: true })
 
 /** 表示中の月。URL に持たせ、戻る・再読み込みで同じ月に戻れるようにする。 */
 const route = useRoute()
@@ -52,7 +56,15 @@ const thisMonth = monthOf(today)
 const byDate = computed(
   () => new Map((diaries.value ?? []).map((entry) => [entry.date, entry])),
 )
-const days = computed(() => monthGrid(month.value))
+
+interface DayCell {
+  date: string
+  preview?: DiarySummaryDto
+}
+
+const days = computed<DayCell[]>(() =>
+  monthGrid(month.value).map((date) => ({ date, preview: byDate.value.get(date) })),
+)
 
 /** その日が表示中の月のものか。前後の月の日は控えめに出す。 */
 function inMonth(date: string): boolean {
@@ -136,49 +148,36 @@ function onDateInput(event: Event) {
       </div>
 
       <NuxtLink
-        v-for="date in days"
-        :key="date"
+        v-for="cell in days"
+        :key="cell.date"
         class="day"
         :class="{
-          'day--outside': !inMonth(date),
-          'day--today': date === today,
-          'day--written': byDate.has(date),
+          'day--outside': !inMonth(cell.date),
+          'day--today': cell.date === today,
+          'day--written': cell.preview,
         }"
-        :to="`/diary/${date}`"
-        :aria-label="`${formatAppDate(date)}の日記${byDate.has(date) ? '（あり）' : ''}`"
+        :to="`/diary/${cell.date}`"
+        :aria-label="`${formatAppDate(cell.date)}の日記${cell.preview ? '（あり）' : ''}`"
       >
-        <span class="day__number">{{ dayNumber(date) }}</span>
-        <!--
-          日記の有無は点で示す。枠に本文を詰めると、狭い画面で
-          日付が読めなくなる。中身は下の一覧で読む
-        -->
-        <span v-if="byDate.has(date)" class="day__mark" aria-hidden="true" />
+        <span class="day__number">{{ dayNumber(cell.date) }}</span>
+        <div v-if="cell.preview" class="day__preview">
+          <img
+            v-if="cell.preview.imageSrc"
+            class="day__image"
+            :src="cell.preview.imageSrc"
+            alt=""
+            loading="lazy"
+          />
+          <p v-else-if="cell.preview.excerpt" class="day__excerpt">
+            {{ cell.preview.excerpt }}
+          </p>
+        </div>
       </NuxtLink>
     </div>
 
     <p v-if="status === 'pending' && !diaries.length" class="page__placeholder">
       読み込み中…
     </p>
-
-    <p v-else-if="!diaries.length" class="page__placeholder">
-      {{ formatAppMonth(month) }}の日記はまだありません。
-    </p>
-
-    <ul v-else class="list">
-      <li v-for="entry in diaries" :key="entry.date">
-        <NuxtLink class="entry" :to="`/diary/${entry.date}`">
-          <div class="entry__head">
-            <time class="entry__date" :datetime="entry.date">
-              {{ formatAppDate(entry.date) }}
-            </time>
-            <span v-if="entry.itemCount" class="entry__count">
-              やったこと {{ entry.itemCount }}件
-            </span>
-          </div>
-          <p class="entry__excerpt">{{ entry.excerpt }}</p>
-        </NuxtLink>
-      </li>
-    </ul>
   </div>
 </template>
 
@@ -274,6 +273,8 @@ function onDateInput(event: Event) {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  /* 各日の枠にプレビューを収める分の幅を確保する */
+  max-width: 900px;
 }
 
 .calendar__weekday {
@@ -301,35 +302,53 @@ function onDateInput(event: Event) {
    * 縦横比で正方形にはしない。広い画面では縦に伸びすぎるうえ、
    * 幅も縦横比に合わせて縮み、列のあいだに隙間ができる
    */
-  min-height: 3rem;
+  min-height: 8rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.1875rem;
+  align-items: stretch;
+  gap: 0.25rem;
+  padding: 0.375rem;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
 }
 
 .day__number {
-  font-size: 0.875rem;
+  align-self: flex-start;
+  font-size: 0.8125rem;
+  flex-shrink: 0;
 }
 
-/* 日記のある日。点だけを置き、日付の読みやすさを保つ */
-.day__mark {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: var(--accent);
+/* 画像 or 冒頭の文章を、枠の残りいっぱいに収める */
+.day__preview {
+  flex: 1;
+  min-height: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+}
+
+.day__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.day__excerpt {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
 }
 
 /* 前後の月の日。曜日の列を保つために出すが、当月とは区別する */
 .day--outside {
   background: var(--bg);
   color: var(--text-muted);
-}
-
-.day--outside .day__mark {
-  background: var(--text-muted);
 }
 
 .day--today {
@@ -352,56 +371,5 @@ function onDateInput(event: Event) {
   color: var(--text-muted);
   text-align: center;
   padding: 1rem 0;
-}
-
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.entry {
-  display: grid;
-  gap: 0.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.75rem;
-  color: inherit;
-  text-decoration: none;
-}
-
-.entry__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.entry__date {
-  font-size: 0.875rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.entry__count {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  flex-shrink: 0;
-}
-
-.entry__excerpt {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  /* 一覧では冒頭だけ見えれば十分 */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  white-space: pre-wrap;
 }
 </style>

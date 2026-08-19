@@ -1,4 +1,4 @@
-import type { Line, Inline } from './types'
+import type { Line, Inline, ImageNode } from './types'
 import { isAppDate } from '../date'
 
 /**
@@ -359,6 +359,27 @@ function isUrl(value: string): boolean {
     APP_ITEM_PATH.test(value) ||
     isAppDiaryPath(value)
   )
+}
+
+/** 本文に含まれる最初の画像の src。ないなら null（日記一覧のプレビュー用）。 */
+export function firstImageSrc(input: string): string | null {
+  for (const line of parseScrapbox(input)) {
+    if (line.type !== 'text' && line.type !== 'quote') continue
+    const image = firstImageIn(line.nodes)
+    if (image) return image.src
+  }
+  return null
+}
+
+function firstImageIn(nodes: Inline[]): ImageNode | null {
+  for (const node of nodes) {
+    if (node.type === 'image') return node
+    if (node.type === 'decoration' || node.type === 'link') {
+      const found = firstImageIn(node.nodes)
+      if (found) return found
+    }
+  }
+  return null
 }
 
 function isImage(value: string): boolean {
