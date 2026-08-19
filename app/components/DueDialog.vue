@@ -11,14 +11,18 @@ const emit = defineEmits<{
 const text = ref('')
 const input = ref<HTMLInputElement | null>(null)
 
-/** SmartAdd の `^` と同じ解釈にする。覚えることを増やさないため。 */
+/**
+ * SmartAdd の `^` と同じ解釈にする。覚えることを増やさないため。
+ * 「なし」「x」は SmartAdd の `^なし` / `^x` と同じく「期限を外す」の指定。
+ */
 const parsed = computed(() =>
   text.value.trim() ? parseDueExpression(text.value) : null,
 )
 
 const preview = computed(() => {
-  if (!text.value.trim()) return '「明日」「金曜」「8/25 15:00」のように書けます'
+  if (!text.value.trim()) return '「明日」「金曜」「8/25 15:00」・「なし」で外せます'
   if (!parsed.value) return '日付として解釈できませんでした'
+  if (parsed.value.cleared) return '期限を外します'
   return formatDue({
     dueAt: parsed.value.date.toISOString(),
     dueHasTime: parsed.value.hasTime,
@@ -27,7 +31,7 @@ const preview = computed(() => {
 
 function submit() {
   if (!parsed.value) return
-  emit('submit', parsed.value)
+  emit('submit', parsed.value.cleared ? null : parsed.value)
 }
 
 onMounted(() => input.value?.focus())

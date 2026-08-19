@@ -385,17 +385,28 @@ function removeAt(input: string, index: number, length: number): string {
   return `${input.slice(0, index)} ${input.slice(index + length)}`
 }
 
+/** {@link parseDueExpression} の結果。 */
+export type DueExpression =
+  | { cleared: false; date: Date; hasTime: boolean }
+  | { cleared: true }
+  | null
+
 /**
  * 自然言語の日付表現を解釈する。日本語 → 英語の順に試す。
  *
  * SmartAdd の `^` だけでなく、期限設定ダイアログ（`d`）でも使う。
+ * `なし` / `x` は SmartAdd の `^なし` / `^x` と同じく「期限なし」の
+ * 明示（NO_DUE_PATTERN）。覚えることを増やさないよう、両方で同じ書き方を使う。
  */
 export function parseDueExpression(
   text: string,
   referenceDate: Date = new Date(),
-): { date: Date; hasTime: boolean } | null {
-  const parsed = parseDate(text.trim(), referenceDate)
-  return parsed ? { date: parsed.date, hasTime: parsed.hasTime } : null
+): DueExpression {
+  const trimmed = text.trim()
+  if (NO_DUE_PATTERN.test(trimmed)) return { cleared: true }
+
+  const parsed = parseDate(trimmed, referenceDate)
+  return parsed ? { cleared: false, date: parsed.date, hasTime: parsed.hasTime } : null
 }
 
 /**
