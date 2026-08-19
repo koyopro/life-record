@@ -34,11 +34,11 @@ Milestone 1〜12 の機能実装は、以下を除いて完了している。
 
 | | 内容 | 置き場所 |
 |---|---|---|
-| 1 | **バックアップの本番稼働**（S3 バケット・GitHub Secrets・復元の実演） | Milestone 10 |
+| 1 | 画像バケットのバージョニング有効化・別リージョンへの複製 | Milestone 10 |
 | 2 | 全文検索インデックスの検討（データ量が増えたら。Q9） | Milestone 9 |
 
-1 が最優先。**取れていないバックアップは、日常利用を続けるほど損失が大きくなる**ため、
-他の機能追加より先に片付ける。2 は必要になってからでよい。
+DBバックアップ本体（S3 バケット・GitHub Secrets・復元の実演）は完了した。
+1 は画像側の保護強化、2 は必要になってからでよい。
 
 ---
 
@@ -293,13 +293,18 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 
 ### 残っている作業（AWS / GitHub の設定）
 
-- [ ] バックアップ用の S3 バケット作成（**画像用とは別にする**）
-- [ ] GitHub Secrets の登録（`DATABASE_URL` / `BACKUP_S3_BUCKET` /
+- [x] バックアップ用の S3 バケット作成（**画像用とは別にする**）
+- [x] GitHub Secrets の登録（`DATABASE_URL` / `BACKUP_S3_BUCKET` /
       `BACKUP_AWS_REGION` / `BACKUP_AWS_ACCESS_KEY_ID` /
       `BACKUP_AWS_SECRET_ACCESS_KEY`）
 - [ ] 画像バケットのバージョニング有効化・別リージョンへの複製
-- [ ] **復元を1度通す**（[05-operations.md](05-operations.md) 5.4）。
-      取れているだけでは意味がないため
+- [x] **復元を1度通す**（[05-operations.md](05-operations.md) 5.4）。
+      2026-08-19、S3上のダンプ（`datalake-20260819.dump`）をローカルの
+      Docker PostgreSQL へ `pg_restore` で復元し、件数を確認済み
+      （items 40 / sections 22 / diaries 2 / tags 3）。
+      5.4 の手順では Neon の新規ブランチへの復元としているが、今回は
+      ダンプの整合性・復元可能性の確認を優先してローカルで実施した。
+      四半期ごとの確認では Neon ブランチでの復元も試す
 
 ---
 
