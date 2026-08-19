@@ -1560,6 +1560,10 @@ defineExpose({
 
 .editor :deep(.sb-image) {
   max-width: 100%;
+  /* 縦長の画像が場所を取りすぎないよう、高さで頭打ちにする。
+     幅・高さのどちらも指定しないことで、img 本来の縦横比を保ったまま
+     縮む（全体が見える。切り取りはしない） */
+  max-height: 300px;
   border-radius: 8px;
 }
 
