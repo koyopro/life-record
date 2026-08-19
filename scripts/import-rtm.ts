@@ -10,11 +10,13 @@
  * - 対象は常に未完了のため、status は backlog にする。
  * - タスクの notes（メモ）は、その Item の Section として取り込む
  *   （note.series_id と task.series_id が対応する）。
- * - RTM の繰り返し（task.repeat）は本アプリの recurrence_rule にそのまま取り込む。
- *   RTM のエクスポートに含まれる repeat は既に RRULE 形式のため変換不要。
- *   task.repeat_every（true: 期限日起点 / false: 完了日起点）を
+ * - RTM の繰り返し（task.repeat）は本アプリの recurrence_rule に取り込む。
+ *   RTM のエクスポートに含まれる repeat は通常すでに RRULE 形式なのでそのまま使う。
+ *   軽微な崩れ（末尾セミコロン等）は補正し、RRULE として解釈できない場合は
+ *   自然言語表現（"every week" 等）として SmartAdd と同じパーサーでも試す
+ *   （parseRtmRecurrence）。task.repeat_every（true: 期限日起点 / false: 完了日起点）を
  *   recurrence_basis（due / completion）に対応させる（docs/10-recurrence.md 10.1）。
- *   RRULE として解釈できない場合は、繰り返しを設定せず警告を出す
+ *   それでも解釈できない場合のみ、繰り返しを設定せず警告を出す
  *   （黙って単発の Item にはしない）。
  *   系列を束ねる series_id は、次回オカレンス生成時にアプリ側が
  *   自分自身の id から遅延生成するため、import 時点では設定しない
@@ -31,7 +33,7 @@ import { items, itemTags, sections, tags } from '../server/db/schema'
 import type { RecurrenceBasis } from '../shared/types/recurrence'
 import { normalizeTagName } from '../shared/types/tag'
 import { toAppDate, todayDueAt } from '../shared/utils/date'
-import { isValidRule } from '../shared/utils/recurrence'
+import { isValidRule, parseRecurrence } from '../shared/utils/recurrence'
 import { TITLE_MAX_LENGTH } from '../shared/utils/text'
 
 /** server/utils/tags.ts の ensureTags と同じ処理。Nuxt alias 経由の import を避けるため複製する。 */
@@ -111,17 +113,30 @@ function parsePriority(value: string | undefined): 1 | 2 | 3 | null {
 }
 
 /**
- * RTM の repeat（既に RRULE 形式）を recurrence_rule / recurrence_basis に変換する。
+ * RTM の repeat を recurrence_rule / recurrence_basis に変換する。
  * 解釈できない場合は null を返し、呼び出し側で警告を出す（黙って単発にはしない）。
+ *
+ * repeat は通常すでに RRULE 形式だが、末尾のセミコロンなど軽微な崩れがある場合は
+ * 補正してから解釈を試みる。それでも RRULE として解釈できない場合、RTM の古い
+ * クライアント由来の自然文表現（"every week" 等）が repeat にそのまま残っている
+ * ケースを想定し、SmartAdd と同じ自然言語パーサー（parseRecurrence）でも試す。
  */
 function parseRtmRecurrence(
   task: RtmTask,
 ): { rule: string; basis: RecurrenceBasis } | null {
-  const rule = task.repeat?.trim()
-  if (!rule) return null
-  if (!isValidRule(rule)) return null
+  const raw = task.repeat?.trim()
+  if (!raw) return null
 
-  return { rule, basis: task.repeat_every ? 'due' : 'completion' }
+  // 末尾のセミコロン・余分な空白は rrule のパースを丸ごと失敗させるので落とす
+  const sanitized = raw.replace(/;+$/, '').trim()
+  if (sanitized && isValidRule(sanitized)) {
+    return { rule: sanitized, basis: task.repeat_every ? 'due' : 'completion' }
+  }
+
+  const natural = parseRecurrence(raw)
+  if (natural) return natural
+
+  return null
 }
 
 async function main() {
