@@ -5,9 +5,9 @@
  *   npx tsx scripts/import-rtm.ts <export.json> [--dry-run]
  *
  * 変換方針（docs/02-data-model.md に対応させる）:
- * - 期限（date_due）を持つタスクのみを対象にする。
- * - date_completed があれば closed、なければ backlog にする
- *   （「着手可能」の意味が、期限付きで残っているタスクに近いため）。
+ * - 期限（date_due）を持ち、かつ未完了（date_completed なし）のタスクのみを対象にする。
+ *   完了済みのものは import しない。
+ * - 対象は常に未完了のため、status は backlog にする。
  * - タスクの notes（メモ）は、その Item の Section として取り込む
  *   （note.series_id と task.series_id が対応する）。
  * - RTM の繰り返し（repeat）はこのスクリプトでは取り込まない。
@@ -23,7 +23,6 @@ import { inArray } from 'drizzle-orm'
 import { useDb, type Executor } from '../server/db'
 import { items, itemTags, sections, tags } from '../server/db/schema'
 import { normalizeTagName } from '../shared/types/tag'
-import type { ItemStatus } from '../shared/types/item'
 import { toAppDate, todayDueAt } from '../shared/utils/date'
 import { TITLE_MAX_LENGTH } from '../shared/utils/text'
 
@@ -112,8 +111,10 @@ async function main() {
   const raw = readFileSync(resolve(filePath), 'utf8')
   const data = JSON.parse(raw) as RtmExport
 
-  const dueTasks = data.tasks.filter((task) => task.date_due != null)
-  console.log(`タスク総数: ${data.tasks.length}件 / 期限付き: ${dueTasks.length}件`)
+  const dueTasks = data.tasks.filter(
+    (task) => task.date_due != null && task.date_completed == null,
+  )
+  console.log(`タスク総数: ${data.tasks.length}件 / 期限付き・未完了: ${dueTasks.length}件`)
 
   const notesBySeriesId = new Map<string, RtmNote[]>()
   for (const note of data.notes) {
@@ -142,8 +143,6 @@ async function main() {
     const dueAt = dueHasTime
       ? new Date(task.date_due!)
       : todayDueAt(new Date(task.date_due!))
-    const completedAt = task.date_completed ? new Date(task.date_completed) : null
-    const status: ItemStatus = completedAt ? 'closed' : 'backlog'
     const createdAt = new Date(task.date_created ?? task.date_added ?? task.date_due!)
     const updatedAt = new Date(task.date_modified ?? createdAt)
     const itemId = itemIdFor(task.id)
@@ -175,12 +174,11 @@ async function main() {
       item: {
         id: itemId,
         title: title.slice(0, TITLE_MAX_LENGTH),
-        status,
+        status: 'backlog',
         priority: parsePriority(task.priority),
         url: task.url ?? null,
         dueAt,
         dueHasTime,
-        completedAt,
         createdAt,
         updatedAt,
       },
@@ -189,13 +187,9 @@ async function main() {
     })
   }
 
-  const closedCount = prepared.filter((p) => p.item.status === 'closed').length
   const totalSections = prepared.reduce((sum, p) => sum + p.sectionRows.length, 0)
 
   console.log(`import対象: ${prepared.length}件（タイトル欠落でスキップ: ${skippedNoTitle}件）`)
-  console.log(
-    `  完了済み(closed): ${closedCount}件 / 未完了(backlog): ${prepared.length - closedCount}件`,
-  )
   console.log(`  メモから作る Section: ${totalSections}件`)
 
   if (dryRun) {
