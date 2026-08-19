@@ -105,6 +105,16 @@ async function activate(
 /** 直前まで編集していた位置。フォーカスが外れたときに、その位置を覚えておく。 */
 let lastCaret: { index: number; offset: number } | null = null
 
+/**
+ * 上下キーで行をまたぐときに保つ横位置（行頭からの文字数）。
+ *
+ * 行ごとに別の textarea なので、ブラウザが自前で持つ「上下移動中の
+ * 横位置」の記憶は行をまたいだ時点で失われる。それを肩代わりする。
+ * 上下キー以外での移動（クリック・タイプ・左右キーなど）では null に戻し、
+ * 次に上下キーを押したときの実際のカーソル位置を使い直す。
+ */
+let desiredColumn: number | null = null
+
 function captureCaret() {
   const index = activeIndex.value
   const el = input.value
@@ -243,6 +253,8 @@ function closeEmojiPicker() {
  * `http` / `https` で終わる場合は除外する。
  */
 function updateEmojiTrigger() {
+  // クリックでの移動も、上下キーで保っていた横位置を忘れさせる
+  desiredColumn = null
   const el = input.value
   if (!el || activeIndex.value === null) {
     closeEmojiPicker()
@@ -303,6 +315,9 @@ const composing = ref(false)
  * `event.key` を直接見る。
  */
 function onKeydown(event: KeyboardEvent) {
+  // 上下キー以外で動いたら、上下移動で保っていた横位置は忘れる
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') desiredColumn = null
+
   // 絵文字候補を出している間は、上下で選び Enter / Tab で確定する。
   // 行の分割やインデントなど、通常のキー操作より優先する。
   if (emojiStart.value !== null) {
@@ -352,6 +367,11 @@ function onKeydown(event: KeyboardEvent) {
     case 'd':
       // macOS の Ctrl+D は「カーソルより後ろを1文字消す」
       if (event.ctrlKey) return onForwardDelete(event)
+      return
+    case 'k':
+      // macOS の Ctrl+K は「カーソルより後ろを行末まで消す」(Emacs 由来)。
+      // 空行なら消す文字がなく、そこにあるのは改行なので Ctrl+D と同じ扱いにする
+      if (event.ctrlKey && activeText.value === '') return onForwardDelete(event)
       return
     case 't':
       if (event.ctrlKey) return insertToday(event)
@@ -513,15 +533,23 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
   if (event.altKey) return moveBlock(event, delta)
   if (event.ctrlKey) return moveLine(event, delta)
 
-  // 行内を移動できるうちは、行をまたがない
-  if (delta === -1 && el.selectionStart !== 0) return
-  if (delta === 1 && el.selectionStart !== el.value.length) return
+  // 行内を移動できるうちは、行をまたがない。ただし、ブラウザが端で
+  // 先頭/末尾へ詰めてしまう前に、保ちたい横位置をここで控えておく
+  if (delta === -1 && el.selectionStart !== 0) {
+    desiredColumn = el.selectionStart
+    return
+  }
+  if (delta === 1 && el.selectionStart !== el.value.length) {
+    desiredColumn = el.selectionStart
+    return
+  }
 
   const next = index + delta
   if (next < 0 || next >= rawLines.value.length) return
 
   event.preventDefault()
-  void activate(next, delta === -1 ? 'end' : 'start')
+  // 次の行が短ければ、setSelectionRange が末尾へ丸めてくれる
+  void activate(next, desiredColumn ?? el.selectionStart)
 }
 
 /**
