@@ -10,9 +10,15 @@
  * - 対象は常に未完了のため、status は backlog にする。
  * - タスクの notes（メモ）は、その Item の Section として取り込む
  *   （note.series_id と task.series_id が対応する）。
- * - RTM の繰り返し（repeat）はこのスクリプトでは取り込まない。
- *   RTM と本アプリで繰り返しの意味（every/after の判定条件）が異なり、
- *   安全に変換できないため、単発の Item として登録する。
+ * - RTM の繰り返し（task.repeat）は本アプリの recurrence_rule にそのまま取り込む。
+ *   RTM のエクスポートに含まれる repeat は既に RRULE 形式のため変換不要。
+ *   task.repeat_every（true: 期限日起点 / false: 完了日起点）を
+ *   recurrence_basis（due / completion）に対応させる（docs/10-recurrence.md 10.1）。
+ *   RRULE として解釈できない場合は、繰り返しを設定せず警告を出す
+ *   （黙って単発の Item にはしない）。
+ *   系列を束ねる series_id は、次回オカレンス生成時にアプリ側が
+ *   自分自身の id から遅延生成するため、import 時点では設定しない
+ *   （server/utils/recurrence.ts の createNextOccurrence と同じ扱い）。
  * - 再実行しても重複登録しないよう、Item/Section の id は
  *   RTM 側の id から決定的に (uuidv5 で) 生成する。
  */
@@ -22,8 +28,10 @@ import { resolve } from 'node:path'
 import { inArray } from 'drizzle-orm'
 import { useDb, type Executor } from '../server/db'
 import { items, itemTags, sections, tags } from '../server/db/schema'
+import type { RecurrenceBasis } from '../shared/types/recurrence'
 import { normalizeTagName } from '../shared/types/tag'
 import { toAppDate, todayDueAt } from '../shared/utils/date'
+import { isValidRule } from '../shared/utils/recurrence'
 import { TITLE_MAX_LENGTH } from '../shared/utils/text'
 
 /** server/utils/tags.ts の ensureTags と同じ処理。Nuxt alias 経由の import を避けるため複製する。 */
@@ -57,6 +65,10 @@ interface RtmTask {
   date_completed?: number
   url?: string
   tags?: string[]
+  /** RFC 5545 の RRULE 文字列。繰り返しなしタスクでは null または省略。 */
+  repeat?: string | null
+  /** true: 期限日起点（every） / false: 完了日起点（after）。 */
+  repeat_every?: boolean
 }
 
 interface RtmNote {
@@ -98,6 +110,20 @@ function parsePriority(value: string | undefined): 1 | 2 | 3 | null {
   return match ? (Number(match[1]) as 1 | 2 | 3) : null
 }
 
+/**
+ * RTM の repeat（既に RRULE 形式）を recurrence_rule / recurrence_basis に変換する。
+ * 解釈できない場合は null を返し、呼び出し側で警告を出す（黙って単発にはしない）。
+ */
+function parseRtmRecurrence(
+  task: RtmTask,
+): { rule: string; basis: RecurrenceBasis } | null {
+  const rule = task.repeat?.trim()
+  if (!rule) return null
+  if (!isValidRule(rule)) return null
+
+  return { rule, basis: task.repeat_every ? 'due' : 'completion' }
+}
+
 async function main() {
   const args = process.argv.slice(2)
   const dryRun = args.includes('--dry-run')
@@ -131,12 +157,24 @@ async function main() {
 
   const prepared: PreparedItem[] = []
   let skippedNoTitle = 0
+  let recurringCount = 0
+  let invalidRecurrenceCount = 0
 
   for (const task of dueTasks) {
     const title = task.name?.trim()
     if (!title) {
       skippedNoTitle++
       continue
+    }
+
+    const recurrence = parseRtmRecurrence(task)
+    if (recurrence) {
+      recurringCount++
+    } else if (task.repeat?.trim()) {
+      invalidRecurrenceCount++
+      console.warn(
+        `[警告] タスク "${title}" (id: ${task.id}) の repeat "${task.repeat}" を RRULE として解釈できないため、繰り返しなしで取り込みます。`,
+      )
     }
 
     const dueHasTime = !!task.date_due_has_time
@@ -179,6 +217,8 @@ async function main() {
         url: task.url ?? null,
         dueAt,
         dueHasTime,
+        recurrenceRule: recurrence?.rule ?? null,
+        recurrenceBasis: recurrence?.basis ?? null,
         createdAt,
         updatedAt,
       },
@@ -191,6 +231,9 @@ async function main() {
 
   console.log(`import対象: ${prepared.length}件（タイトル欠落でスキップ: ${skippedNoTitle}件）`)
   console.log(`  メモから作る Section: ${totalSections}件`)
+  console.log(
+    `  繰り返しあり: ${recurringCount}件（RRULEとして解釈できず単発扱い: ${invalidRecurrenceCount}件）`,
+  )
 
   if (dryRun) {
     console.log('--dry-run のため、DBへの書き込みは行いません。')
