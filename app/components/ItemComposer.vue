@@ -232,6 +232,9 @@ function isComposing(event: KeyboardEvent) {
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter') {
     if (isComposing(event)) return
+    // Shift+Enter は常に改行。1行入力（PC の新規タスク追加）でも
+    // 本文を書けるようにする。
+    if (event.shiftKey) return
     // 1行入力なら Enter で送信。複数行なら ⌘/Ctrl + Enter。
     if (!multiline.value || event.metaKey || event.ctrlKey) {
       event.preventDefault()
@@ -378,7 +381,8 @@ useComposerRegistration(focus)
 
       <div class="composer__actions">
         <span class="composer__hint">
-          {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加' }} ・ ^期限 !重要度 #タグ
+          {{ multiline ? '⌘ + Enter で追加' : 'Enter で追加（Shift + Enter で改行）' }} ・
+          ^期限 !重要度 #タグ
           <span v-if="!values.due && !values.dueCleared" class="composer__default">
             ・ 期限は今日
           </span>
