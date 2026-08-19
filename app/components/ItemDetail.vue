@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SAVE_STATE_LABELS } from '~/composables/useAutosave'
+import type { Shortcut } from '~/composables/useShortcuts'
 import {
   ITEM_STATUSES,
   PRIORITIES,
@@ -411,6 +412,38 @@ watch(id, () => {
   urlFieldOpen.value = false
 })
 
+/**
+ * 狭い画面からの単独表示（`embedded` でない）でだけ、`Esc` で一覧へ戻す。
+ * 分割表示では一覧がそのまま見えているので不要。
+ *
+ * タイトルや本文など、入力欄にフォーカスがある間は対象にしない
+ * （`useShortcuts` の既定どおり）。編集中の `Esc` を横取りすると、
+ * 書きかけのまま一覧へ飛んでしまうため。ポップオーバーは開いていれば
+ * 閉じるだけにして、一覧へは戻さない。
+ */
+useShortcuts(
+  computed<Shortcut[]>(() =>
+    props.embedded
+      ? []
+      : [
+          {
+            keys: ['Escape'],
+            display: 'Esc',
+            label: '一覧へ戻る',
+            group: 'その他',
+            run: () => {
+              if (priorityOpen.value || detailMenuOpen.value) {
+                priorityOpen.value = false
+                detailMenuOpen.value = false
+                return
+              }
+              void navigateTo(listOrigin.value)
+            },
+          },
+        ],
+  ),
+)
+
 /** 同じ繰り返しから生まれた過去のオカレンス。 */
 const seriesId = computed(() => item.value?.seriesId ?? null)
 
@@ -683,6 +716,37 @@ async function removeSection(section: SectionDto) {
               {{ STATUS_LABELS[status as ItemStatus] }}
             </button>
           </div>
+
+          <!--
+            RTM の「タスクの詳細を入力」に倣い、繰り返し・URL のうち
+            まだ設定していないものだけをここから追加できるようにする。
+            両方設定済みなら足すものが無いので出さない。
+            専用の行にすると縦に嵩むので、状態と同じ行の右端に置く。
+          -->
+          <div v-if="detailOptions.length" class="meta__add-wrap">
+            <button
+              type="button"
+              class="meta__add"
+              aria-haspopup="menu"
+              :aria-expanded="detailMenuOpen"
+              @click="toggleDetailMenu"
+            >
+              詳細を追加 <span aria-hidden="true">▾</span>
+            </button>
+            <div v-if="detailMenuOpen" class="meta__add-backdrop" @click="detailMenuOpen = false" />
+            <ul v-if="detailMenuOpen" class="meta__add-menu" role="menu">
+              <li v-for="option in detailOptions" :key="option.key">
+                <button
+                  type="button"
+                  class="meta__add-option"
+                  role="menuitem"
+                  @click="option.run()"
+                >
+                  {{ option.label }}
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div v-if="showUrlRow" class="meta__row">
@@ -749,38 +813,6 @@ async function removeSection(section: SectionDto) {
             >
               外す
             </button>
-          </div>
-        </div>
-
-        <!--
-          RTM の「タスクの詳細を入力」に倣い、繰り返し・URL のうち
-          まだ設定していないものだけをここから追加できるようにする。
-          両方設定済みなら足すものが無いので出さない。
-        -->
-        <div v-if="detailOptions.length" class="meta__row">
-          <div class="meta__add-wrap">
-            <button
-              type="button"
-              class="meta__add"
-              aria-haspopup="menu"
-              :aria-expanded="detailMenuOpen"
-              @click="toggleDetailMenu"
-            >
-              詳細を追加 <span aria-hidden="true">▾</span>
-            </button>
-            <div v-if="detailMenuOpen" class="meta__add-backdrop" @click="detailMenuOpen = false" />
-            <ul v-if="detailMenuOpen" class="meta__add-menu" role="menu">
-              <li v-for="option in detailOptions" :key="option.key">
-                <button
-                  type="button"
-                  class="meta__add-option"
-                  role="menuitem"
-                  @click="option.run()"
-                >
-                  {{ option.label }}
-                </button>
-              </li>
-            </ul>
           </div>
         </div>
       </section>
@@ -1153,6 +1185,7 @@ async function removeSection(section: SectionDto) {
  */
 .meta__add-wrap {
   position: relative;
+  margin-left: auto;
 }
 
 .meta__add {
