@@ -172,10 +172,11 @@ export function useItemList(options: Options) {
     { immediate: true },
   )
 
+  /** 上下端まで来たら反対側へ折り返す。 */
   function moveCursor(delta: number) {
     const list = items.value
     if (list.length === 0) return
-    const next = Math.min(Math.max(cursor.value + delta, 0), list.length - 1)
+    const next = (((cursor.value + delta) % list.length) + list.length) % list.length
     focusedId.value = list[next]?.id ?? null
   }
 
