@@ -100,11 +100,12 @@ function onKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (
-    !typing &&
-    !event.shiftKey &&
-    list.some((item) => item.prefix === event.key)
-  ) {
+  /*
+   * `event.key` はすでに Shift を反映した文字（`*` は Shift+8 など）なので、
+   * ここで Shift の有無を別途見る必要はない。`g` のような英字プレフィックスも、
+   * Shift を押していれば大文字（`G`）になり自然に除外される。
+   */
+  if (!typing && list.some((item) => item.prefix === event.key)) {
     waitFor(event.key)
     event.preventDefault()
     return

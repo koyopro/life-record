@@ -276,6 +276,41 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.toggleSelect(),
   },
   {
+    prefix: '*',
+    keys: ['a'],
+    label: '全タスクを選択',
+    group: '選択',
+    run: () => list.selectAll(),
+  },
+  {
+    prefix: '*',
+    keys: ['n'],
+    label: 'すべてのタスクの選択を解除',
+    group: '選択',
+    run: () => list.clearSelection(),
+  },
+  {
+    prefix: '*',
+    keys: ['t'],
+    label: '期限が今日のタスクを選択',
+    group: '選択',
+    run: () => list.selectByDue('today'),
+  },
+  {
+    prefix: '*',
+    keys: ['o'],
+    label: '期限が明日のタスクを選択',
+    group: '選択',
+    run: () => list.selectByDue('tomorrow'),
+  },
+  {
+    prefix: '*',
+    keys: ['v'],
+    label: '期限切れのタスクを選択',
+    group: '選択',
+    run: () => list.selectByDue('overdue'),
+  },
+  {
     // 完了側を見ているときは戻す操作のほうが要る。RTM も同じキーで両方を担う
     keys: ['c'],
     label: completed.value ? '未完了に戻す' : '完了にする',

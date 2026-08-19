@@ -196,6 +196,23 @@ export function useItemList(options: Options) {
     selectedIds.value = new Set()
   }
 
+  /** 表示中のものをすべて選ぶ（`*` `a`、RTM の Select All）。 */
+  function selectAll() {
+    selectedIds.value = new Set(items.value.map((item) => item.id))
+  }
+
+  /**
+   * 期限が指定の状態のものだけを選ぶ（`*` `t` / `o` / `v`、RTM の
+   * Select by due date）。表示中の一覧（絞り込み後）から選ぶ。
+   */
+  function selectByDue(state: 'today' | 'tomorrow' | 'overdue') {
+    selectedIds.value = new Set(
+      items.value
+        .filter((item) => formatDue(item).state === state)
+        .map((item) => item.id),
+    )
+  }
+
   // --- 編集操作 -------------------------------------------------------
 
   function describe(count: number, action: string): string {
@@ -415,6 +432,8 @@ export function useItemList(options: Options) {
     focusItem,
     toggleSelect,
     clearSelection,
+    selectAll,
+    selectByDue,
     complete,
     setStatus,
     setPriority,
