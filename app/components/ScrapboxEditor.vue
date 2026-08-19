@@ -697,14 +697,13 @@ const filePicker = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
 
 /**
- * 画像を1行として差し込む。
+ * 画像を1行として、指定した位置に差し込む。
  *
- * 編集中の行の次に入れる。行の途中に混ぜると、書きかけの文が
- * 画像記法で割られてしまう。編集していなければ末尾に足す。
+ * 行の途中に混ぜると、書きかけの文が画像記法で割られてしまうため、
+ * 常に1行として入れる。挿入位置を決めるのは呼び出し側（uploadAll）。
  */
-function insertImage(path: string) {
+function insertImageAt(path: string, at: number) {
   const lines = [...rawLines.value]
-  const at = activeIndex.value === null ? lines.length : activeIndex.value + 1
 
   // 空の本文に足すときは、先頭の空行をそのまま使う
   const replaceEmpty = lines.length === 1 && lines[0] === ''
@@ -712,14 +711,35 @@ function insertImage(path: string) {
   else lines.splice(at, 0, `[${path}]`)
 
   commit(lines)
-  deactivate()
 }
 
+/**
+ * まとめてアップロードし、カーソル位置（の次の行）へ順に差し込む。
+ *
+ * ボタン操作やドラッグ開始でフォーカスが外れていても、外れる直前の
+ * カーソル位置（lastCaret）へ一度戻ってから差し込む（insertItemLink と
+ * 同じ理由）。一度も編集していなければ末尾に足す。
+ *
+ * 挿入位置は最初に1回だけ決め、複数枚のときはそこから1行ずつ進める。
+ * 画像を入れるたびに位置を数え直すと、フォーカスが外れて末尾扱いになり
+ * 2枚目以降の順序が入れ替わる。
+ */
 async function uploadAll(files: File[]) {
+  if (activeIndex.value === null && lastCaret) {
+    await activate(lastCaret.index, lastCaret.offset)
+  }
+  lastCaret = null
+
+  let at = activeIndex.value === null ? rawLines.value.length : activeIndex.value + 1
+
   for (const file of files) {
     const path = await images.upload(file)
-    if (path) insertImage(path)
+    if (!path) continue
+    insertImageAt(path, at)
+    at += 1
   }
+
+  deactivate()
 }
 
 // --- 他のタスクへのリンク（ドラッグ＆ドロップ） ---------------------------
