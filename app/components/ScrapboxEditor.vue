@@ -735,6 +735,43 @@ function onLineClick(event: MouseEvent, index: number) {
   void activate(index)
 }
 
+/** 選択の起点・終点から、それが属する行の要素と行番号を探す。 */
+function closestLine(node: Node | null): { el: Element; index: number } | null {
+  const el = (node instanceof Element ? node : node?.parentElement)?.closest('[data-line-index]')
+  if (!el) return null
+  const index = Number(el.getAttribute('data-line-index'))
+  return Number.isNaN(index) ? null : { el, index }
+}
+
+/**
+ * 複数行にまたがる選択をコピーしたときは、Scrapbox と同じく記法込みの
+ * 生テキストを渡す。
+ *
+ * 表示側は行頭（字下げ・`>` ・`code:`）を文字ではなく余白として見せている
+ * ため、素直にコピーするとその部分が抜け落ちる。選択がまたぐ行の範囲だけ
+ * DOM から判定し、中身はブラウザの選択文字列ではなく model の生テキスト
+ * （`rawLines`）から組み立て直す。
+ *
+ * 1行内の部分選択（例: コードの中身の一部だけ選ぶ）は、余白を含まないため
+ * ブラウザの既定のコピーのままでよい。行全体を選んでいるときだけ差し替える。
+ */
+function onCopy(event: ClipboardEvent) {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+
+  const anchor = closestLine(selection.anchorNode)
+  const focus = closestLine(selection.focusNode)
+  if (!anchor || !focus) return
+
+  const start = Math.min(anchor.index, focus.index)
+  const end = Math.max(anchor.index, focus.index)
+  if (start === end && selection.toString().trim() !== anchor.el.textContent?.trim()) return
+
+  const text = rawLines.value.slice(start, end + 1).join('\n')
+  event.clipboardData?.setData('text/plain', text)
+  event.preventDefault()
+}
+
 /**
  * 外から本文が入れ替わったとき（別画面での更新など）に追随する。
  *
@@ -902,6 +939,7 @@ defineExpose({
     @dragleave="dragging = false"
     @drop="onDrop"
     @paste="onPaste"
+    @copy="onCopy"
   >
     <button
       v-if="isEmpty && activeIndex === null"
@@ -925,6 +963,7 @@ defineExpose({
         class="editor__editing"
         :class="activeLine ? lineClass(activeLine) : ''"
         :style="{ order: activeIndex ?? 0, '--sb-indent': activeLine?.indent ?? 0 }"
+        :data-line-index="activeIndex ?? undefined"
       >
         <textarea
           ref="input"
@@ -978,6 +1017,7 @@ defineExpose({
         :key="index"
         :class="lineClass(line)"
         :style="{ order: index, '--sb-indent': line.indent }"
+        :data-line-index="index"
         @click="onLineClick($event, index)"
         v-html="renderLine(line)"
       />
