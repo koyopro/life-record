@@ -27,12 +27,27 @@ if (!isAppDate(date.value)) {
 /*
  * top-level await にしない。待つと、日付を移るたびに画面遷移そのものが
  * 取得の完了までブロックされ、切り替えるたびにラグが出る。
- * 取得中はローカルに何も持たない（Item と違ってオフライン用のキャッシュを
- * 持たないため）ので、届くまでは読み込み中の表示にする。
  */
-const { data: diary, error, refresh } = useFetch<DiaryDetailDto>(
+const { data: diary, error: fetchError, refresh } = useFetch<DiaryDetailDto>(
   () => `/api/diaries/${date.value}`,
 )
+
+/**
+ * 日記は Item と違ってオフライン用の永続キャッシュ（IndexedDB）を持たないが、
+ * セッション中に開いた日は控えておき、取得が終わるまでの間だけ初期表示に使う。
+ * 正本はサーバーなので、届き次第 `diary`（本物）に切り替わる。
+ * 初めて開く日は、控えが無いので届くまで読み込み中の表示になる。
+ */
+const diaryCache = useState<Record<string, DiaryDetailDto>>('diary-detail-cache', () => ({}))
+
+watch(diary, (value) => {
+  if (value) diaryCache.value[date.value] = value
+})
+
+const cachedDiary = computed(() => diary.value ?? diaryCache.value[date.value] ?? null)
+
+/** 読み込めなかった。控えが出せているときは、それを優先して知らせない。 */
+const error = computed(() => (cachedDiary.value ? null : fetchError.value))
 
 useHead({ title: () => `${formatAppDate(date.value)}の日記` })
 
@@ -43,7 +58,7 @@ const isToday = computed(() => date.value === today)
 
 const bodyDraft = ref<string | null>(null)
 const body = computed({
-  get: () => bodyDraft.value ?? diary.value?.body ?? '',
+  get: () => bodyDraft.value ?? cachedDiary.value?.body ?? '',
   set: (value: string) => {
     bodyDraft.value = value
   },
@@ -60,7 +75,7 @@ const save = useAutosave({
 })
 
 // 別の端末での変更や再取得に追随する。編集中の内容は上書きしない。
-watch(diary, (value) => {
+watch(cachedDiary, (value) => {
   if (!value) return
   if (save.state.value !== 'idle' && save.state.value !== 'saved') return
   if (value.body === body.value) return
@@ -85,7 +100,7 @@ function onDateInput(event: Event) {
   void goTo(value)
 }
 
-const workedOn = computed(() => diary.value?.items ?? [])
+const workedOn = computed(() => cachedDiary.value?.items ?? [])
 
 /**
  * 「この日にやったこと」から本文へドラッグしたら、開かずにリンクを差し込めるようにする。
@@ -102,7 +117,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
       日記を読み込めませんでした
     </p>
 
-    <p v-else-if="!diary" class="page__placeholder">読み込み中…</p>
+    <p v-else-if="!cachedDiary" class="page__placeholder">読み込み中…</p>
 
     <template v-else>
       <header class="head">

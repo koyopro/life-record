@@ -50,6 +50,20 @@ const { data: detail, error: detailError, refresh } = useFetch<ItemDetailDto>(
   { watch: [id] },
 )
 
+/**
+ * 本文・作業記録（Section）は Item のメタデータと違い IndexedDB に無いため、
+ * 開くたびに取得を待つとラグになる。セッション中に見た分だけここに控え、
+ * 取得が終わるまでの間だけ初期表示に使う。正本はサーバーなので、届き次第
+ * `detail` 側（本物）に切り替わる。取得は毎回行う。
+ */
+const detailCache = useState<Record<string, ItemDetailDto>>('item-detail-cache', () => ({}))
+
+watch(detail, (value) => {
+  if (value) detailCache.value[id.value] = value
+})
+
+const cachedDetail = computed(() => detail.value ?? detailCache.value[id.value] ?? null)
+
 /** ローカル（IndexedDB）にある Item。オフラインでもこちらは読める。 */
 const cached = computed(() => store.byId(id.value))
 
@@ -62,7 +76,7 @@ const cached = computed(() => store.byId(id.value))
  */
 const item = computed<ItemDetailDto | null>(() => {
   const local = cached.value
-  const fetched = detail.value
+  const fetched = cachedDetail.value
 
   if (!fetched) {
     if (!local) return null
@@ -97,7 +111,7 @@ const unsynced = computed(() => Boolean(cached.value && cached.value.syncState !
  * Section はサーバーにしか置いていない。取れていないのに編集させると、
  * 書いたものが行き先を失うので、そのときは出さない（docs/12-offline.md 12.9）。
  */
-const hasDetail = computed(() => Boolean(detail.value))
+const hasDetail = computed(() => Boolean(cachedDetail.value))
 
 /**
  * 詳細が取れていないことを知らせるか。
