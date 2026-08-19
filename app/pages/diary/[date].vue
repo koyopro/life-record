@@ -7,6 +7,7 @@ import {
   shiftAppDate,
   toAppDate,
 } from '~~/shared/utils/date'
+import { groupWorkedOn } from '~/utils/diary-worked-on'
 import { startItemLinkDrag } from '~/utils/item-drag'
 
 /**
@@ -102,6 +103,12 @@ function onDateInput(event: Event) {
 const workedOn = computed(() => cachedDiary.value?.items ?? [])
 
 /**
+ * 「この日にやったこと」を、完了したものと作業記録があるだけのものに分ける
+ * （両方当てはまるものは完了した方に入れる）。
+ */
+const workedOnGroups = computed(() => groupWorkedOn(workedOn.value, date.value))
+
+/**
  * 「この日にやったこと」から本文へドラッグしたら、開かずにリンクを差し込めるようにする。
  * 本文側（ScrapboxEditor）はカーソル位置にそのリンクを挿入する。
  */
@@ -159,13 +166,17 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
       </p>
 
       <!--
-        その日に作業した Item。Section の日付から導出する
-        （docs/02-data-model.md 2.7）。
+        その日に作業した Item。Section の日付から導出し（docs/02-data-model.md 2.7）、
+        完了したものとそれ以外に分けて出す（app/utils/diary-worked-on.ts）。
       -->
-      <section v-if="workedOn.length" class="worked">
-        <h2 class="worked__title">この日にやったこと</h2>
+      <section
+        v-for="group in workedOnGroups"
+        :key="group.title"
+        class="worked"
+      >
+        <h2 class="worked__title">{{ group.title }}</h2>
         <ul class="worked__list">
-          <li v-for="item in workedOn" :key="item.id">
+          <li v-for="item in group.items" :key="item.id">
             <NuxtLink
               class="worked__item"
               :to="`/items/${item.id}`"
