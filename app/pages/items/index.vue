@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import { STATUS_LABELS, isItemStatus, type ItemStatus } from '~~/shared/types/item'
+import { normalizeTagName } from '~~/shared/types/tag'
+import {
+  composeSmartAddInput,
+  parseSmartAdd,
+  type SmartAddOverrides,
+} from '~~/shared/utils/smart-add'
+import { splitInput } from '~~/shared/utils/text'
 
 // 一覧の右側に詳細を並べるため、この画面だけコンテナを広く使う
 definePageMeta({ wide: true })
@@ -31,6 +38,19 @@ const activeTab = computed<ItemStatus | 'all'>(() =>
   completed.value ? 'closed' : status.value,
 )
 
+/**
+ * 未完了のものだけに絞るか。`g` `s`（タグを選ぶダイアログ）からの
+ * 行き先で使う。タグの絞り込みに完了済みが混ざると見づらいため。
+ */
+const openOnly = computed(() => route.query.open === 'true')
+
+/** タグの絞り込み。一覧コンポーネント側も同じ query から持つ。 */
+const tag = computed<string | undefined>(() => {
+  const value = route.query.tag
+  if (typeof value !== 'string') return undefined
+  return normalizeTagName(value) ?? undefined
+})
+
 const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null)
 
 useHead({ title: 'タスク' })
@@ -40,13 +60,41 @@ function selectStatus(value: ItemStatus | 'all') {
   const query: Record<string, unknown> = { ...route.query, status: value }
   // 一覧の中身が変わるので、選択は持ち越さない
   delete query.selected
-  // タブを選んだらそれが指す status に従う。完了の表示は解く
+  // タブを選んだらそれが指す status に従う。完了の表示・未完了限定は解く
+  // （open=true のまま「完了」タブを選ぶと、閉じたものを除外しつつ
+  // 閉じたものだけを見ようとして0件になってしまうため）
   delete query.completed
+  delete query.open
   router.replace({ query: query as Record<string, string> })
 }
 
+/**
+ * タグで絞り込んでいる間の追加に既定を足す。
+ *
+ * - そのまま追加すると絞り込みから外れて一覧から消えてしまうため、
+ *   見ているタグを自動で付ける
+ * - 期限は書かなければ既定で「今日」になる（buildItemDraft）が、
+ *   タグ一覧からの追加は「今日やること」に限らないため「なし」にする
+ *
+ * 明示的に書かれた指定（`#別タグ` や `^明日` など）は上書きしない。
+ */
+function applyTagDefaults(text: string): string {
+  if (!tag.value) return text
+
+  const split = splitInput(text)
+  if (!split) return text
+  const parsed = parseSmartAdd(split.titleLine)
+
+  const overrides: SmartAddOverrides = {
+    tags: [...new Set([...parsed.tags, tag.value])],
+  }
+  if (parsed.dueAt === null && !parsed.dueCleared) overrides.due = null
+
+  return composeSmartAddInput(text, overrides)
+}
+
 async function add(text: string) {
-  await listView.value?.create(text)
+  await listView.value?.create(applyTagDefaults(text))
 }
 </script>
 
@@ -86,6 +134,7 @@ async function add(text: string) {
       storage-key="sort:items"
       show-sort
       :show-tag-filter="false"
+      :open-only="openOnly"
       bar-target="#items-list-bar"
       empty-message="該当するタスクはありません。"
     />

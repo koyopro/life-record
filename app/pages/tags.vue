@@ -13,11 +13,12 @@ useHead({ title: 'タグ' })
 /**
  * そのタグのタスク一覧へのリンク。
  *
- * 件数は status を問わず数えているので、一覧側も「すべて」に合わせる。
- * 既定の「未着手」に送ると、件数と表示件数が食い違って見える。
+ * status は「すべて」に合わせつつ、完了済みは除く（`open=true`）。
+ * ここに出ている件数は status を問わず数えているため、完了済みが
+ * 混じっていると一覧側の表示件数とは食い違って見えることがある。
  */
 function to(name: string) {
-  return { path: '/items', query: { status: 'all', tag: name } }
+  return { path: '/items', query: { status: 'all', open: 'true', tag: name } }
 }
 </script>
 
