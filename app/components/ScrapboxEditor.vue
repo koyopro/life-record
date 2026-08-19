@@ -644,6 +644,7 @@ function previousSiblingStart(all: Line[], index: number): number {
 
 /** 字下げを1段変える。Scrapbox では字下げが箇条書きの階層になる。 */
 function onTab(event: KeyboardEvent) {
+  if (composing.value) return
   const index = activeIndex.value
   if (index === null) return
   event.preventDefault()
