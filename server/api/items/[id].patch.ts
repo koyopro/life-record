@@ -43,6 +43,16 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
       })
     }
 
+    // 完了にした日時（completed_at）は status の遷移から決める
+    // （docs/02-data-model.md 2.3）。
+    const justCompleted = before.status !== 'closed' && values.status === 'closed'
+    const justReopened = before.status === 'closed' && values.status !== undefined && values.status !== 'closed'
+    if (justCompleted) {
+      values.completedAt = values.updatedAt
+    } else if (justReopened) {
+      values.completedAt = null
+    }
+
     const [after] = await tx
       .update(items)
       .set(values)
@@ -55,7 +65,6 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
 
     // 繰り返し中のタスクを完了にしたら、次回分を作る
     // （docs/10-recurrence.md 10.2）。完了への遷移時だけ動かす。
-    const justCompleted = before.status !== 'closed' && after.status === 'closed'
     if (justCompleted) {
       await createNextOccurrence(tx, after, values.updatedAt)
     }
