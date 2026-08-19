@@ -255,16 +255,35 @@ defineExpose({
 })
 const createdSectionId = ref<string | null>(null)
 
+/**
+ * 保存できた本文を、控え（detailCache）にもすぐ反映する。
+ *
+ * PATCH は `detail`（useFetch）を取り直さないため、控えのままだと
+ * 編集前の内容が残る。別の Item へ切り替えて戻ってきたときに、次の
+ * 取得が終わるまでの数秒だけ編集前の本文が見えてしまうのはこのため。
+ */
+function updateCachedSection(updated: SectionDto) {
+  const current = detailCache.value[id.value]
+  if (!current) return
+  setDetailCache(id.value, {
+    ...current,
+    sections: current.sections.map((s) => (s.id === updated.id ? updated : s)),
+    // body は一覧カードに出す本文（先頭 Section の写し）。それを編集したときだけ揃える
+    body: updated.id === current.primarySectionId ? updated.body : current.body,
+  })
+}
+
 const bodySave = useAutosave({
   source: body,
   save: async (value) => {
     const sectionId = createdSectionId.value ?? primarySection.value?.id
 
     if (sectionId) {
-      await $fetch(`/api/sections/${sectionId}`, {
+      const updated = await $fetch<SectionDto>(`/api/sections/${sectionId}`, {
         method: 'PATCH',
         body: { body: value },
       })
+      updateCachedSection(updated)
       return
     }
 
@@ -571,10 +590,11 @@ async function focusSection(sectionId: string) {
 
 async function saveSection(section: SectionDto, value: string) {
   // 一覧カードに出るのは本文（最初の記録）だけなので、changed は投げない
-  await $fetch(`/api/sections/${section.id}`, {
+  const updated = await $fetch<SectionDto>(`/api/sections/${section.id}`, {
     method: 'PATCH',
     body: { body: value },
   })
+  updateCachedSection(updated)
 }
 
 async function changeSectionDate(section: SectionDto, date: string) {
