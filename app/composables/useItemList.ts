@@ -262,7 +262,8 @@ export function useItemList(options: Options) {
 
     errorMessage.value = null
     message.value = describe(list.length, label)
-    clearSelection()
+    // 選択はそのまま残す。続けて別の操作を同じ対象へ重ねられるようにするため
+    // （一覧から外れた分は、items の watch が選択からも自動で外す）
 
     undoStack.push(restoreEntry(label, before))
 
@@ -313,7 +314,7 @@ export function useItemList(options: Options) {
     }))
 
     message.value = describe(list.length, '期限を明日にした')
-    clearSelection()
+    // 選択はそのまま残す（applyPatch と同じ理由）
     undoStack.push(restoreEntry('期限を明日にした', before))
 
     for (const item of list) {
@@ -370,7 +371,7 @@ export function useItemList(options: Options) {
     const ids = list.map((item) => item.id)
 
     message.value = describe(list.length, 'タグを変更した')
-    clearSelection()
+    // 選択はそのまま残す（applyPatch と同じ理由）
 
     if (addedNow.length > 0 || removedNow.length > 0) {
       undoStack.push({
