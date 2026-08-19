@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { PRIORITY_LABELS, type ItemDto } from '~~/shared/types/item'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
-import { toPlainText } from '~~/shared/utils/scrapbox/render'
 
 const props = defineProps<{
   item: ItemDto
@@ -19,11 +18,6 @@ const emit = defineEmits<{
   longpress: []
   filterTag: [tag: string]
 }>()
-
-/** 抜粋では記法を出さず、中身だけを見せる。 */
-const bodyExcerpt = computed(() =>
-  props.item.body ? toPlainText(props.item.body) : '',
-)
 
 const due = computed(() => formatDue(props.item))
 const done = computed(() => props.item.status === 'closed')
@@ -153,7 +147,6 @@ function onTouchEnd() {
           {{ due.label }}
         </span>
       </div>
-      <p v-if="bodyExcerpt" class="card__body">{{ bodyExcerpt }}</p>
       <!--
         重要度は左端の色で表している（.card--priority-*）。文字では出さないが、
         色だけが手がかりになるのを避けるため、読み上げ用の名前だけ残す。
@@ -322,19 +315,6 @@ function onTouchEnd() {
   font-weight: 600;
   color: inherit;
   overflow-wrap: anywhere;
-}
-
-.card__body {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.9375rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  /* 一覧では3行に抑える。全文は詳細で読む */
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .card__meta {

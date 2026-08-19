@@ -433,7 +433,7 @@ useComposerRegistration(focus)
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 0.75rem;
+  padding: 0.2rem;
   display: grid;
   gap: 0.5rem;
 }
@@ -463,7 +463,7 @@ useComposerRegistration(focus)
   bottom: 0;
   z-index: 20;
   border-radius: 16px 16px 0 0;
-  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(0.2rem + env(safe-area-inset-bottom));
 }
 
 .scrim {
@@ -564,6 +564,15 @@ useComposerRegistration(focus)
   /* ヒントを消しても、ボタンは右端に残す */
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+/*
+ * 書いていない間は場所を取らせない。:focus-within なので、送信ボタンへ
+ * クリックが移る間もフォーム内である限り消えない（ボタンが消えて
+ * 押せなくなることはない）。
+ */
+.composer:not(:focus-within) .composer__actions {
+  display: none;
 }
 
 .composer__hint {
