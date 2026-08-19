@@ -68,15 +68,20 @@ export function parseScrapbox(input: string): Line[] {
     const indent = indentOf(raw)
     const rest = raw.slice(indent)
 
-    // コードブロックの中: 基準より深い行、または空行が続く限り
+    // コードブロックの中: 基準より深い行が続く限り。空行は、ブロックの
+    // 基準の字下げ（`code:` 行の字下げ + 1）と同じ間だけ続きとみなす。
+    // 合わない空行は、そこでコードブロックを抜けたとみなす
+    // （docs/11-scrapbox-notation.md 11.6、Delete キーでの解除に対応するため）
     if (codeIndent !== null) {
-      const inBlock = !rest.trim() || indent > codeIndent
+      const inBlock = rest.trim() ? indent > codeIndent : indent === codeIndent + 1
       if (inBlock) {
         const nextRaw = rawLines[i + 1]
+        const nextRest = nextRaw !== undefined ? nextRaw.slice(indentOf(nextRaw)) : undefined
         const nextIsBody =
           nextRaw !== undefined &&
-          (!nextRaw.slice(indentOf(nextRaw)).trim() ||
-            indentOf(nextRaw) > codeIndent)
+          (nextRest!.trim()
+            ? indentOf(nextRaw) > codeIndent
+            : indentOf(nextRaw) === codeIndent + 1)
         // 基準より深い字下げはコードの一部なので中身に残す
         const base = Math.min(codeIndent + 1, indent)
         lines.push({

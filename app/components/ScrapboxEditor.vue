@@ -464,6 +464,14 @@ function onForwardDelete(event: KeyboardEvent) {
     el.selectionStart === el.value.length && el.selectionEnd === el.value.length
   if (!atEnd) return
 
+  // コードブロック中の空行では、改行を消して次の行と繋げるのではなく、
+  // その行の字下げを落として、そこでコードブロックを抜けさせる
+  if (activeText.value === '' && activeLine.value?.type === 'codeBody') {
+    event.preventDefault()
+    replaceActivePrefix('')
+    return
+  }
+
   const lines = [...rawLines.value]
   if (index >= lines.length - 1) return
 
@@ -492,7 +500,12 @@ function onEnter(event: KeyboardEvent) {
   // 引用の `>` も引き継ぐ（複数行の引用は各行に `>` を書く記法のため）。
   // `code:` だけは、続きの行がもう1つのコードブロックにならないよう落とす。
   const prefix = activePrefix.value
-  const nextPrefix = prefix.replace(/code:$/, '')
+  const strippedPrefix = prefix.replace(/code:$/, '')
+  // `code:` 行の直後は、本文と同じ基準の字下げ（+1）から始める。
+  // そうしないと、空のまま Enter や Delete を押しただけでコードブロックを
+  // 抜けてしまう（parse.ts の空行判定を参照）
+  const nextPrefix =
+    activeLine.value?.type === 'codeHeader' ? `${strippedPrefix} ` : strippedPrefix
 
   const lines = [...rawLines.value]
   lines.splice(index, 1, prefix + before, nextPrefix + after)

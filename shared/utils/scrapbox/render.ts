@@ -143,10 +143,10 @@ export function toPlainText(input: string): string {
   return parseScrapbox(input)
     .map((line) => {
       switch (line.type) {
+        // コードブロックも、リストの中に埋め込まれていれば字下げを保つ
         case 'codeHeader':
-          return line.content.trim()
         case 'codeBody':
-          return line.content.trim()
+          return `${' '.repeat(line.indent)}${line.content}`
         case 'quote':
         case 'text':
           return `${' '.repeat(line.indent)}${plainInline(line.nodes)}`
