@@ -119,9 +119,9 @@ function onTouchEnd() {
 
     <!--
       この端末にだけある変更。オフライン中に書いたものが分かるように
-      （docs/12-offline.md 12.8）。角に小さく出すだけにして、文字にすると
+      （docs/12-offline.md 12.8）。右端に小さく出すだけにして、文字にすると
       タグの位置が（未同期かどうかで）ずれてしまうため、他の要素とは
-      独立にカードの角へ絶対配置する。
+      独立に絶対配置する。
     -->
     <span
       v-if="pending"
@@ -146,37 +146,26 @@ function onTouchEnd() {
       <span class="card__select-box">{{ selected ? '✓' : '' }}</span>
     </button>
 
+    <!--
+      くり返し・リンク・タグは、タイトルと同じ行に続けて並べる（RTM に倣う）。
+      1行に情報を集めて、一覧に入る件数を増やすため。入りきらないときだけ
+      折り返す。期限は右端に寄せる。
+    -->
     <div class="card__main">
-      <!--
-        タイトルが短ければ、期限は右側に同じ行で収まる（RTM に倣う）。
-        長いタイトルは折り返すが、期限はその1行目の高さに留まる。
-      -->
-      <div class="card__head">
+      <div class="card__body">
         <button type="button" class="card__title" @click.stop="emit('open')">
           {{ item.title }}
         </button>
-        <span
-          v-if="due.state !== 'none'"
-          class="card__due"
-          :class="`card__due--${due.state}`"
-        >
-          {{ due.label }}
+        <!--
+          重要度は左端の色で表している（.card--priority-*）。文字では出さないが、
+          色だけが手がかりになるのを避けるため、読み上げ用の名前だけ残す。
+        -->
+        <span v-if="item.priority" class="sr-only">
+          重要度{{ PRIORITY_LABELS[item.priority] }}
         </span>
-      </div>
-      <!--
-        重要度は左端の色で表している（.card--priority-*）。文字では出さないが、
-        色だけが手がかりになるのを避けるため、読み上げ用の名前だけ残す。
-      -->
-      <span v-if="item.priority" class="sr-only">
-        重要度{{ PRIORITY_LABELS[item.priority] }}
-      </span>
-      <div
-        v-if="item.tags.length || recurrenceLabel"
-        class="card__meta"
-      >
         <span v-if="recurrenceLabel" class="card__recurrence" :title="recurrenceLabel">
           <span aria-hidden="true">↻</span>
-          <span class="card__recurrence-text">{{ recurrenceLabel }}</span>
+          <span class="sr-only">{{ recurrenceLabel }}</span>
         </span>
         <a
           v-if="item.url"
@@ -187,7 +176,7 @@ function onTouchEnd() {
           :aria-label="`「${item.title}」のリンクを開く`"
           @click.stop
         >
-          <span aria-hidden="true">↗</span> リンク
+          <span aria-hidden="true">↗</span>
         </a>
         <button
           v-for="tag in item.tags"
@@ -204,42 +193,65 @@ function onTouchEnd() {
           {{ tag }}
         </button>
       </div>
+      <span
+        v-if="due.state !== 'none'"
+        class="card__due"
+        :class="`card__due--${due.state}`"
+      >
+        {{ due.label }}
+      </span>
     </div>
   </article>
 </template>
 
 <style scoped>
+/*
+ * 一覧の1行（RTM に倣う）。カードとして1件ずつ浮かせず、罫線だけで区切る。
+ * 影・角丸・行間の余白は、そのぶん画面に入る件数を減らすため置かない
+ * （情報密度を上げる）。
+ */
 .card {
   position: relative;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--priority-none);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  /* 左端の四角は自前で余白を持つので、その分だけ詰める */
-  padding: 0.5rem 0.75rem 0.5rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  /* 左端は重要度の帯（::before）の場所を空ける */
+  padding: 0.25rem 0.75rem 0.25rem 0.5rem;
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.375rem;
   transition: transform 0.15s ease;
 }
 
 /*
  * 重要度は左端の帯で示す（docs/08-todo-management.md 8.1）。
  * 一覧を眺めたときに、読まずに優先度が分かるようにするため。
- * 重要度なしは既定の灰色（`.card` の指定）のまま。
- * 色だけに頼らないよう、「重要度高」の文字は meta に残す。
+ * 重要度なしは既定の灰色のまま。
+ * 色だけに頼らないよう、「重要度高」の文字は読み上げ用に残す。
+ *
+ * 罫線で区切るようになって行が隣り合うので、border ではなく上下を空けた
+ * 帯にする。border だと隣の行とつながって1本の線に見えてしまうため。
  */
-.card--priority-1 {
-  border-left-color: var(--priority-1);
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.1875rem;
+  bottom: 0.1875rem;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--priority-none);
 }
 
-.card--priority-2 {
-  border-left-color: var(--priority-2);
+.card--priority-1::before {
+  background: var(--priority-1);
 }
 
-.card--priority-3 {
-  border-left-color: var(--priority-3);
+.card--priority-2::before {
+  background: var(--priority-2);
+}
+
+.card--priority-3::before {
+  background: var(--priority-3);
 }
 
 /*
@@ -282,20 +294,20 @@ function onTouchEnd() {
   border: 0;
   padding: 0.125rem;
   /* タップ目標を確保しつつ、行の高さはタイトルの文字サイズに近づける（RTM に倣う） */
-  min-width: 1.75rem;
-  min-height: 1.75rem;
+  min-width: 1.625rem;
+  min-height: 1.5rem;
   display: grid;
   place-items: center;
 }
 
 .card__select-box {
-  width: 1.125rem;
-  height: 1.125rem;
+  width: 1rem;
+  height: 1rem;
   border: 1.5px solid var(--border);
   border-radius: 4px;
   display: grid;
   place-items: center;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1;
   color: var(--accent);
 }
@@ -306,37 +318,47 @@ function onTouchEnd() {
   color: var(--accent-text);
 }
 
+/*
+ * 期限だけは折り返しの対象から外し、常に1行目の右端に置く（RTM に倣う）。
+ * タイトルが長くて折り返しても、期限を探す位置が変わらないようにするため。
+ */
 .card__main {
   flex: 1;
   min-width: 0;
-  display: grid;
-  gap: 0.125rem;
-}
-
-.card__head {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.375rem;
+  font-size: 0.75rem;
 }
 
-.card__title {
+/*
+ * タイトル・くり返し・リンク・タグを同じ行に並べる。入りきらないときだけ
+ * 折り返す。baseline でそろえるのは、タグのピルが混じっても文字の下端が
+ * 波打たないようにするため。
+ */
+.card__body {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 0.375rem;
+}
+
+/*
+ * タイトルは伸ばさない（flex: 1 にしない）。伸ばすと後ろのタグが右端まで
+ * 飛ばされ、どのタスクのタグなのか読み取りにくくなるため。
+ */
+.card__title {
   min-width: 0;
   background: transparent;
   border: 0;
   padding: 0;
   text-align: left;
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: inherit;
   overflow-wrap: anywhere;
-}
-
-.card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
 }
 
 /* 読み上げにだけ残す。場所を取らせない */
@@ -350,21 +372,23 @@ function onTouchEnd() {
 }
 
 /*
- * この端末にだけある変更があることを示す小さな点。カードの角に絶対配置し、
+ * この端末にだけある変更があることを示す小さな点。行の右端に絶対配置し、
  * タイトル・期限・タグなど他の要素の位置には一切影響しないようにする
  * （文字で出すと、未同期かどうかでタグの開始位置がずれてしまうため）。
+ * 期限と重ならないよう、`.card` の右の余白の中に納める。
  */
 .card__pending {
   position: absolute;
-  top: -0.25rem;
-  right: -0.25rem;
-  width: 0.625rem;
-  height: 0.625rem;
+  top: 50%;
+  right: 0.125rem;
+  transform: translateY(-50%);
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: var(--text-muted);
-  border: 2px solid var(--surface);
 }
 
+/* 期限は右端に寄せる。行のどこに出るかを一定にして、目で追えるようにする */
 .card__due {
   flex-shrink: 0;
   white-space: nowrap;
@@ -382,27 +406,19 @@ function onTouchEnd() {
   font-weight: 600;
 }
 
+/*
+ * くり返し・リンクはアイコンだけにする（RTM に倣う）。1行に並べるようになり、
+ * 文字まで出すとタイトルが押し出されるため。内容は title / aria-label に残す。
+ */
 .card__recurrence {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
   color: var(--text-muted);
-}
-
-.card__recurrence-text {
-  /* 狭い画面ではアイコンだけにする */
-  display: none;
-}
-
-@media (min-width: 26rem) {
-  .card__recurrence-text {
-    display: inline;
-  }
+  flex-shrink: 0;
 }
 
 .card__url {
   color: var(--accent);
   text-decoration: none;
+  flex-shrink: 0;
 }
 
 /*
@@ -413,11 +429,12 @@ function onTouchEnd() {
   background: var(--tag-color);
   border: 0;
   border-radius: 999px;
-  padding: 0.0625rem 0.5rem;
+  padding: 0 0.375rem;
   color: var(--tag-text);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  line-height: 1.6;
+  line-height: 1.5;
+  flex-shrink: 0;
   overflow-wrap: anywhere;
 }
 

@@ -967,12 +967,17 @@ defineExpose({
   color: var(--text-muted);
 }
 
+/*
+ * 行の間は空けず、罫線だけで区切る（RTM に倣う）。1画面に入る件数を
+ * 増やすため。行どうしの区切りは各行の下線（ItemCard.vue の .card）が
+ * 引くので、ここでは一覧の上端だけ閉じる。
+ */
 .list__items {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.375rem;
+  border-top: 1px solid var(--border);
   /* スワイプ時にカードが横へずれても見切れないようにする */
   overflow-x: clip;
 }
