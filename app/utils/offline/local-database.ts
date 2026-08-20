@@ -1,4 +1,11 @@
-import { openDB, deleteDB, type DBSchema, type IDBPDatabase } from 'idb'
+import {
+  openDB,
+  deleteDB,
+  type DBSchema,
+  type IDBPDatabase,
+  type IDBPTransaction,
+  type StoreNames,
+} from 'idb'
 import type { ItemDto } from '~~/shared/types/item'
 
 /**
@@ -16,8 +23,11 @@ export const DB_NAME = 'life-record'
 /**
  * スキーマの版。構造を変えたら上げて、upgrade に移行手順を足す。
  * 中身はいつでもサーバーから取り直せるので、迷ったら作り直してよい。
+ *
+ * ただし未送信の操作（operations）だけは作り直せない。まだサーバーに
+ * 届いていない変更そのものなので、移行では必ず持ち越す。
  */
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 /** Item ごとの同期状態。 */
 export type SyncState =
@@ -105,6 +115,58 @@ interface LifeRecordDb extends DBSchema {
 
 export type LocalDatabase = IDBPDatabase<LifeRecordDb>
 
+/** 版を上げる間だけ使える取引。upgrade が受け取るもの。 */
+type UpgradeTransaction = IDBPTransaction<
+  LifeRecordDb,
+  ArrayLike<StoreNames<LifeRecordDb>>,
+  'versionchange'
+>
+
+/** 未送信の操作を置くストア。主キーは積んだ順（seq）。 */
+function createOperationsStore(db: LocalDatabase) {
+  const operations = db.createObjectStore('operations', {
+    keyPath: 'seq',
+    autoIncrement: true,
+  })
+  operations.createIndex('by-op-id', 'opId', { unique: true })
+  return operations
+}
+
+/**
+ * 版 1 で作られた operations を、seq を主キーとする形へ作り直す。
+ *
+ * 順序の持ち方を opId から seq（IndexedDB の採番）へ変えたとき、版を
+ * 上げ忘れていた。そのため、それより前に DB を作ったブラウザだけが
+ * `keyPath: 'opId'` のまま残っている。この形では操作が seq を持たないので
+ * 削除の宛先が決まらず（`removeOperation` が例外になる）、送信の列が
+ * 一度も流れない。未送信の操作はサーバーへ届いていない変更そのものなので、
+ * 捨てずに積み直す。
+ *
+ * 積んだ順は createdAt から復元する。古い形では取り出しが opId（UUID）順に
+ * なるため、積んだ順そのものは残っていない。
+ */
+async function migrateOperationsToSeq(
+  db: LocalDatabase,
+  transaction: UpgradeTransaction,
+): Promise<void> {
+  const existing = transaction.objectStore('operations')
+  // 版 1 でも、変更のあとに作られた DB はすでに新しい形
+  if (existing.keyPath === 'seq') return
+
+  const kept = [...(await existing.getAll())].sort((a, b) =>
+    a.createdAt < b.createdAt ? -1 : 1,
+  )
+
+  db.deleteObjectStore('operations')
+  const operations = createOperationsStore(db)
+
+  for (const operation of kept) {
+    // seq は積み直しで採番される。持っていない値は渡さない
+    const { seq: _unset, ...rest } = operation
+    await operations.add(rest as PendingOperation)
+  }
+}
+
 let connection: Promise<LocalDatabase> | null = null
 
 /**
@@ -120,21 +182,19 @@ export function openLocalDatabase(): Promise<LocalDatabase> {
 
   if (!connection) {
     connection = openDB<LifeRecordDb>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
+      upgrade(db, oldVersion, _newVersion, transaction) {
         // 版ごとに積み上げる。古い版からでも順に辿って最新へ着く。
         if (oldVersion < 1) {
           const items = db.createObjectStore('items', { keyPath: 'id' })
           items.createIndex('by-sync-state', 'syncState')
 
-          const operations = db.createObjectStore('operations', {
-            keyPath: 'seq',
-            autoIncrement: true,
-          })
-          operations.createIndex('by-op-id', 'opId', { unique: true })
+          createOperationsStore(db)
 
           db.createObjectStore('conflicts', { keyPath: 'itemId' })
           db.createObjectStore('meta', { keyPath: 'key' })
         }
+
+        if (oldVersion === 1) return migrateOperationsToSeq(db, transaction)
       },
       /**
        * 別のタブが新しい版へ上げようとしている。
