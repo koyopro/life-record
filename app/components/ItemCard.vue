@@ -332,9 +332,13 @@ function onTouchEnd() {
 }
 
 /*
- * タイトル・くり返し・リンク・タグを同じ行に並べる。入りきらないときだけ
+ * タイトル・くり返し・リンク・タグを同じ行に並べ、入りきらないときだけ
  * 折り返す。baseline でそろえるのは、タグのピルが混じっても文字の下端が
  * 波打たないようにするため。
+ *
+ * 素の行として流せば折り返した語の直後にタグが続くが、タイトルはボタン
+ * なので行をまたげない（1つの箱として扱われる）。そのため flex で並べ、
+ * タイトルが長いときはタグを次の行へ送る。
  */
 .card__body {
   flex: 1;
@@ -426,6 +430,7 @@ function onTouchEnd() {
  * 対になっている色を使う（main.css の --tag-* / --tag-*-fg）。
  */
 .card__tag {
+  flex-shrink: 0;
   background: var(--tag-color);
   border: 0;
   border-radius: 999px;
@@ -434,7 +439,6 @@ function onTouchEnd() {
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.5;
-  flex-shrink: 0;
   overflow-wrap: anywhere;
 }
 
