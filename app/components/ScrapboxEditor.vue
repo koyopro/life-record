@@ -25,8 +25,15 @@ const props = withDefaults(
   defineProps<{
     placeholder?: string
     ariaLabel?: string
+    /**
+     * 読むだけにするか。記法の表示は変えず、編集の入口だけを閉じる。
+     *
+     * 本文の保存先（Section）が分かる前に書けてしまうと、書いたものの
+     * 行き先が無い。取得が終わるまでの間だけこれを立てる（ItemDetail.vue）。
+     */
+    readonly?: boolean
   }>(),
-  { placeholder: '', ariaLabel: '本文' },
+  { placeholder: '', ariaLabel: '本文', readonly: false },
 )
 
 /** 行の配列。空文字でも1行として扱う。 */
@@ -66,6 +73,9 @@ const isEmpty = computed(() => !model.value.trim())
  *   取り消し単位にする（undo 参照）。
  */
 function commit(lines: string[], options: { coalesce?: boolean } = {}) {
+  // 本文の変更はすべてここを通る。読むだけのときはここで止めれば足りる
+  if (props.readonly) return
+
   const next = lines.join('\n')
   if (next === model.value) return
   pushUndoState(model.value, options.coalesce ?? false)
@@ -174,6 +184,9 @@ async function activate(
   caret: 'start' | 'end' | number = 'end',
   lines: string[] = rawLines.value,
 ) {
+  // 読むだけのときは、どの行も編集状態にしない（入力欄を出さない）
+  if (props.readonly) return
+
   // 1行だけの編集に戻るので、複数行選択の状態は捨てる
   shiftSelectAnchor = null
 
@@ -1251,6 +1264,9 @@ async function insertItemLink(payload: ItemDragPayload) {
 }
 
 function onDrop(event: DragEvent) {
+  // 書き込めないので、画像を上げるだけ上げてしまわないよう先に降りる
+  if (props.readonly) return
+
   const itemLink = readItemLinkDrag(event.dataTransfer)
   if (itemLink) {
     event.preventDefault()
@@ -1267,6 +1283,9 @@ function onDrop(event: DragEvent) {
 }
 
 function onDragOver(event: DragEvent) {
+  // 落とせないので、落とせるようには見せない
+  if (props.readonly) return
+
   // 画像・タスクのリンクを落とせる場所であることをブラウザに伝える
   const dataTransfer = event.dataTransfer
   if (!dataTransfer?.types.includes('Files') && !isItemLinkDrag(dataTransfer)) return
@@ -1275,6 +1294,8 @@ function onDragOver(event: DragEvent) {
 }
 
 function onPaste(event: ClipboardEvent) {
+  if (props.readonly) return
+
   const files = images.imagesFrom(event.clipboardData)
   if (files.length === 0) return
   event.preventDefault()
@@ -1308,7 +1329,7 @@ defineExpose({
     @keydown="onContainerKeydown"
   >
     <button
-      v-if="isEmpty && activeIndex === null"
+      v-if="isEmpty && activeIndex === null && !readonly"
       type="button"
       class="editor__start"
       @click="activate(0)"
@@ -1395,10 +1416,14 @@ defineExpose({
       order で常に末尾に置く（行は order で並べているため）。
     -->
     <footer class="editor__foot">
+      <!--
+        読むだけの間も置いたままにする（隠すと、編集できるようになった
+        ときにこの行の分だけ下がってしまう）。押せないことだけを伝える。
+      -->
       <button
         type="button"
         class="editor__image"
-        :disabled="images.uploading.value > 0"
+        :disabled="readonly || images.uploading.value > 0"
         @click="filePicker?.click()"
       >
         {{ images.uploading.value > 0 ? '画像を追加中…' : '画像を追加' }}

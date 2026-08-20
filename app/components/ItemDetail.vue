@@ -224,13 +224,30 @@ const logSections = computed<SectionDto[]>(() =>
 )
 
 const bodyDraft = ref<string | null>(null)
+/**
+ * 画面に出す本文。
+ *
+ * Section が取れていなくても、ローカル（IndexedDB）の Item が本文の写しを
+ * 持っている（一覧カードに出しているもの）。取得を待つ間はそれを出すことで、
+ * 追加した直後や初めて開いたときにも、本文が空のまま数百ミリ秒置かれる
+ * ことがなくなる。編集は Section が分かってから（下の readonly）。
+ */
 const body = computed({
-  get: () => bodyDraft.value ?? primarySection.value?.body ?? '',
+  get: () => bodyDraft.value ?? primarySection.value?.body ?? item.value?.body ?? '',
   set: (value: string) => {
     bodyDraft.value = value
   },
 })
 const bodyEditor = ref<{ focus: () => void } | null>(null)
+
+/**
+ * 本文の欄を出すか。
+ *
+ * Section が取れていなくても、写しに本文があるなら読むだけは出す。
+ * 本文が無いときは、書ける状態になってから出す（空の欄を先に置いても
+ * 書けないだけで、書けるようになった瞬間に見た目も変わらない）。
+ */
+const showBody = computed(() => hasDetail.value || Boolean(body.value))
 
 /** 本文へフォーカスする。一覧の `y` から呼ばれる。 */
 function focusBody() {
@@ -867,7 +884,7 @@ async function removeSection(section: SectionDto) {
         </div>
       </section>
 
-      <section v-if="hasDetail" class="body">
+      <section v-if="showBody" class="body">
         <div class="body__head">
           <h2 class="body__title">本文</h2>
           <!-- 本文も日付を持つ Section なので、その日の日記へ行ける -->
@@ -880,11 +897,16 @@ async function removeSection(section: SectionDto) {
           </NuxtLink>
           <SaveDot class="body__save" :state="bodySave.state.value" />
         </div>
+        <!--
+          Section が取れるまでは読むだけ。保存先が決まっていないまま
+          書けてしまうと、書いたものの行き先が無い（docs/12-offline.md 12.9）。
+        -->
         <ScrapboxEditor
           ref="bodyEditor"
           v-model="body"
           placeholder="このタスクについてのメモ"
           aria-label="本文"
+          :readonly="!hasDetail"
         />
         <p v-if="bodySave.errorMessage.value" class="page__error" role="alert">
           {{ bodySave.errorMessage.value }}
