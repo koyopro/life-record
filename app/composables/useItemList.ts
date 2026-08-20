@@ -12,6 +12,7 @@ import {
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { buildItemDraft } from '~/utils/item-draft'
+import { groupItems } from '~/utils/item-order'
 import { endOfAppDay, startOfAppDay } from '~~/shared/utils/date'
 
 interface Options {
@@ -102,9 +103,20 @@ export function useItemList(options: Options) {
     return true
   }
 
-  const items = computed<LocalItem[]>(() =>
-    sortItems(store.items.value.filter(belongsHere), sort.value),
-  )
+  /**
+   * カーソル（`j` `k`）は、この並びを1本の列として上から下へ動く。
+   *
+   * グループ表示中は、見出しをまたいでも表示順のまま連続して動けるよう、
+   * グループごとにまとめた順序をそのまま基準にする（見た目の並びと
+   * カーソルの移動順を一致させるため）。グループ内の順序は並びのまま。
+   */
+  const items = computed<LocalItem[]>(() => {
+    const sorted = sortItems(store.items.value.filter(belongsHere), sort.value)
+    if (groupBy.value === 'none') return sorted
+    return groupItems(sorted, groupBy.value).flatMap((group) =>
+      group.items.map(({ item }) => item),
+    )
+  })
 
   const loading = store.loading
 
