@@ -1192,12 +1192,23 @@ async function removeSection(section: SectionDto) {
   align-items: center;
 }
 
-/* RTM 風の塗りつぶしピル。色見本は main.css の --tag-* が白文字で読める濃さにそろえている。 */
+/*
+ * RTM 風の塗りつぶしピル。色見本は main.css の --tag-* が白文字で読める濃さに
+ * そろえている。一覧側のタグ表示（ItemCard.vue の .card__tag）とサイズ・見た目を
+ * そろえる。`.chip` の見出しボタンとしてのサイズ（min-height）や下線は要らない。
+ */
 .chip--tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0.0625rem 0.5rem;
   background: var(--tag-color);
   border-color: var(--tag-color);
   color: #fff;
+  font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.6;
+  text-decoration: none;
 }
 
 /*
