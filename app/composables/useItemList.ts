@@ -3,6 +3,7 @@ import type { LocalItem } from '~/utils/offline/local-database'
 import {
   isGroupKey,
   isSortKey,
+  STATUS_LABELS,
   type GroupKey,
   type ItemDto,
   type ItemPatch,
@@ -290,7 +291,7 @@ export function useItemList(options: Options) {
   }
 
   async function setStatus(status: ItemStatus) {
-    await applyPatch({ status }, `${STATUS_LABELS_JA[status]}にした`)
+    await applyPatch({ status }, `${STATUS_LABELS[status]}にした`)
   }
 
   async function setPriority(priority: Priority | null) {
@@ -476,11 +477,4 @@ export function useItemList(options: Options) {
     create,
     refresh,
   }
-}
-
-const STATUS_LABELS_JA: Record<ItemStatus, string> = {
-  inbox: 'Inbox',
-  backlog: 'Backlog',
-  in_progress: '対応中',
-  closed: '完了',
 }

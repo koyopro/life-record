@@ -810,7 +810,7 @@ async function removeSection(section: SectionDto) {
               :key="name"
               class="chip chip--tag"
               :style="{ '--tag-color': tagColorVar(colorOf(name)) }"
-              :to="{ path: '/items', query: { status: 'all', tag: name } }"
+              :to="{ path: '/', query: { tag: name } }"
             >
               {{ name }}
             </NuxtLink>

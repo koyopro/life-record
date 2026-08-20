@@ -18,9 +18,9 @@ const props = withDefaults(
   defineProps<{
     status: ItemStatus | 'all'
     storageKey: string
-    /** 並べ替えを操作させるか。Inbox は追加順で十分なので隠す。 */
+    /** 並べ替えを操作させるか。 */
     showSort?: boolean
-    /** タグの絞り込みバーを出すか。タスク一覧はタブで十分なので隠す。 */
+    /** タグの絞り込みバーを出すか。 */
     showTagFilter?: boolean
     /**
      * 指定すると、未完了/完了・並び・ヘルプボタンの行（list__bar）を
@@ -75,8 +75,7 @@ const list = useItemList({
   dueUntilToday: () => Boolean(props.dueUntilToday),
   openOnly: () => Boolean(props.openOnly),
   sortStorageKey: props.storageKey,
-  defaultSort:
-    props.defaultSort ?? (props.status === 'inbox' ? 'created' : 'priority'),
+  defaultSort: props.defaultSort ?? 'priority',
 })
 
 /**
@@ -341,9 +340,9 @@ const shortcuts = computed<Shortcut[]>(() => [
   },
   {
     keys: ['b'],
-    label: 'Inbox にする',
+    label: '未着手にする',
     group: '編集',
-    run: () => list.setStatus('inbox'),
+    run: () => list.setStatus('backlog'),
   },
   {
     keys: ['w'],

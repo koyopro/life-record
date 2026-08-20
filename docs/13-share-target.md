@@ -1,9 +1,9 @@
 # 13. 共有からの取り込み（Web Share Target）
 
-スマートフォンで見ているページを、OS の共有シートからそのまま Inbox に放り込めるようにする。
+スマートフォンで見ているページを、OS の共有シートからそのままタスクに放り込めるようにする。
 
 ```text
-Chrome でページを見る → 共有 → datalake → 内容を確認 → 保存 → status = inbox の Item
+Chrome でページを見る → 共有 → datalake → 内容を確認 → 保存 → status = backlog の Item
 ```
 
 「後で整理するために、とりあえず放り込む」ための導線なので、共有してから保存までの
@@ -104,11 +104,11 @@ app/pages/share.vue
   → useItemStore().create（IndexedDB へ書き、送信は列に積む）
 ```
 
-- 初期状態は `status = inbox`（buildItemDraft の既定）
+- 初期状態は `status = backlog`（buildItemDraft の既定）
 - 期限は今日（一覧からの追加と同じ既定。docs/08-todo-management.md 8.5）
 - オフラインでも保存でき、送信は繋がったときに行われる（docs/12-offline.md）
 
-保存後は共有元に戻らず、保存できたことが分かる画面を出す（「Item を見る」「Inbox を見る」）。
+保存後は共有元に戻らず、保存できたことが分かる画面を出す（「Item を見る」「タスクを見る」）。
 
 ## 13.5 認証
 
@@ -135,7 +135,7 @@ Vercel の認証がアプリより手前で挟まり、認証後に元の URL（
 2. 任意のページで「共有」→ 共有先の一覧に **datalake** が出ることを確認する
 3. 選ぶと `/share` が開き、URL とタイトルが表示される
 4. 「保存」を押すと「保存しました」が出る
-5. Inbox にその Item があり、`status = inbox`・URL が Item の url 欄に入っていることを確認する
+5. タスク一覧にその Item があり、`status = backlog`・URL が Item の url 欄に入っていることを確認する
 
 インストールせずに確認したいときは、`/share?url=...&title=...` を直接開けば受付画面の
 見た目と保存までを試せる。

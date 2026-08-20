@@ -8,7 +8,7 @@ import { TITLE_MAX_LENGTH, splitInput } from '~~/shared/utils/text'
  *
  * 応答を待たずに一覧へ出すため、id と既定値はクライアントで決める。
  * サーバー（server/api/items.post.ts）と同じパーサ・同じ既定値
- * （status は inbox、期限は今日）を使うので、あとから届く内容と
+ * （status は未着手、期限は今日）を使うので、あとから届く内容と
  * 食い違わない。
  *
  * 一覧の入力欄と共有の受付（app/pages/share.vue）が同じ経路を通るように、
@@ -31,8 +31,8 @@ export function buildItemDraft(text: string, now: Date = new Date()): DraftResul
     draft: {
       id: crypto.randomUUID(),
       title: parsed.title,
-      // 共有も含め、追加したものはまず Inbox に入る
-      status: 'inbox',
+      // 共有も含め、追加したものはまず未着手に入る
+      status: 'backlog',
       priority: parsed.priority,
       url: parsed.url,
       // サーバー（items.post.ts）と同じく、期限の指定がなければ今日にする。

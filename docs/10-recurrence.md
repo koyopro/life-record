@@ -163,12 +163,10 @@ every day until 12/31   → FREQ=DAILY;UNTIL=20261231T000000Z
 | recurrence_rule / basis | ○ | |
 | series_id | ○ | |
 | due_at | 計算 | 10.4 のとおり |
-| status | × | 常に `inbox` から始まる |
+| status | × | 常に `backlog`（未着手）から始まる |
 | Section（作業記録） | × | 回ごとに独立させる。これがオカレンスを分ける主目的 |
 
-新しいオカレンスの `status` は `inbox` にする。次の回が出てきたことに
-気づける場所へ置きたいため。`backlog` に入れると、すでに溜まっている
-タスクに埋もれて、いつの間にか期限を過ぎていることになる。
+新しいオカレンスの `status` は `backlog`（未着手）にする。
 
 ---
 

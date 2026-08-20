@@ -11,7 +11,7 @@ import { itemDto } from '../helpers'
  */
 describe('withPatch の completedAt', () => {
   it('open から closed へ変えたら、今の時刻を入れる', () => {
-    const local = toLocalItem(itemDto({ status: 'inbox', completedAt: null }))
+    const local = toLocalItem(itemDto({ status: 'backlog', completedAt: null }))
     const next = withPatch(local, { status: 'closed' }, '2026-08-19T03:00:00.000Z')
     expect(next.completedAt).toBe('2026-08-19T03:00:00.000Z')
   })
@@ -33,7 +33,7 @@ describe('withPatch の completedAt', () => {
   })
 
   it('open のまま status を変えなければ、completedAt は null のまま', () => {
-    const local = toLocalItem(itemDto({ status: 'inbox', completedAt: null }))
+    const local = toLocalItem(itemDto({ status: 'backlog', completedAt: null }))
     const next = withPatch(local, { priority: 2 }, '2026-08-19T03:00:00.000Z')
     expect(next.completedAt).toBeNull()
   })

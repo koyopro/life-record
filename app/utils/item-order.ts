@@ -107,7 +107,7 @@ export interface ItemGroup<T> {
 }
 
 const PRIORITY_GROUP_ORDER: (Priority | null)[] = [1, 2, 3, null]
-const STATUS_GROUP_ORDER: ItemStatus[] = ['in_progress', 'backlog', 'inbox', 'closed']
+const STATUS_GROUP_ORDER: ItemStatus[] = ['in_progress', 'backlog', 'closed']
 
 export function groupItems<T extends ItemDto>(
   items: T[],

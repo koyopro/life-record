@@ -57,6 +57,13 @@
       "when": 1787184661534,
       "tag": "0007_cloudy_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787192156029,
+      "tag": "0008_rich_silver_surfer",
+      "breakpoints": true
     }
   ]
 }

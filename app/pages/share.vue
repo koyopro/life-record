@@ -131,13 +131,13 @@ function release() {
     <template v-if="saved">
       <h1 class="page__title">保存しました</h1>
       <p class="page__lead">
-        「{{ saved.title }}」を Inbox に追加しました。
+        「{{ saved.title }}」を追加しました。
       </p>
       <div class="page__actions">
         <NuxtLink class="button button--primary" :to="`/items/${saved.id}`">
           Item を見る
         </NuxtLink>
-        <NuxtLink class="button" to="/">Inbox を見る</NuxtLink>
+        <NuxtLink class="button" to="/">タスクを見る</NuxtLink>
       </div>
     </template>
 
@@ -196,7 +196,7 @@ function release() {
         ホーム画面に追加したこのアプリを、共有先として選んでください。
       </p>
       <div class="page__actions">
-        <NuxtLink class="button button--primary" to="/">Inbox を見る</NuxtLink>
+        <NuxtLink class="button button--primary" to="/">タスクを見る</NuxtLink>
       </div>
     </template>
 

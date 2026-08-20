@@ -51,7 +51,7 @@ TODO・タスクを表す。
 |---|---|---|---|
 | id | UUID | Yes | Item ID |
 | title | text | Yes | TODOのタイトル |
-| status | enum | Yes | `inbox` / `backlog` / `in_progress` / `closed` |
+| status | enum | Yes | `backlog` / `in_progress` / `closed` |
 | priority | smallint | No | 重要度。1（高） / 2（中） / 3（低）。NULL は重要度なし |
 | url | text | No | 関連する URL。1件だけ持つ |
 | due_at | timestamptz | No | 期限。作業日とは別概念 |
@@ -67,14 +67,15 @@ TODO・タスクを表す。
 
 ### status
 
-| status | 意味 |
-|---|---|
-| `inbox` | 未整理 |
-| `backlog` | 着手可能 |
-| `in_progress` | 対応中 |
-| `closed` | 完了 |
+| status | 表示 | 意味 |
+|---|---|---|
+| `backlog` | 未着手 | まだ手を付けていない |
+| `in_progress` | 対応中 | 着手している |
+| `closed` | 完了 | 終わった |
 
-`inbox` は「未整理の一時置き場」として扱う。運用上は、整理後に随時空にしていくことを想定する。
+かつては未整理の一時置き場として `inbox` を分けていたが、`backlog` との差が
+運用上あいまいで、どちらに置くか迷うだけだったため「未着手」に統合した
+（値は `backlog` のまま。移行は `drizzle/0008_rich_silver_surfer.sql`）。
 
 ### completed_at
 
@@ -364,7 +365,6 @@ Diary と Item を直接紐付ける中間テーブルは基本的に不要。
 
 ```sql
 CREATE TYPE item_status AS ENUM (
-  'inbox',
   'backlog',
   'in_progress',
   'closed'
@@ -375,7 +375,7 @@ CREATE TYPE recurrence_basis AS ENUM ('due', 'completion');
 CREATE TABLE items (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title            TEXT NOT NULL,
-  status           item_status NOT NULL DEFAULT 'inbox',
+  status           item_status NOT NULL DEFAULT 'backlog',
   priority         SMALLINT CHECK (priority BETWEEN 1 AND 3),
   url              TEXT,
   due_at           TIMESTAMPTZ,

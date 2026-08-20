@@ -13,14 +13,13 @@ const { tags, pending, colorOf, setColor } = useTags()
 useHead({ title: 'タグ' })
 
 /**
- * そのタグのタスク一覧へのリンク。
+ * そのタグのタスク一覧へのリンク。完了済みは除く（`open=true`）。
  *
- * status は「すべて」に合わせつつ、完了済みは除く（`open=true`）。
- * ここに出ている件数は status を問わず数えているため、完了済みが
- * 混じっていると一覧側の表示件数とは食い違って見えることがある。
+ * ここに出ている件数は完了済みも含めて数えているため、混じっていると
+ * 一覧側の表示件数とは食い違って見えることがある。
  */
 function to(name: string) {
-  return { path: '/items', query: { status: 'all', open: 'true', tag: name } }
+  return { path: '/', query: { open: 'true', tag: name } }
 }
 
 /** 色を選んでいるタグの id。同時に開くのは1つだけ。 */
@@ -101,7 +100,7 @@ async function pickColor(id: string, color: TagColor | null) {
       </li>
     </ul>
 
-    <NuxtLink class="page__untagged" :to="{ path: '/items', query: { status: 'all', untagged: 'true' } }">
+    <NuxtLink class="page__untagged" :to="{ path: '/', query: { untagged: 'true' } }">
       タグなしのタスクを見る
     </NuxtLink>
   </div>

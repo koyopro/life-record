@@ -15,7 +15,7 @@ import {
 interface Body {
   /** 生の入力テキスト。1行目に SmartAdd の記法を書ける。 */
   text?: string
-  /** 初期 status。省略時は inbox。 */
+  /** 初期 status。省略時は未着手（backlog）。 */
   status?: ItemStatus
   /**
    * クライアントが決めた id。省略時は DB が採番する。
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
   const status =
     payload?.status !== undefined && isItemStatus(payload.status)
       ? payload.status
-      : 'inbox'
+      : 'backlog'
 
   const db = useDb()
   const id = payload?.id !== undefined ? assertUuid(payload.id) : undefined

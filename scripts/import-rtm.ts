@@ -7,7 +7,7 @@
  * 変換方針（docs/02-data-model.md に対応させる）:
  * - 期限（date_due）を持ち、かつ未完了（date_completed なし）のタスクのみを対象にする。
  *   完了済みのものは import しない。
- * - 対象は常に未完了のため、status は backlog にする。
+ * - 対象は常に未完了のため、status は未着手（backlog）にする。
  * - タスクの notes（メモ）は、その Item の Section として取り込む
  *   （note.series_id と task.series_id が対応する）。
  * - RTM の繰り返し（task.repeat）は本アプリの recurrence_rule に取り込む。

@@ -53,8 +53,8 @@ export async function createNextOccurrence(
     .insert(items)
     .values({
       title: completed.title,
-      // 次に出てきたことに気づけるよう inbox に入れる（docs/10-recurrence.md 10.5）
-      status: 'inbox',
+      // 未着手として出す（docs/10-recurrence.md 10.5）
+      status: 'backlog',
       priority: completed.priority,
       dueAt: due,
       dueHasTime: completed.dueHasTime,

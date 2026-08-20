@@ -1,17 +1,18 @@
 import type { RecurrenceBasis } from './recurrence'
 
-export const ITEM_STATUSES = [
-  'inbox',
-  'backlog',
-  'in_progress',
-  'closed',
-] as const
+/**
+ * 進行状態（docs/02-data-model.md 2.2）。
+ *
+ * かつては未整理の一時置き場として `inbox` を分けていたが、`backlog` との
+ * 差が運用上あいまいで、どちらに置くか迷うだけだったため「未着手」に
+ * 統合した（値は `backlog` のまま）。
+ */
+export const ITEM_STATUSES = ['backlog', 'in_progress', 'closed'] as const
 
 export type ItemStatus = (typeof ITEM_STATUSES)[number]
 
 export const STATUS_LABELS: Record<ItemStatus, string> = {
-  inbox: 'Inbox',
-  backlog: 'Backlog',
+  backlog: '未着手',
   in_progress: '対応中',
   closed: '完了',
 }

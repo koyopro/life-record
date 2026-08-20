@@ -36,7 +36,7 @@ export const items = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     title: text('title').notNull(),
-    status: itemStatus('status').notNull().default('inbox'),
+    status: itemStatus('status').notNull().default('backlog'),
     /** 重要度。1(高) / 2(中) / 3(低)、NULL は重要度なし。Milestone 3 で使い始める。 */
     priority: smallint('priority'),
     /**

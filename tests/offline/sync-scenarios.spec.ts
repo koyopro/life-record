@@ -152,7 +152,7 @@ describe('オンラインでの操作', () => {
   })
 
   it('ステータスの変更が送られる', async () => {
-    const item = itemDto({ status: 'inbox' })
+    const item = itemDto({ status: 'backlog' })
     const remote = server([item])
     await mergeServerItems([item])
 

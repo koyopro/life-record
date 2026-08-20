@@ -11,6 +11,12 @@ export default defineNuxtConfig({
      * SSR せずに静的な HTML として書き出し、Service Worker に持たせる。
      */
     '/offline-shell': { ssr: false, prerender: true },
+    /*
+     * タスク一覧は `/items` から `/` へ移した（Inbox との統合に伴う）。
+     * ブックマークや Service Worker が持っている古い URL を拾う。
+     * 詳細（`/items/:id`）はそのままなので、ここだけを移す。
+     */
+    '/items': { redirect: { to: '/', statusCode: 301 } },
   },
 
   /*

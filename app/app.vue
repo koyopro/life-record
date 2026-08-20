@@ -21,8 +21,7 @@ const reading = computed(() => route.meta.wide === 'reading')
 
 const NAV = [
   { to: '/today', label: '今日' },
-  { to: '/', label: 'Inbox' },
-  { to: '/items', label: 'タスク' },
+  { to: '/', label: 'タスク' },
   { to: '/tags', label: 'タグ' },
   { to: '/diary', label: '日記' },
   { to: '/search', label: '検索' },
@@ -39,15 +38,15 @@ const composerFocus = provideComposer()
  * 「タグに移動」（`g s`）。
  *
  * RTM に合わせ、タグ一覧のページへ送るのではなく、その場で選んで
- * 直接そのタグのタスク一覧（`/items?tag=...`）へ移れるようにする。
+ * 直接そのタグのタスク一覧（`/?tag=...`）へ移れるようにする。
  */
 const tagSwitcherOpen = ref(false)
 
 function goToTag(name: string) {
   tagSwitcherOpen.value = false
   void navigateTo({
-    path: '/items',
-    query: { status: 'all', open: 'true', tag: name },
+    path: '/',
+    query: { open: 'true', tag: name },
   })
 }
 
@@ -55,7 +54,7 @@ function goToTag(name: string) {
  * タスクを追加する（`t`）。
  *
  * 入力欄のある画面ではそこへ移る。ない画面（日記・検索・詳細）からは、
- * 思いついたことを書き留める場所である Inbox へ移ってから入力欄へ移る。
+ * タスク一覧へ移ってから入力欄へ移る。
  */
 async function addTask() {
   if (composerFocus.value) {
@@ -117,7 +116,7 @@ const shortcuts: Shortcut[] = [
   {
     prefix: 'g',
     keys: ['i'],
-    label: 'Inbox へ移動',
+    label: 'タスク一覧へ移動',
     group: '移動',
     run: () => void navigateTo('/'),
   },
@@ -135,12 +134,13 @@ useShortcuts(shortcuts)
 /**
  * いまどの区分にいるか。
  *
- * `router-link-active` に任せられない。`/items` と `/items/:id` は
- * Nuxt では親子ではなく別々のルートなので、詳細画面にいるときに
- * 一覧のリンクが active にならない。
+ * `router-link-active` に任せられない。タスク一覧（`/`）と詳細
+ * （`/items/:id`）は Nuxt では親子ではなく別々のルートなので、
+ * 詳細画面にいるときに一覧のリンクが active にならない。
  */
 function isActive(to: string): boolean {
-  if (to === '/') return route.path === '/'
+  // 詳細はタスク一覧の下にあるものとして扱う
+  if (to === '/') return route.path === '/' || route.path.startsWith('/items')
   return route.path === to || route.path.startsWith(`${to}/`)
 }
 </script>
@@ -184,7 +184,7 @@ function isActive(to: string): boolean {
     <!--
       タスクを追加する（`t` と同じ入り口）。狭い画面ではキーボードが
       使えないので、どの画面からでも押せる場所に置く。入力欄のない画面
-      （日記・検索・詳細）からは Inbox へ移ってから開く。
+      （日記・検索・詳細）からはタスク一覧へ移ってから開く。
     -->
     <button
       type="button"

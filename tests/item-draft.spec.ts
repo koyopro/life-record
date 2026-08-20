@@ -10,7 +10,7 @@ import { TITLE_MAX_LENGTH } from '~~/shared/utils/text'
  * 共有された内容がどう Item になるかもここで確かめる。
  */
 describe('buildItemDraft', () => {
-  it('共有された URL とタイトルから、Inbox の Item を組み立てる', () => {
+  it('共有された URL とタイトルから、未着手の Item を組み立てる', () => {
     const composed = composeShare({
       url: 'https://example.com/blog/entry',
       title: 'Example Page',
@@ -21,7 +21,7 @@ describe('buildItemDraft', () => {
     expect('draft' in result).toBe(true)
     if (!('draft' in result)) return
 
-    expect(result.draft.status).toBe('inbox')
+    expect(result.draft.status).toBe('backlog')
     expect(result.draft.title).toBe('Example Page')
     expect(result.draft.url).toBe('https://example.com/blog/entry')
     expect(result.draft.body).toBe('引用したい一節')
@@ -34,7 +34,7 @@ describe('buildItemDraft', () => {
     const result = buildItemDraft(composed.text)
 
     expect(result).toMatchObject({
-      draft: { title: 'example.com/a', url: 'https://example.com/a', status: 'inbox' },
+      draft: { title: 'example.com/a', url: 'https://example.com/a', status: 'backlog' },
     })
   })
 
