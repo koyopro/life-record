@@ -340,6 +340,18 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => (completed.value ? list.setStatus('backlog') : list.complete()),
   },
   {
+    keys: ['b'],
+    label: 'Inbox にする',
+    group: '編集',
+    run: () => list.setStatus('inbox'),
+  },
+  {
+    keys: ['w'],
+    label: '対応中にする',
+    group: '編集',
+    run: () => list.setStatus('in_progress'),
+  },
+  {
     keys: ['d'],
     label: '期日を変更',
     group: '編集',
