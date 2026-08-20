@@ -24,9 +24,10 @@
  * - 再実行しても重複登録しないよう、Item/Section の id は
  *   RTM 側の id から決定的に (uuidv5 で) 生成する。
  * - タグの色（トップレベルの `tags` 配列、`background_color` / `foreground_color`）は、
- *   本アプリの固定色見本（shared/types/tag.ts の TAG_COLORS）のうち一番近いものに
- *   丸めて取り込む（buildTagColorMap / nearestTagColor）。RTM はどちらの色に
- *   濃い方を置くかがタグごとに違うため、明るさが低い方を採用する。
+ *   色を変えずにそのまま取り込む。本アプリの色見本（shared/types/tag.ts の
+ *   TAG_COLORS）は RTM と同じ 24 色を持っているので、`background_color` の
+ *   完全一致で対応する色見本が決まる（buildTagColorMap）。
+ *   一致しない色のときだけ、一番近い色見本に丸める（nearestTagColor）。
  *   すでに色が付いているタグは、再importで上書きしない（アプリ側で選び直した色を
  *   尊重するため）。
  */
@@ -37,7 +38,13 @@ import { eq, inArray } from 'drizzle-orm'
 import { useDb, type Executor } from '../server/db'
 import { items, itemTags, sections, tags } from '../server/db/schema'
 import type { RecurrenceBasis } from '../shared/types/recurrence'
-import { normalizeTagName, TAG_COLORS, type TagColor } from '../shared/types/tag'
+import {
+  normalizeTagName,
+  rtmTagColorFromHex,
+  TAG_COLOR_SWATCHES,
+  TAG_COLORS,
+  type TagColor,
+} from '../shared/types/tag'
 import { toAppDate, todayDueAt } from '../shared/utils/date'
 import { isValidRule, parseRecurrence } from '../shared/utils/recurrence'
 import { TITLE_MAX_LENGTH } from '../shared/utils/text'
@@ -157,35 +164,9 @@ function parseRtmRecurrence(
   return null
 }
 
-/**
- * shared/types/tag.ts の TAG_COLORS を、app/assets/css/main.css の --tag-*
- * （ライト側）と同じ参照色に対応させたもの。RTM の色見本から一番近い色を
- * 選ぶための基準として使う（Nuxt alias 経由の import を避けるため複製する）。
- */
-const TAG_COLOR_HEX: Record<TagColor, string> = {
-  red: '#c94f4f',
-  orange: '#c17a2e',
-  yellow: '#a8891f',
-  olive: '#7c8a3c',
-  green: '#3f8f5f',
-  teal: '#2f8f88',
-  blue: '#3f7bc9',
-  indigo: '#5a5fc7',
-  purple: '#8a5fc7',
-  pink: '#c75f96',
-  brown: '#8a6a4a',
-  gray: '#7c7c74',
-}
-
 function hexToRgb(hex: string): [number, number, number] {
   const value = Number.parseInt(hex.replace('#', ''), 16)
   return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
-}
-
-/** 人の目に感じる明るさの近似値。値が小さいほど暗い（濃い）色。 */
-function relativeLuminance(hex: string): number {
-  const [r, g, b] = hexToRgb(hex)
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
 function colorDistance(a: string, b: string): number {
@@ -194,10 +175,16 @@ function colorDistance(a: string, b: string): number {
   return (r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2
 }
 
-/** RTM の16進色から、一番近い固定の色見本を選ぶ（総当たりで十分な件数のため）。 */
+/**
+ * RTM の16進色から、一番近い固定の色見本を選ぶ（総当たりで十分な件数のため）。
+ *
+ * RTM の 24 色をそのまま持っているので、通常はここまで来ずに完全一致で決まる。
+ * RTM 側が色見本を増やした場合の受け皿。
+ */
 function nearestTagColor(hex: string): TagColor {
   return TAG_COLORS.reduce((best, candidate) =>
-    colorDistance(hex, TAG_COLOR_HEX[candidate]) < colorDistance(hex, TAG_COLOR_HEX[best])
+    colorDistance(hex, TAG_COLOR_SWATCHES[candidate].background) <
+    colorDistance(hex, TAG_COLOR_SWATCHES[best].background)
       ? candidate
       : best,
   )
@@ -206,10 +193,10 @@ function nearestTagColor(hex: string): TagColor {
 /**
  * RTM のタグ配列から、タグ名 → 色見本 の対応表を作る。
  *
- * RTM は `background_color` と `foreground_color` のどちらに濃い色を
- * 置くかがタグごとに違う（ライト/ダーク、選んだ時期などで反転する）。
- * 塗りつぶし＋白文字のピルに合わせるため、濃い方（明るさが低い方）を
- * そのタグの色として採用する。どちらも無ければ、色を選んでいないタグ。
+ * RTM のタグは色見本そのものを `background_color` に持ち、対になっている
+ * 色が `foreground_color` に入る。本アプリは同じ 24 色を持っているので、
+ * 背景色の完全一致でそのまま同じ色に移せる（丸めない）。
+ * 色を持たないタグは、色を選んでいないタグ。
  */
 function buildTagColorMap(rtmTags: RtmTag[] | undefined): Map<string, TagColor> {
   const map = new Map<string, TagColor>()
@@ -217,15 +204,16 @@ function buildTagColorMap(rtmTags: RtmTag[] | undefined): Map<string, TagColor> 
     const name = normalizeTagName(tag.id)
     if (!name) continue
 
-    const candidates = [tag.background_color, tag.foreground_color].filter(
-      (value): value is string => !!value,
-    )
-    if (candidates.length === 0) continue
+    const exact = tag.background_color ? rtmTagColorFromHex(tag.background_color) : null
+    if (exact) {
+      map.set(name, exact)
+      continue
+    }
 
-    const canonical = candidates.reduce((darkest, current) =>
-      relativeLuminance(current) < relativeLuminance(darkest) ? current : darkest,
-    )
-    map.set(name, nearestTagColor(canonical))
+    // 背景色が無い（か、知らない色）のときだけ、一番近い色見本に丸める。
+    const hex = tag.background_color ?? tag.foreground_color
+    if (!hex) continue
+    map.set(name, nearestTagColor(hex.toLowerCase()))
   }
   return map
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TAG_COLORS, type TagColor } from '~~/shared/types/tag'
+import { LEGACY_TAG_COLORS, RTM_TAG_COLORS, type TagColor } from '~~/shared/types/tag'
 
 /**
  * タグ一覧（docs/09-tags.md 9.3）。
@@ -38,6 +38,16 @@ async function pickColor(id: string, color: TagColor | null) {
   openColorId.value = null
   await setColor(id, color)
 }
+
+/**
+ * 色見本の並び。RTM と同じ 24 色（6 列 × 4 行）を先に出し、
+ * それより前から使っている独自の色をその下に続ける。
+ */
+const colorGroups = [RTM_TAG_COLORS, LEGACY_TAG_COLORS] as const
+
+function swatchStyle(color: TagColor) {
+  return { '--tag-color': tagColorVar(color), '--tag-text': tagTextColorVar(color) }
+}
 </script>
 
 <template>
@@ -57,7 +67,10 @@ async function pickColor(id: string, color: TagColor | null) {
             <span class="tags__name">
               <span
                 class="tags__dot"
-                :style="{ '--tag-color': tagColorVar(tag.color) }"
+                :style="{
+                  '--tag-color': tagColorVar(tag.color),
+                  '--tag-text': tagTextColorVar(tag.color),
+                }"
                 aria-hidden="true"
               />
               {{ tag.name }}
@@ -72,30 +85,40 @@ async function pickColor(id: string, color: TagColor | null) {
             :aria-expanded="openColorId === tag.id"
             @click="toggleColorPicker(tag.id)"
           >
-            <span :style="{ '--tag-color': tagColorVar(tag.color) }" class="tags__dot" aria-hidden="true" />
+            <span
+              :style="{
+                '--tag-color': tagColorVar(tag.color),
+                '--tag-text': tagTextColorVar(tag.color),
+              }"
+              class="tags__dot"
+              aria-hidden="true"
+            />
           </button>
         </div>
 
         <div v-if="openColorId === tag.id" class="tags__palette" role="group" :aria-label="`「${tag.name}」の色`">
+          <div v-for="(group, index) in colorGroups" :key="index" class="tags__grid">
+            <button
+              v-for="color in group"
+              :key="color"
+              type="button"
+              class="tags__swatch"
+              :style="swatchStyle(color)"
+              :aria-pressed="colorOf(tag.name) === color"
+              :aria-label="color"
+              @click="pickColor(tag.id, color)"
+            >
+              <span v-if="colorOf(tag.name) === color" aria-hidden="true">✓</span>
+            </button>
+          </div>
           <button
             type="button"
             class="tags__swatch tags__swatch--none"
             :aria-pressed="tag.color === null"
-            aria-label="色なし"
             @click="pickColor(tag.id, null)"
           >
-            ×
+            色なし
           </button>
-          <button
-            v-for="color in TAG_COLORS"
-            :key="color"
-            type="button"
-            class="tags__swatch"
-            :style="{ '--tag-color': tagColorVar(color) }"
-            :aria-pressed="colorOf(tag.name) === color"
-            :aria-label="color"
-            @click="pickColor(tag.id, color)"
-          />
         </div>
       </li>
     </ul>
@@ -168,11 +191,16 @@ async function pickColor(id: string, color: TagColor | null) {
   overflow-wrap: anywhere;
 }
 
+/*
+ * 淡い色は背景に紛れて「色が付いていない」ように見えるので、
+ * 対になっている濃い側の色で細い輪郭を付けて形が分かるようにする。
+ */
 .tags__dot {
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 999px;
   background: var(--tag-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tag-text) 40%, transparent);
   flex-shrink: 0;
 }
 
@@ -199,31 +227,62 @@ async function pickColor(id: string, color: TagColor | null) {
 }
 
 .tags__palette {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
   padding: 0.625rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
-.tags__swatch {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 999px;
-  background: var(--tag-color);
-  border: 2px solid transparent;
+/* RTM の色見本と同じ 6 列に並べる。狭い画面でも 6 列が入るよう最小幅で組む。 */
+.tags__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(2rem, 2.75rem));
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 20rem;
 }
 
+.tags__swatch {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--tag-color);
+  /* 淡い色でも輪郭が分かるように、対になっている濃い側の色で縁取る */
+  border: 1px solid color-mix(in srgb, var(--tag-text) 40%, transparent);
+  color: var(--tag-text);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/*
+ * 選んでいる色はチェックで示す。淡い色も濃い色もあるので、枠線の色を
+ * 変えるだけだと（--text と近い色のときに）区別が付かないため。
+ */
 .tags__swatch[aria-pressed='true'] {
   border-color: var(--text);
 }
 
 .tags__swatch--none {
+  width: auto;
+  aspect-ratio: auto;
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border-radius: var(--radius);
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tags__swatch--none[aria-pressed='true'] {
+  border-color: var(--text);
+  color: var(--text);
 }
 
 .page__untagged {

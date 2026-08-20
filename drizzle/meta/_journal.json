@@ -64,6 +64,13 @@
       "when": 1787192156029,
       "tag": "0008_rich_silver_surfer",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787193883597,
+      "tag": "0009_pink_the_professor",
+      "breakpoints": true
     }
   ]
 }

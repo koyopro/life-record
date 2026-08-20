@@ -809,7 +809,10 @@ async function removeSection(section: SectionDto) {
               v-for="name in item.tags"
               :key="name"
               class="chip chip--tag"
-              :style="{ '--tag-color': tagColorVar(colorOf(name)) }"
+              :style="{
+                '--tag-color': tagColorVar(colorOf(name)),
+                '--tag-text': tagTextColorVar(colorOf(name)),
+              }"
               :to="{ path: '/', query: { tag: name } }"
             >
               {{ name }}
@@ -1193,9 +1196,10 @@ async function removeSection(section: SectionDto) {
 }
 
 /*
- * RTM 風の塗りつぶしピル。色見本は main.css の --tag-* が白文字で読める濃さに
- * そろえている。一覧側のタグ表示（ItemCard.vue の .card__tag）とサイズ・見た目を
- * そろえる。`.chip` の見出しボタンとしてのサイズ（min-height）や下線は要らない。
+ * RTM 風の塗りつぶしピル。文字色は色見本と対になっている色を使う
+ * （main.css の --tag-* / --tag-*-fg）。一覧側のタグ表示（ItemCard.vue の
+ * .card__tag）とサイズ・見た目をそろえる。`.chip` の見出しボタンとしての
+ * サイズ（min-height）や下線は要らない。
  */
 .chip--tag {
   display: inline-flex;
@@ -1204,7 +1208,7 @@ async function removeSection(section: SectionDto) {
   padding: 0.0625rem 0.5rem;
   background: var(--tag-color);
   border-color: var(--tag-color);
-  color: #fff;
+  color: var(--tag-text);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.6;

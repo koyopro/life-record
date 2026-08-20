@@ -201,7 +201,10 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
                   v-for="tag in item.tags"
                   :key="tag"
                   class="worked__tag"
-                  :style="{ '--tag-color': tagColorVar(colorOf(tag)) }"
+                  :style="{
+                    '--tag-color': tagColorVar(colorOf(tag)),
+                    '--tag-text': tagTextColorVar(colorOf(tag)),
+                  }"
                 >
                   {{ tag }}
                 </span>
@@ -340,7 +343,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 
 .worked__tag {
   background: var(--tag-color);
-  color: #fff;
+  color: var(--tag-text);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.6;

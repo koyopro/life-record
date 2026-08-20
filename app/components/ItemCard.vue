@@ -194,7 +194,10 @@ function onTouchEnd() {
           :key="tag"
           type="button"
           class="card__tag"
-          :style="{ '--tag-color': tagColorVar(colorOf(tag)) }"
+          :style="{
+            '--tag-color': tagColorVar(colorOf(tag)),
+            '--tag-text': tagTextColorVar(colorOf(tag)),
+          }"
           :aria-label="`タグ「${tag}」で絞り込む`"
           @click.stop="emit('filterTag', tag)"
         >
@@ -403,15 +406,15 @@ function onTouchEnd() {
 }
 
 /*
- * RTM 風の塗りつぶしピル。タグごとの色を背景に敷き、文字は白で固定する
- * （色見本は main.css の --tag-* が白文字で読める濃さにそろえている）。
+ * RTM 風の塗りつぶしピル。タグごとの色を背景に敷き、文字色は色見本と
+ * 対になっている色を使う（main.css の --tag-* / --tag-*-fg）。
  */
 .card__tag {
   background: var(--tag-color);
   border: 0;
   border-radius: 999px;
   padding: 0.0625rem 0.5rem;
-  color: #fff;
+  color: var(--tag-text);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.6;

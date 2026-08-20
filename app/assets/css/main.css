@@ -28,22 +28,92 @@
   --saturday: light-dark(#2f6fbf, #6ea8e0);
   /*
    * タグの色（docs/09-tags.md 9.2）。固定の色見本から選ぶ（shared/types/tag.ts
-   * の TAG_COLORS）。RTM 風に、塗りつぶし＋白文字のピルで出す前提の値なので、
-   * どれも白文字で読める濃さにそろえる。未設定のタグは --tag-default。
+   * の TAG_COLORS）。塗りつぶしのピルで出すので、色見本 1 つにつき
+   * 背景の --tag-* と文字の --tag-*-fg を対で持つ。未設定のタグは --tag-default。
+   * 値は TAG_COLOR_SWATCHES と同じにそろえる（tests/tag-color.spec.ts で確認）。
+   *
+   * RTM と同じ 24 色。RTM から import した色をそのまま使えるよう、
+   * 明暗どちらでも RTM と同じ見え方になるように light-dark() を使わない。
+   * 淡い色と濃い色が対になっていて、対の相手がそのまま文字色になる。
+   */
+  --tag-rtm-sky-pale: #d6e6f6;
+  --tag-rtm-sky-pale-fg: #337fcc;
+  --tag-rtm-blue-pale: #e0ecff;
+  --tag-rtm-blue-pale-fg: #206cff;
+  --tag-rtm-navy-pale: #dfe2ff;
+  --tag-rtm-navy-pale-fg: #0000cc;
+  --tag-rtm-purple-pale: #e0d5f9;
+  --tag-rtm-purple-pale-fg: #5229a3;
+  --tag-rtm-mauve-pale: #fde9f4;
+  --tag-rtm-mauve-pale-fg: #854f61;
+  --tag-rtm-red-pale: #ffe3e3;
+  --tag-rtm-red-pale-fg: #cc0000;
+  --tag-rtm-sky: #337fcc;
+  --tag-rtm-sky-fg: #d6e6f6;
+  --tag-rtm-blue: #206cff;
+  --tag-rtm-blue-fg: #e0ecff;
+  --tag-rtm-navy: #0000cc;
+  --tag-rtm-navy-fg: #dfe2ff;
+  --tag-rtm-purple: #5229a3;
+  --tag-rtm-purple-fg: #e0d5f9;
+  --tag-rtm-mauve: #854f61;
+  --tag-rtm-mauve-fg: #fde9f4;
+  --tag-rtm-red: #cc0000;
+  --tag-rtm-red-fg: #ffe3e3;
+  --tag-rtm-orange-pale: #fff0e1;
+  --tag-rtm-orange-pale-fg: #ec7000;
+  --tag-rtm-amber-pale: #fadcb3;
+  --tag-rtm-amber-pale-fg: #b36d00;
+  --tag-rtm-gold-pale: #f3e7b3;
+  --tag-rtm-gold-pale-fg: #ab8b00;
+  --tag-rtm-olive-pale: #ffffd4;
+  --tag-rtm-olive-pale-fg: #636330;
+  --tag-rtm-green-pale: #e0ebd5;
+  --tag-rtm-green-pale-fg: #73a341;
+  --tag-rtm-forest-pale: #f1f5ec;
+  --tag-rtm-forest-pale-fg: #006633;
+  --tag-rtm-orange: #ec7000;
+  --tag-rtm-orange-fg: #fff0e1;
+  --tag-rtm-amber: #b36d00;
+  --tag-rtm-amber-fg: #fadcb3;
+  --tag-rtm-gold: #ab8b00;
+  --tag-rtm-gold-fg: #f3e7b3;
+  --tag-rtm-olive: #636330;
+  --tag-rtm-olive-fg: #ffffd4;
+  --tag-rtm-green: #73a341;
+  --tag-rtm-green-fg: #e0ebd5;
+  --tag-rtm-forest: #006633;
+  --tag-rtm-forest-fg: #f1f5ec;
+  /*
+   * RTM の色見本を持つ前から使っている独自の 12 色。白文字で読める濃さに
+   * そろえてあるので、文字色はどれも白。暗い側は背景に沈むので明るく振る。
    */
   --tag-red: light-dark(#c94f4f, color-mix(in srgb, #c94f4f 80%, white));
+  --tag-red-fg: #ffffff;
   --tag-orange: light-dark(#c17a2e, color-mix(in srgb, #c17a2e 80%, white));
+  --tag-orange-fg: #ffffff;
   --tag-yellow: light-dark(#a8891f, color-mix(in srgb, #a8891f 80%, white));
+  --tag-yellow-fg: #ffffff;
   --tag-olive: light-dark(#7c8a3c, color-mix(in srgb, #7c8a3c 80%, white));
+  --tag-olive-fg: #ffffff;
   --tag-green: light-dark(#3f8f5f, color-mix(in srgb, #3f8f5f 80%, white));
+  --tag-green-fg: #ffffff;
   --tag-teal: light-dark(#2f8f88, color-mix(in srgb, #2f8f88 80%, white));
+  --tag-teal-fg: #ffffff;
   --tag-blue: light-dark(#3f7bc9, color-mix(in srgb, #3f7bc9 80%, white));
+  --tag-blue-fg: #ffffff;
   --tag-indigo: light-dark(#5a5fc7, color-mix(in srgb, #5a5fc7 80%, white));
+  --tag-indigo-fg: #ffffff;
   --tag-purple: light-dark(#8a5fc7, color-mix(in srgb, #8a5fc7 80%, white));
+  --tag-purple-fg: #ffffff;
   --tag-pink: light-dark(#c75f96, color-mix(in srgb, #c75f96 80%, white));
+  --tag-pink-fg: #ffffff;
   --tag-brown: light-dark(#8a6a4a, color-mix(in srgb, #8a6a4a 80%, white));
+  --tag-brown-fg: #ffffff;
   --tag-gray: light-dark(#7c7c74, color-mix(in srgb, #7c7c74 80%, white));
+  --tag-gray-fg: #ffffff;
   --tag-default: light-dark(#9a9a90, #55544c);
+  --tag-default-fg: #ffffff;
   /*
    * キーボードのカーソル位置（一覧の j/k）。RTM に倣い、枠線ではなく
    * 行の背景色そのもので示す。枠線だと一覧をざっと流し見たときに

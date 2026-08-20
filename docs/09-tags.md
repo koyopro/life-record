@@ -33,12 +33,27 @@ Q6 では「タグ」「プロジェクト（1対多）」「ラベル文字列�
 
 ### タグの色
 
-固定の色見本（`red` `orange` `yellow` `olive` `green` `teal` `blue` `indigo`
-`purple` `pink` `brown` `gray`、`shared/types/tag.ts` の `TAG_COLORS`）から選ぶ。
+固定の色見本（`shared/types/tag.ts` の `TAG_COLORS`）から選ぶ。
 任意の色を許すと似た色が乱立しやすく、明暗対応も色の数だけ要るため。
 
+色見本は 2 組ある。
+
+- **RTM と同じ 24 色**（`RTM_TAG_COLORS`、`rtm-*`）。RTM の色見本と同じ
+  6 列 × 4 行で、淡い色と濃い色が対になっている。RTM からの import で色を
+  丸めずにそのまま使うために持つ（[05-operations.md](05-operations.md) の import）。
+  RTM と同じ見え方にするため、明暗テーマで値を振らない。
+- **独自の 12 色**（`LEGACY_TAG_COLORS`）。RTM の色見本を持つ前から使っている
+  もので、すでに付いているタグがあるので残している（Postgres の enum は
+  値を後から削れない）。新しく選ぶなら色がそろう RTM 側を使う想定で、
+  色見本では RTM の 24 色を先に出す。
+
+色見本 1 つは「背景色」と「その上に乗せる文字色」の組（`TAG_COLOR_SWATCHES`）。
+RTM の淡い色は白文字だと読めないため、文字色を色ごとに持つ。
+実際の値は `app/assets/css/main.css` の `--tag-*` / `--tag-*-fg` で、
+TS 側と食い違っていないかは `tests/tag-color.spec.ts` が見張る。
+
 一覧・詳細でのタグ表示は、RTM に倣い塗りつぶしの丸ピルで出す
-（`#タグ名` ではなく `タグ名` のみ、色は背景・文字は白で固定）。
+（`#タグ名` ではなく `タグ名` のみ、背景が `--tag-*`・文字が `--tag-*-fg`）。
 未設定のタグは既定の灰色（`--tag-default`）で出し、色が無い状態を作らない
 （重要度の色分けと同じ考え方、[08-todo-management.md](08-todo-management.md) 8.1）。
 
@@ -196,6 +211,16 @@ RTM の「タグを変更」「タグに移動」に合わせて `s` / `g` `s` �
 
 ```sql
 CREATE TYPE tag_color AS ENUM (
+  -- RTM と同じ 24 色（淡い側・濃い側が対）
+  'rtm-sky-pale', 'rtm-blue-pale', 'rtm-navy-pale',
+  'rtm-purple-pale', 'rtm-mauve-pale', 'rtm-red-pale',
+  'rtm-sky', 'rtm-blue', 'rtm-navy',
+  'rtm-purple', 'rtm-mauve', 'rtm-red',
+  'rtm-orange-pale', 'rtm-amber-pale', 'rtm-gold-pale',
+  'rtm-olive-pale', 'rtm-green-pale', 'rtm-forest-pale',
+  'rtm-orange', 'rtm-amber', 'rtm-gold',
+  'rtm-olive', 'rtm-green', 'rtm-forest',
+  -- RTM の色見本を持つ前から使っている独自の 12 色
   'red', 'orange', 'yellow', 'olive', 'green', 'teal',
   'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'
 );
