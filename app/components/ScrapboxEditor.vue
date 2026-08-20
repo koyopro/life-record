@@ -489,11 +489,15 @@ function onKeydown(event: KeyboardEvent) {
     case 'Z':
       if (!event.metaKey && !event.ctrlKey) return
       event.preventDefault()
+      // 入力欄は .editor の中にあるので、止めないと onContainerKeydown 側の
+      // 同じ割り当てまで動いて2回ぶん戻ってしまう
+      event.stopPropagation()
       return event.shiftKey ? redo() : undo()
     case 'y':
       // Windows 慣習の Ctrl+Y（Shift 無しの取り消し戻し）
       if (!event.ctrlKey) return
       event.preventDefault()
+      event.stopPropagation()
       return redo()
   }
 }
