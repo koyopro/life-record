@@ -240,17 +240,20 @@ function onTouchEnd() {
 }
 
 /*
- * カーソル位置。キーボード操作の対象がどれかを常に見えるようにする。
- * 左端は重要度に使うので、囲みの線だけで示す。
+ * カーソル位置。キーボード操作の対象がどれかを、行の背景色で示す
+ * （RTM に倣う）。枠線だと一覧を流し見たときに気づきにくいため。
  */
 .card--focused {
-  box-shadow:
-    var(--shadow),
-    0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--cursor-bg);
 }
 
 .card--selected {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+/* 選択中かつカーソル位置。どちらの色も埋もれないよう掛け合わせる。 */
+.card--focused.card--selected {
+  background: color-mix(in srgb, var(--accent) 10%, var(--cursor-bg));
 }
 
 .card--done .card__title {

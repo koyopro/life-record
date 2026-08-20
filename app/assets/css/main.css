@@ -44,6 +44,12 @@
   --tag-brown: light-dark(#8a6a4a, color-mix(in srgb, #8a6a4a 80%, white));
   --tag-gray: light-dark(#7c7c74, color-mix(in srgb, #7c7c74 80%, white));
   --tag-default: light-dark(#9a9a90, #55544c);
+  /*
+   * キーボードのカーソル位置（一覧の j/k）。RTM に倣い、枠線ではなく
+   * 行の背景色そのもので示す。枠線だと一覧をざっと流し見たときに
+   * 気づきにくいため（docs/08-todo-management.md 8.1）。
+   */
+  --cursor-bg: light-dark(#fdf3c8, color-mix(in srgb, #8a7328 32%, var(--surface)));
   --radius: 12px;
   --shadow: 0 1px 2px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 30%)),
     0 4px 12px light-dark(rgb(0 0 0 / 4%), rgb(0 0 0 / 20%));
