@@ -70,10 +70,12 @@ export function parseRecurrence(input: string): Recurrence | null {
   if (!text) return null
 
   // --- 完了日起点（after / 完了の〜後） ---
+  // 「完了の」は省略可にする。「後」は due（毎〜）側では使わない語のため、
+  // 「1日後」だけでも「完了の1日後」と同じ意味として受け付けて問題ない。
   const afterMatch =
     /^after\s+(?:(\d+)\s*)?(day|days|week|weeks|month|months|year|years)$/.exec(
       text,
-    ) ?? /^完了(?:の)?\s*(?:(\d+))?\s*(日|週間|週|月|年)後$/.exec(text)
+    ) ?? /^(?:完了(?:の)?\s*)?(?:(\d+))?\s*(日|週間|週|月|年)後$/.exec(text)
 
   if (afterMatch) {
     const freq = FREQ_BY_UNIT[afterMatch[2]!]

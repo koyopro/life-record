@@ -227,9 +227,11 @@ RTM と同様に自然言語で書けるようにする。日本語・英語の�
 | `*every 2 weeks` / `*2週間ごと` | `FREQ=WEEKLY;INTERVAL=2` | due |
 | `*every month` / `*毎月` | `FREQ=MONTHLY` | due |
 | `*every year` / `*毎年` | `FREQ=YEARLY` | due |
-| `*after 3 days` / `*完了の3日後` | `FREQ=DAILY;INTERVAL=3` | completion |
-| `*after 1 week` / `*完了の1週間後` | `FREQ=WEEKLY` | completion |
+| `*after 3 days` / `*完了の3日後` / `*3日後` | `FREQ=DAILY;INTERVAL=3` | completion |
+| `*after 1 week` / `*完了の1週間後` / `*1週間後` | `FREQ=WEEKLY` | completion |
 
+- `完了の` は省略できる（`3日後` だけで `完了の3日後` と同じ）。「後」は
+  due（毎〜）側では使わない語なので、省略しても曖昧にならない
 - パースはサーバー側で行い、入力中のプレビューはクライアントでも同じロジックを動かす
 - 解釈できなかった場合は、繰り返しを設定せず警告を出す（黙って無視しない）
 - 実装候補: [rrule.js](https://github.com/jkbrzt/rrule)（RRULE の生成・次回発生日の計算・自然文表示に対応）。
