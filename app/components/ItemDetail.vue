@@ -256,35 +256,48 @@ defineExpose({
 })
 const createdSectionId = ref<string | null>(null)
 
-/**
- * 保存できた本文を、控え（detailCache）にもすぐ反映する。
- *
- * PATCH は `detail`（useFetch）を取り直さないため、控えのままだと
- * 編集前の内容が残る。別の Item へ切り替えて戻ってきたときに、次の
- * 取得が終わるまでの数秒だけ編集前の本文が見えてしまうのはこのため。
- */
-function updateCachedSection(updated: SectionDto) {
-  const current = detailCache.value[id.value]
-  if (!current) return
-  setDetailCache(id.value, {
-    ...current,
-    sections: current.sections.map((s) => (s.id === updated.id ? updated : s)),
+/** Section 1 つ分の変更を、取得済みの詳細に当てたものを返す。 */
+function withUpdatedSection(source: ItemDetailDto, updated: SectionDto): ItemDetailDto {
+  return {
+    ...source,
+    sections: source.sections.map((s) => (s.id === updated.id ? updated : s)),
     // body は一覧カードに出す本文（先頭 Section の写し）。それを編集したときだけ揃える
-    body: updated.id === current.primarySectionId ? updated.body : current.body,
-  })
+    body: updated.id === source.primarySectionId ? updated.body : source.body,
+  }
+}
+
+/**
+ * 保存できた Section を、取得済みの詳細にも当てておく。
+ *
+ * PATCH では `detail`（useFetch）を取り直さないので、当てておかないと
+ * 編集前の内容が残ったままになる。`detail` は URL ごとの控え
+ * （useAsyncData のキャッシュ）なので、別の Item へ切り替えて戻ると
+ * その残ったままの内容が即座に出て、次の取得が終わるまで編集前の本文が
+ * 見えてしまう。localStorage 側の控え（detailCache）も同じ理由で当てる
+ * （リロードを挟んだときはこちらが初期表示に使われる）。
+ */
+function applySavedSection(targetId: string, updated: SectionDto) {
+  // 保存の往復中に別の Item へ切り替わっていたら、そちらの控えを触らない
+  if (targetId !== id.value) return
+
+  if (detail.value) detail.value = withUpdatedSection(detail.value, updated)
+
+  const cached = detailCache.value[targetId]
+  if (cached) setDetailCache(targetId, withUpdatedSection(cached, updated))
 }
 
 const bodySave = useAutosave({
   source: body,
   save: async (value) => {
     const sectionId = createdSectionId.value ?? primarySection.value?.id
+    const targetId = id.value
 
     if (sectionId) {
       const updated = await $fetch<SectionDto>(`/api/sections/${sectionId}`, {
         method: 'PATCH',
         body: { body: value },
       })
-      updateCachedSection(updated)
+      applySavedSection(targetId, updated)
       return
     }
 
@@ -590,12 +603,13 @@ async function focusSection(sectionId: string) {
 }
 
 async function saveSection(section: SectionDto, value: string) {
+  const targetId = id.value
   // 一覧カードに出るのは本文（最初の記録）だけなので、changed は投げない
   const updated = await $fetch<SectionDto>(`/api/sections/${section.id}`, {
     method: 'PATCH',
     body: { body: value },
   })
-  updateCachedSection(updated)
+  applySavedSection(targetId, updated)
 }
 
 async function changeSectionDate(section: SectionDto, date: string) {
