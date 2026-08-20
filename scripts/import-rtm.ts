@@ -23,15 +23,21 @@
  *   （server/utils/recurrence.ts の createNextOccurrence と同じ扱い）。
  * - 再実行しても重複登録しないよう、Item/Section の id は
  *   RTM 側の id から決定的に (uuidv5 で) 生成する。
+ * - タグの色（トップレベルの `tags` 配列、`background_color` / `foreground_color`）は、
+ *   本アプリの固定色見本（shared/types/tag.ts の TAG_COLORS）のうち一番近いものに
+ *   丸めて取り込む（buildTagColorMap / nearestTagColor）。RTM はどちらの色に
+ *   濃い方を置くかがタグごとに違うため、明るさが低い方を採用する。
+ *   すでに色が付いているタグは、再importで上書きしない（アプリ側で選び直した色を
+ *   尊重するため）。
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { useDb, type Executor } from '../server/db'
 import { items, itemTags, sections, tags } from '../server/db/schema'
 import type { RecurrenceBasis } from '../shared/types/recurrence'
-import { normalizeTagName } from '../shared/types/tag'
+import { normalizeTagName, TAG_COLORS, type TagColor } from '../shared/types/tag'
 import { toAppDate, todayDueAt } from '../shared/utils/date'
 import { isValidRule, parseRecurrence } from '../shared/utils/recurrence'
 import { TITLE_MAX_LENGTH } from '../shared/utils/text'
@@ -82,9 +88,21 @@ interface RtmNote {
   content: string
 }
 
+/**
+ * RTM のタグ本体（色などのタグ自体のプロパティ）。`id` がタグ名そのもの
+ * （`task.tags` に出てくる文字列と同じ）。色を選んでいないタグには
+ * `background_color` / `foreground_color` が無い。
+ */
+interface RtmTag {
+  id: string
+  background_color?: string
+  foreground_color?: string
+}
+
 interface RtmExport {
   tasks: RtmTask[]
   notes: RtmNote[]
+  tags?: RtmTag[]
 }
 
 /** このスクリプト専用の固定 namespace（uuidv5 生成用）。値に意味はない。 */
@@ -137,6 +155,107 @@ function parseRtmRecurrence(
   if (natural) return natural
 
   return null
+}
+
+/**
+ * shared/types/tag.ts の TAG_COLORS を、app/assets/css/main.css の --tag-*
+ * （ライト側）と同じ参照色に対応させたもの。RTM の色見本から一番近い色を
+ * 選ぶための基準として使う（Nuxt alias 経由の import を避けるため複製する）。
+ */
+const TAG_COLOR_HEX: Record<TagColor, string> = {
+  red: '#c94f4f',
+  orange: '#c17a2e',
+  yellow: '#a8891f',
+  olive: '#7c8a3c',
+  green: '#3f8f5f',
+  teal: '#2f8f88',
+  blue: '#3f7bc9',
+  indigo: '#5a5fc7',
+  purple: '#8a5fc7',
+  pink: '#c75f96',
+  brown: '#8a6a4a',
+  gray: '#7c7c74',
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.replace('#', ''), 16)
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
+}
+
+/** 人の目に感じる明るさの近似値。値が小さいほど暗い（濃い）色。 */
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function colorDistance(a: string, b: string): number {
+  const [r1, g1, b1] = hexToRgb(a)
+  const [r2, g2, b2] = hexToRgb(b)
+  return (r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2
+}
+
+/** RTM の16進色から、一番近い固定の色見本を選ぶ（総当たりで十分な件数のため）。 */
+function nearestTagColor(hex: string): TagColor {
+  return TAG_COLORS.reduce((best, candidate) =>
+    colorDistance(hex, TAG_COLOR_HEX[candidate]) < colorDistance(hex, TAG_COLOR_HEX[best])
+      ? candidate
+      : best,
+  )
+}
+
+/**
+ * RTM のタグ配列から、タグ名 → 色見本 の対応表を作る。
+ *
+ * RTM は `background_color` と `foreground_color` のどちらに濃い色を
+ * 置くかがタグごとに違う（ライト/ダーク、選んだ時期などで反転する）。
+ * 塗りつぶし＋白文字のピルに合わせるため、濃い方（明るさが低い方）を
+ * そのタグの色として採用する。どちらも無ければ、色を選んでいないタグ。
+ */
+function buildTagColorMap(rtmTags: RtmTag[] | undefined): Map<string, TagColor> {
+  const map = new Map<string, TagColor>()
+  for (const tag of rtmTags ?? []) {
+    const name = normalizeTagName(tag.id)
+    if (!name) continue
+
+    const candidates = [tag.background_color, tag.foreground_color].filter(
+      (value): value is string => !!value,
+    )
+    if (candidates.length === 0) continue
+
+    const canonical = candidates.reduce((darkest, current) =>
+      relativeLuminance(current) < relativeLuminance(darkest) ? current : darkest,
+    )
+    map.set(name, nearestTagColor(canonical))
+  }
+  return map
+}
+
+/**
+ * まだ色が付いていないタグにだけ、RTM 由来の色を反映する。
+ * アプリ側で選び直した色を、再importのたびに上書きしないようにするため。
+ */
+async function applyTagColors(
+  tx: Executor,
+  names: Set<string>,
+  colors: Map<string, TagColor>,
+): Promise<number> {
+  const targets = [...names].filter((name) => colors.has(name))
+  if (targets.length === 0) return 0
+
+  const rows = await tx
+    .select({ id: tags.id, name: tags.name, color: tags.color })
+    .from(tags)
+    .where(inArray(tags.name, targets))
+
+  let applied = 0
+  for (const row of rows) {
+    if (row.color) continue
+    const color = colors.get(row.name)
+    if (!color) continue
+    await tx.update(tags).set({ color }).where(eq(tags.id, row.id))
+    applied++
+  }
+  return applied
 }
 
 async function main() {
@@ -243,12 +362,14 @@ async function main() {
   }
 
   const totalSections = prepared.reduce((sum, p) => sum + p.sectionRows.length, 0)
+  const tagColors = buildTagColorMap(data.tags)
 
   console.log(`import対象: ${prepared.length}件（タイトル欠落でスキップ: ${skippedNoTitle}件）`)
   console.log(`  メモから作る Section: ${totalSections}件`)
   console.log(
     `  繰り返しあり: ${recurringCount}件（RRULEとして解釈できず単発扱い: ${invalidRecurrenceCount}件）`,
   )
+  console.log(`  色付きタグ: ${tagColors.size}件（RTMエクスポートの tags より）`)
 
   if (dryRun) {
     console.log('--dry-run のため、DBへの書き込みは行いません。')
@@ -256,7 +377,9 @@ async function main() {
   }
 
   const db = useDb()
-  await db.transaction(async (tx) => {
+  const appliedColors = await db.transaction(async (tx) => {
+    const touchedTagNames = new Set<string>()
+
     for (const { item, tagNames, sectionRows } of prepared) {
       await tx.insert(items).values(item).onConflictDoNothing()
 
@@ -272,10 +395,14 @@ async function main() {
             .values([...tagIds.values()].map((tagId) => ({ itemId: item.id!, tagId })))
             .onConflictDoNothing()
         }
+        for (const name of tagIds.keys()) touchedTagNames.add(name)
       }
     }
+
+    return await applyTagColors(tx, touchedTagNames, tagColors)
   })
 
+  console.log(`  タグに色を設定: ${appliedColors}件（すでに色が付いているものは上書きしない）`)
   console.log('import完了')
 }
 
