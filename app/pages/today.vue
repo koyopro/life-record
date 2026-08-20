@@ -25,6 +25,9 @@ async function add(text: string) {
     <header class="head">
       <h1 class="head__title">今日</h1>
       <span class="head__date">{{ today }}</span>
+      <!-- list__bar（未完了/完了・グループ・並び・ヘルプ）をここへテレポートする。
+           一覧側の別行にすると、その分だけ表示エリアが押し下がるため -->
+      <div id="today-list-bar" class="head__bar" />
     </header>
 
     <ItemComposer
@@ -45,6 +48,8 @@ async function add(text: string) {
       default-sort="priorityDueDesc"
       storage-key="sort:today"
       show-sort
+      :show-tag-filter="false"
+      bar-target="#today-list-bar"
       empty-message="今日やることはありません。"
     />
   </div>
@@ -58,7 +63,8 @@ async function add(text: string) {
 
 .head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.625rem;
 }
 
@@ -71,5 +77,12 @@ async function add(text: string) {
 .head__date {
   color: var(--text-muted);
   font-size: 0.875rem;
+}
+
+.head__bar {
+  /* list__bar（未完了/完了・グループ・並び・ヘルプ）がテレポートされてくる場所。
+     残りの幅をここへ持たせ、タイトルの右側に並べる */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 </style>
