@@ -43,6 +43,7 @@ const listOrigin = useListOrigin()
 
 const store = useItemStore()
 const { online } = useOnline()
+const { colorOf } = useTags()
 
 // 分割表示では itemId が切り替わるので、top-level await は使わない
 // （Suspense で一覧ごと再描画されてしまうため）。
@@ -807,10 +808,11 @@ async function removeSection(section: SectionDto) {
             <NuxtLink
               v-for="name in item.tags"
               :key="name"
-              class="chip chip--link"
+              class="chip chip--tag"
+              :style="{ '--tag-color': tagColorVar(colorOf(name)) }"
               :to="{ path: '/items', query: { status: 'all', tag: name } }"
             >
-              #{{ name }}
+              {{ name }}
             </NuxtLink>
             <button type="button" class="chip chip--quiet" @click="tagOpen = true">
               {{ item.tags.length ? '変更する' : '追加する' }}
@@ -1188,6 +1190,14 @@ async function removeSection(section: SectionDto) {
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+}
+
+/* RTM 風の塗りつぶしピル。色見本は main.css の --tag-* が白文字で読める濃さにそろえている。 */
+.chip--tag {
+  background: var(--tag-color);
+  border-color: var(--tag-color);
+  color: #fff;
+  font-weight: 600;
 }
 
 /*

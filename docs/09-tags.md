@@ -28,7 +28,19 @@ Q6 では「タグ」「プロジェクト（1対多）」「ラベル文字列�
 |---|---|---|---|
 | id | UUID | Yes | タグID |
 | name | text | Yes | タグ名。正規化済み。一意 |
+| color | tag_color (enum) | No | 表示色。NULL は未設定（既定の色で出す） |
 | created_at | timestamptz | Yes | 作成日時 |
+
+### タグの色
+
+固定の色見本（`red` `orange` `yellow` `olive` `green` `teal` `blue` `indigo`
+`purple` `pink` `brown` `gray`、`shared/types/tag.ts` の `TAG_COLORS`）から選ぶ。
+任意の色を許すと似た色が乱立しやすく、明暗対応も色の数だけ要るため。
+
+一覧・詳細でのタグ表示は、RTM に倣い塗りつぶしの丸ピルで出す
+（`#タグ名` ではなく `タグ名` のみ、色は背景・文字は白で固定）。
+未設定のタグは既定の灰色（`--tag-default`）で出し、色が無い状態を作らない
+（重要度の色分けと同じ考え方、[08-todo-management.md](08-todo-management.md) 8.1）。
 
 ### item_tags
 
@@ -85,6 +97,7 @@ RTM に倣い、**大文字小文字を区別しない**。
 - タグで Item を絞り込む
 - タグ一覧の表示（Item 件数つき）
 - タグ名のリネーム（全 Item に反映される）
+- タグの色を変える（`/tags` の色見本から選ぶ）
 - タグの削除（全 Item から外れる）
 
 ### 絞り込み
@@ -116,7 +129,7 @@ RTM に倣い、**大文字小文字を区別しない**。
   （タグ一覧からの追加は「今日やること」に限らないため）
 - 「タグなしのタスクを見る」も同じ場所に置く。絞り込みの入口をここに集める
 
-リネームと削除の API はあるが、画面はまだ持たせていない。
+色は各行の丸ボタンから色見本を開いて選ぶ。リネームと削除の API はあるが、画面はまだ持たせていない。
 
 ### 絞り込みの導線
 
@@ -183,9 +196,15 @@ RTM の「タグを変更」「タグに移動」に合わせて `s` / `g` `s` �
 ## 9.5 DDL
 
 ```sql
+CREATE TYPE tag_color AS ENUM (
+  'red', 'orange', 'yellow', 'olive', 'green', 'teal',
+  'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'
+);
+
 CREATE TABLE tags (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name       TEXT NOT NULL,
+  color      tag_color,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT tags_name_unique UNIQUE (name),
   CONSTRAINT tags_name_not_blank CHECK (length(btrim(name)) > 0),
@@ -216,6 +235,7 @@ Item の削除・タグの削除は、いずれも `ON DELETE CASCADE` で中間
 - [x] Item にタグを付ける / 外す API（複数選択にも対応）
 - [x] タグ一覧 API（Item 件数つき）
 - [x] タグのリネーム / 削除 API（リネーム時の衝突は統合で吸収）
+- [x] タグの色分け（固定の色見本、`/tags` から変更）
 - [x] 参照が0になったタグの削除
 - [x] Item 一覧のタグ絞り込み（単一タグ / タグなし）
 - [x] タグ入力欄と候補表示

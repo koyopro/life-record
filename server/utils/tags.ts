@@ -69,10 +69,11 @@ export async function listTagsWithCount(db: Executor) {
     .select({
       id: tags.id,
       name: tags.name,
+      color: tags.color,
       count: sql<number>`count(${itemTags.itemId})::int`,
     })
     .from(tags)
     .leftJoin(itemTags, eq(itemTags.tagId, tags.id))
-    .groupBy(tags.id, tags.name)
+    .groupBy(tags.id, tags.name, tags.color)
     .orderBy(asc(tags.name))
 }

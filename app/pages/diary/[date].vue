@@ -109,6 +109,8 @@ function onDateInput(event: Event) {
   void goTo(value)
 }
 
+const { colorOf } = useTags()
+
 const workedOn = computed(() => cachedDiary.value?.items ?? [])
 
 /**
@@ -195,8 +197,13 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
             >
               <span class="worked__name">{{ item.title }}</span>
               <span v-if="item.tags.length" class="worked__tags">
-                <span v-for="tag in item.tags" :key="tag" class="worked__tag">
-                  #{{ tag }}
+                <span
+                  v-for="tag in item.tags"
+                  :key="tag"
+                  class="worked__tag"
+                  :style="{ '--tag-color': tagColorVar(colorOf(tag)) }"
+                >
+                  {{ tag }}
                 </span>
               </span>
             </NuxtLink>
@@ -332,7 +339,12 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 }
 
 .worked__tag {
-  color: var(--text-muted);
-  font-size: 0.8125rem;
+  background: var(--tag-color);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.6;
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
 }
 </style>

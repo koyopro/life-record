@@ -1,4 +1,4 @@
-import type { TagDto } from '~~/shared/types/tag'
+import type { TagColor, TagDto } from '~~/shared/types/tag'
 
 /**
  * タグ一覧。候補表示と絞り込みで使う。
@@ -25,7 +25,7 @@ export function useTags() {
       for (const name of item.tags) counts.set(name, (counts.get(name) ?? 0) + 1)
     }
     return [...counts.entries()]
-      .map(([name, count]) => ({ id: `local:${name}`, name, count }))
+      .map(([name, count]) => ({ id: `local:${name}`, name, count, color: null }))
       .sort((a, b) => (a.name < b.name ? -1 : 1))
   })
 
@@ -44,5 +44,16 @@ export function useTags() {
       .slice(0, 8)
   }
 
-  return { tags, pending, refresh, suggest }
+  /** タグ名から色を引く。未取得・未設定なら null（表示側は既定の色で出す）。 */
+  function colorOf(name: string): TagColor | null {
+    return tags.value.find((tag) => tag.name === name)?.color ?? null
+  }
+
+  /** タグの色を変える。他の画面のタグ一覧にも反映されるよう、成功したら取り直す。 */
+  async function setColor(id: string, color: TagColor | null) {
+    await $fetch(`/api/tags/${id}`, { method: 'PATCH', body: { color } })
+    await refresh()
+  }
+
+  return { tags, pending, refresh, suggest, colorOf, setColor }
 }

@@ -22,6 +22,8 @@ const emit = defineEmits<{
 const due = computed(() => formatDue(props.item))
 const done = computed(() => props.item.status === 'closed')
 
+const { colorOf } = useTags()
+
 const recurrenceLabel = computed(() => {
   const { recurrenceRule, recurrenceBasis } = props.item
   if (!recurrenceRule || !recurrenceBasis) return null
@@ -192,10 +194,11 @@ function onTouchEnd() {
           :key="tag"
           type="button"
           class="card__tag"
+          :style="{ '--tag-color': tagColorVar(colorOf(tag)) }"
           :aria-label="`タグ「${tag}」で絞り込む`"
           @click.stop="emit('filterTag', tag)"
         >
-          #{{ tag }}
+          {{ tag }}
         </button>
       </div>
     </div>
@@ -396,12 +399,19 @@ function onTouchEnd() {
   text-decoration: none;
 }
 
+/*
+ * RTM 風の塗りつぶしピル。タグごとの色を背景に敷き、文字は白で固定する
+ * （色見本は main.css の --tag-* が白文字で読める濃さにそろえている）。
+ */
 .card__tag {
-  background: transparent;
+  background: var(--tag-color);
   border: 0;
-  padding: 0;
-  color: var(--accent);
-  font-size: 0.8125rem;
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 

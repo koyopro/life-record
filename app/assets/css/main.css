@@ -26,6 +26,24 @@
   --priority-none: light-dark(#c9c9c1, #4a4943);
   /* 土曜の色。日本のカレンダーの慣習に合わせる（日曜は --danger） */
   --saturday: light-dark(#2f6fbf, #6ea8e0);
+  /*
+   * タグの色（docs/09-tags.md 9.2）。固定の色見本から選ぶ（shared/types/tag.ts
+   * の TAG_COLORS）。RTM 風に、塗りつぶし＋白文字のピルで出す前提の値なので、
+   * どれも白文字で読める濃さにそろえる。未設定のタグは --tag-default。
+   */
+  --tag-red: light-dark(#c94f4f, color-mix(in srgb, #c94f4f 80%, white));
+  --tag-orange: light-dark(#c17a2e, color-mix(in srgb, #c17a2e 80%, white));
+  --tag-yellow: light-dark(#a8891f, color-mix(in srgb, #a8891f 80%, white));
+  --tag-olive: light-dark(#7c8a3c, color-mix(in srgb, #7c8a3c 80%, white));
+  --tag-green: light-dark(#3f8f5f, color-mix(in srgb, #3f8f5f 80%, white));
+  --tag-teal: light-dark(#2f8f88, color-mix(in srgb, #2f8f88 80%, white));
+  --tag-blue: light-dark(#3f7bc9, color-mix(in srgb, #3f7bc9 80%, white));
+  --tag-indigo: light-dark(#5a5fc7, color-mix(in srgb, #5a5fc7 80%, white));
+  --tag-purple: light-dark(#8a5fc7, color-mix(in srgb, #8a5fc7 80%, white));
+  --tag-pink: light-dark(#c75f96, color-mix(in srgb, #c75f96 80%, white));
+  --tag-brown: light-dark(#8a6a4a, color-mix(in srgb, #8a6a4a 80%, white));
+  --tag-gray: light-dark(#7c7c74, color-mix(in srgb, #7c7c74 80%, white));
+  --tag-default: light-dark(#9a9a90, #55544c);
   --radius: 12px;
   --shadow: 0 1px 2px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 30%)),
     0 4px 12px light-dark(rgb(0 0 0 / 4%), rgb(0 0 0 / 20%));

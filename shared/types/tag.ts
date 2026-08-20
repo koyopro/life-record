@@ -1,10 +1,39 @@
 export const TAG_NAME_MAX_LENGTH = 50
 
+/**
+ * タグの色分け（docs/09-tags.md 9.2）。
+ *
+ * 固定の色見本から選ぶ形にする。任意の色を許すと表記ゆれ（似た色の乱立）が
+ * 起きやすく、CSS 側の明暗対応も色の数だけ要るため。
+ */
+export const TAG_COLORS = [
+  'red',
+  'orange',
+  'yellow',
+  'olive',
+  'green',
+  'teal',
+  'blue',
+  'indigo',
+  'purple',
+  'pink',
+  'brown',
+  'gray',
+] as const
+
+export type TagColor = (typeof TAG_COLORS)[number]
+
+export function isTagColor(value: unknown): value is TagColor {
+  return TAG_COLORS.includes(value as TagColor)
+}
+
 export interface TagDto {
   id: string
   name: string
   /** そのタグが付いている Item の件数。 */
   count: number
+  /** 色。未設定なら null（表示側は既定の色で出す）。 */
+  color: TagColor | null
 }
 
 /**

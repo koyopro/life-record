@@ -16,7 +16,7 @@ import {
 import { relations, sql } from 'drizzle-orm'
 // drizzle-kit は Nuxt のエイリアスを解決しないため相対パスで参照する
 import { ITEM_STATUSES } from '../../shared/types/item'
-import { TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
+import { TAG_COLORS, TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
 import { RECURRENCE_BASES } from '../../shared/types/recurrence'
 
 /**
@@ -27,6 +27,8 @@ import { RECURRENCE_BASES } from '../../shared/types/recurrence'
 export const itemStatus = pgEnum('item_status', ITEM_STATUSES)
 
 export const recurrenceBasis = pgEnum('recurrence_basis', RECURRENCE_BASES)
+
+export const tagColor = pgEnum('tag_color', TAG_COLORS)
 
 /** TODO・タスクそのもの。本文は持たず、記録は Section 側に積み重ねる。 */
 export const items = pgTable(
@@ -129,6 +131,8 @@ export const tags = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
+    /** 表示色。未設定は NULL（表示側は既定の色で出す）。 */
+    color: tagColor('color'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

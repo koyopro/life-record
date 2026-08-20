@@ -1,0 +1,2 @@
+CREATE TYPE "public"."tag_color" AS ENUM('red', 'orange', 'yellow', 'olive', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray');--> statement-breakpoint
+ALTER TABLE "tags" ADD COLUMN "color" "tag_color";
