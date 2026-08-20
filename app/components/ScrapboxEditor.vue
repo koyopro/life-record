@@ -582,6 +582,9 @@ function isOnLastRow(el: HTMLTextAreaElement): boolean {
 }
 
 function onArrow(event: KeyboardEvent, delta: -1 | 1) {
+  // IME の変換候補を上下で選んでいる間は、行をまたぐ移動として奪わない
+  if (composing.value) return
+
   const index = activeIndex.value
   const el = input.value
   if (index === null || !el) return
