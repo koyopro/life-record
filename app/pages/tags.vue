@@ -34,9 +34,21 @@ function isLocalTag(id: string): boolean {
   return id.startsWith('local:')
 }
 
+/**
+ * 色を選ぶ。押した時点で色は変わる（useTags の setColor）。
+ * 送れなかったときだけ、元の色に戻ったことの理由を出す。
+ */
+const errorMessage = ref<string | null>(null)
+
 async function pickColor(id: string, color: TagColor | null) {
   openColorId.value = null
-  await setColor(id, color)
+  errorMessage.value = null
+
+  try {
+    await setColor(id, color)
+  } catch {
+    errorMessage.value = '色を変更できませんでした'
+  }
 }
 
 /**
@@ -53,6 +65,8 @@ function swatchStyle(color: TagColor) {
 <template>
   <div class="page">
     <h1 class="page__title">タグ</h1>
+
+    <p v-if="errorMessage" class="page__error" role="alert">{{ errorMessage }}</p>
 
     <p v-if="pending && !tags.length" class="page__placeholder">読み込み中…</p>
 
@@ -145,6 +159,12 @@ function swatchStyle(color: TagColor) {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.9375rem;
+}
+
+.page__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.875rem;
 }
 
 .tags {

@@ -49,10 +49,33 @@ export function useTags() {
     return tags.value.find((tag) => tag.name === name)?.color ?? null
   }
 
-  /** タグの色を変える。他の画面のタグ一覧にも反映されるよう、成功したら取り直す。 */
+  /**
+   * タグの色を変える。
+   *
+   * 応答を待たずに手元の一覧へ当てる。待ってから反映すると、送信と
+   * 取り直しの2往復ぶん（回線によっては数秒）押した色に変わらない。
+   * 色は表示のためだけのものなので、先に出して構わない。
+   *
+   * 当てる先は useFetch の `data` そのもの。キー（`tags`）を共有しているので、
+   * 一覧のカードや詳細に出ているタグの色もその場で変わる。
+   *
+   * 送れたら応答に揃える（リネームでの統合があれば id や件数も変わる）。
+   * 送れなかったら元へ戻し、呼んだ側が知らせられるよう投げ直す。
+   */
   async function setColor(id: string, color: TagColor | null) {
-    await $fetch(`/api/tags/${id}`, { method: 'PATCH', body: { color } })
-    await refresh()
+    const before = data.value ?? []
+    data.value = before.map((tag) => (tag.id === id ? { ...tag, color } : tag))
+
+    try {
+      const updated = await $fetch<TagDto>(`/api/tags/${id}`, {
+        method: 'PATCH',
+        body: { color },
+      })
+      data.value = (data.value ?? []).map((tag) => (tag.id === id ? updated : tag))
+    } catch (e) {
+      data.value = before
+      throw e
+    }
   }
 
   return { tags, pending, refresh, suggest, colorOf, setColor }
