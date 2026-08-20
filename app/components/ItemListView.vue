@@ -445,6 +445,14 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.remove(),
   },
   {
+    // 小文字の `c` は完了（RTM に倣う）。写す操作は大文字に置く
+    keys: ['C'],
+    shift: true,
+    label: 'タイトルと本文をコピー',
+    group: 'その他',
+    run: () => list.copy(),
+  },
+  {
     keys: ['z'],
     label: '元に戻す',
     group: 'その他',
@@ -608,11 +616,17 @@ defineExpose({
             </button>
           </div>
 
+          <!--
+            知らせは選択中の件数と並べて出す。まとめて操作したときこそ
+            結果（「3件をコピーした」）を見せたいので、件数で隠さない。
+          -->
           <div class="list__status" role="status">
             <span v-if="list.selectedIds.value.size" class="list__selected">
               {{ list.selectedIds.value.size }}件を選択中
             </span>
-            <span v-else-if="list.message.value">{{ list.message.value }}</span>
+            <span v-if="list.message.value" class="list__message">
+              {{ list.message.value }}
+            </span>
           </div>
 
           <div class="list__controls">
@@ -872,6 +886,11 @@ defineExpose({
 .list__selected {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* 件数と並べたときの区切り。単独で出ているときは付けない */
+.list__selected + .list__message::before {
+  content: '・';
 }
 
 .list__controls {

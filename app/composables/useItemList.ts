@@ -12,6 +12,8 @@ import {
   type SortKey,
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
+import { writeToClipboard } from '~/utils/clipboard'
+import { composeItemCopyText } from '~/utils/item-copy'
 import { buildItemDraft } from '~/utils/item-draft'
 import { groupItems } from '~/utils/item-order'
 import { endOfAppDay, startOfAppDay } from '~~/shared/utils/date'
@@ -65,6 +67,25 @@ export function useItemList(options: Options) {
 
   const message = ref<string | null>(null)
   const errorMessage = ref<string | null>(null)
+
+  /**
+   * しばらくしたら消える知らせ。
+   *
+   * 操作の結果（「完了にした」など）は次の操作まで残しておきたいが、
+   * 「コピーした」のように済んだことだけを伝えるものは、残しても
+   * 選択中の件数の隣で場所を取るだけになる。
+   */
+  const TRANSIENT_MESSAGE_MS = 2500
+  let transientTimer: ReturnType<typeof setTimeout> | undefined
+
+  function showTransientMessage(text: string) {
+    message.value = text
+    clearTimeout(transientTimer)
+    transientTimer = setTimeout(() => {
+      // 別の知らせに変わっていたら、それを消さない
+      if (message.value === text) message.value = null
+    }, TRANSIENT_MESSAGE_MS)
+  }
 
   // --- 一覧 -----------------------------------------------------------
   //
@@ -404,6 +425,29 @@ export function useItemList(options: Options) {
   }
 
   /**
+   * 対象をクリップボードへ写す（`Shift` + `C`）。
+   *
+   * 本文はローカルの写し（`ItemDto.body`）から取るので、詳細を開いていなくても
+   * 一覧から直接コピーできる。中身の作りは composeItemCopyText に任せる
+   * （詳細画面と同じ形にするため）。
+   */
+  async function copy() {
+    const list = targets.value
+    if (list.length === 0) return
+
+    errorMessage.value = null
+    // 打鍵の流れのまま書き込む。間に待ちを挟むとブラウザに拒まれる
+    const written = await writeToClipboard(composeItemCopyText(list))
+
+    if (!written) {
+      errorMessage.value = 'コピーできませんでした'
+      return
+    }
+
+    showTransientMessage(describe(list.length, 'コピーした'))
+  }
+
+  /**
    * Item を追加する。
    *
    * 応答を待たずに一覧へ出す。組み立ては buildItemDraft に任せる
@@ -474,6 +518,7 @@ export function useItemList(options: Options) {
     remove,
     applyTags,
     undo,
+    copy,
     create,
     refresh,
   }

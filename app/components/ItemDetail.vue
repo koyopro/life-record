@@ -385,6 +385,39 @@ watch(item, (value) => {
 
 const actionError = ref<string | null>(null)
 
+/** 済んだことだけを伝える知らせ（「コピーした」）。少し待って自分で消える。 */
+const actionMessage = ref<string | null>(null)
+let actionMessageTimer: ReturnType<typeof setTimeout> | undefined
+
+function notify(text: string) {
+  actionMessage.value = text
+  clearTimeout(actionMessageTimer)
+  actionMessageTimer = setTimeout(() => {
+    if (actionMessage.value === text) actionMessage.value = null
+  }, 2500)
+}
+
+onUnmounted(() => clearTimeout(actionMessageTimer))
+
+/**
+ * 表示中のタスクをクリップボードへ写す（`Shift` + `C`）。
+ *
+ * 中身の作りは一覧と同じ（composeItemCopyText）。本文はまだ取得できて
+ * いなくてもローカルの写しが `item` に入っているので、そのまま渡せる。
+ */
+async function copy() {
+  if (!item.value) return
+
+  actionError.value = null
+  // 写すのは画面に出ているもの。書きかけ（下書き）もそのまま渡す
+  const source = { title: title.value, body: body.value }
+  // 打鍵の流れのまま書き込む。間に待ちを挟むとブラウザに拒まれる
+  const written = await writeToClipboard(composeItemCopyText([source]))
+
+  if (written) notify('コピーした')
+  else actionError.value = 'コピーできませんでした'
+}
+
 /**
  * メタデータを変える。
  *
@@ -477,8 +510,11 @@ watch(id, () => {
 })
 
 /**
- * 狭い画面からの単独表示（`embedded` でない）でだけ、`Esc` で一覧へ戻す。
- * 分割表示では一覧がそのまま見えているので不要。
+ * 単独表示（`embedded` でない）でだけ持つショートカット。
+ * 分割表示では一覧側が同じキーを持っているので、二重には登録しない。
+ *
+ * - `Esc` … 一覧へ戻る（分割表示では一覧がそのまま見えているので不要）
+ * - `Shift` + `C` … このタスクを写す（一覧では `list.copy`）
  *
  * タイトルや本文など、入力欄にフォーカスがある間は対象にしない
  * （`useShortcuts` の既定どおり）。編集中の `Esc` を横取りすると、
@@ -503,6 +539,13 @@ useShortcuts(
               }
               void navigateTo(listOrigin.value)
             },
+          },
+          {
+            keys: ['C'],
+            shift: true,
+            label: 'タイトルと本文をコピー',
+            group: 'その他',
+            run: () => copy(),
           },
         ],
   ),
@@ -748,6 +791,7 @@ async function removeSection(section: SectionDto) {
       </header>
 
       <p v-if="actionError" class="page__error" role="alert">{{ actionError }}</p>
+      <p v-else-if="actionMessage" class="page__note" role="status">{{ actionMessage }}</p>
 
       <!--
         何ができて何ができないかを短く伝える。
