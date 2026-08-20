@@ -59,8 +59,96 @@ const editorRoot = ref<HTMLDivElement | null>(null)
 
 const isEmpty = computed(() => !model.value.trim())
 
-function commit(lines: string[]) {
-  model.value = lines.join('\n')
+/**
+ * @param coalesce 直前の変更が地続きの「入力中のひとまとまり」とみなせるか。
+ *   1文字ずつの通常入力（onInput）だけが true を渡す。それ以外（Enter・
+ *   Backspace での行結合・Tab・複数行操作・貼り付けなど）は常に単独の
+ *   取り消し単位にする（undo 参照）。
+ */
+function commit(lines: string[], options: { coalesce?: boolean } = {}) {
+  const next = lines.join('\n')
+  if (next === model.value) return
+  pushUndoState(model.value, options.coalesce ?? false)
+  model.value = next
+}
+
+// --- 取り消し（`Cmd`/`Ctrl` + `Z`） ---------------------------------------
+//
+// 1行編集用の textarea を使い回しているため（行を移るたびに、同じ要素の
+// 値をプログラムから書き換える）、ブラウザ標準の取り消しには頼れない。
+// `.value` を直接書き換えると、そのブラウザの取り消し履歴は失われてしまい、
+// 「他の行に移ると直前の修正が戻せない」（`.value` の書き換えのたび履歴が
+// 切れるため）といった崩れ方をする。本文の変更はすべて `commit` を通るため、
+// ここで自前の取り消し履歴として持つ。
+
+interface HistorySnapshot {
+  value: string
+  /** 復元後にカーソルを戻す位置。行編集の外（複数行操作など）で起きた変更は null。 */
+  caret: { index: number; offset: number } | null
+}
+
+/** 際限なく伸びないよう、古いものから捨てる。 */
+const HISTORY_LIMIT = 200
+/** この間隔より短く続く入力は、同じひとまとまりの編集とみなす。 */
+const TYPING_COALESCE_MS = 700
+
+const undoStack: HistorySnapshot[] = []
+const redoStack: HistorySnapshot[] = []
+
+/** 直前の commit が「入力中のひとまとまり」として続けられるものだったか。 */
+let typingBurst: { index: number | null; at: number } | null = null
+
+function captureCaretForHistory(): { index: number; offset: number } | null {
+  const index = activeIndex.value
+  if (index === null) return null
+  return { index, offset: input.value?.selectionStart ?? activeText.value.length }
+}
+
+function pushUndoState(previousValue: string, coalesce: boolean) {
+  const now = Date.now()
+  const activeIdx = activeIndex.value
+
+  if (
+    coalesce &&
+    typingBurst &&
+    typingBurst.index === activeIdx &&
+    now - typingBurst.at <= TYPING_COALESCE_MS
+  ) {
+    // 続きの入力とみなし、新しい取り消し単位は作らない
+    typingBurst.at = now
+    return
+  }
+
+  undoStack.push({ value: previousValue, caret: captureCaretForHistory() })
+  if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
+  redoStack.length = 0
+  typingBurst = coalesce ? { index: activeIdx, at: now } : null
+}
+
+/** スナップショットへ戻す。カーソル位置が分かれば、その行の編集へ戻す。 */
+function restoreSnapshot(snapshot: HistorySnapshot) {
+  model.value = snapshot.value
+  if (snapshot.caret) {
+    void activate(snapshot.caret.index, snapshot.caret.offset, snapshot.value.split('\n'))
+  } else {
+    deactivate()
+  }
+}
+
+function undo() {
+  if (composing.value || undoStack.length === 0) return
+  const previous = undoStack.pop()!
+  redoStack.push({ value: model.value, caret: captureCaretForHistory() })
+  typingBurst = null
+  restoreSnapshot(previous)
+}
+
+function redo() {
+  if (composing.value || redoStack.length === 0) return
+  const next = redoStack.pop()!
+  undoStack.push({ value: model.value, caret: captureCaretForHistory() })
+  typingBurst = null
+  restoreSnapshot(next)
 }
 
 /**
@@ -160,6 +248,7 @@ function onInput(event?: Event) {
   const index = activeIndex.value
   if (index === null) return
 
+  const previousText = activeText.value
   if (event?.target instanceof HTMLTextAreaElement) {
     activeText.value = event.target.value
   }
@@ -178,9 +267,13 @@ function onInput(event?: Event) {
   }
 
   lines[index] = prefix + activeText.value
-  commit(lines)
+  // 通常の1文字ずつの入力は、地続きの編集として1つの取り消し単位にまとめる
+  commit(lines, { coalesce: true })
   // 変換中は行頭を取り直さない。入力欄の値やキャレットを触ると変換が壊れる
-  if (!composing.value) syncPrefix(lines, index, prefix)
+  if (!composing.value) {
+    syncPrefix(lines, index, prefix)
+    maybeAutoCloseBracket(previousText)
+  }
   updateEmojiTrigger()
   resize()
 }
@@ -392,29 +485,76 @@ function onKeydown(event: KeyboardEvent) {
     case 't':
       if (event.ctrlKey) return insertToday(event)
       return
+    case 'z':
+    case 'Z':
+      if (!event.metaKey && !event.ctrlKey) return
+      event.preventDefault()
+      return event.shiftKey ? redo() : undo()
+    case 'y':
+      // Windows 慣習の Ctrl+Y（Shift 無しの取り消し戻し）
+      if (!event.ctrlKey) return
+      event.preventDefault()
+      return redo()
   }
 }
 
 /**
- * `[` を打ったら `]` も添える。カーソルは `[` の直後に置く。
+ * 選択範囲があるときに `[` を打つと、それを角括弧で囲む（選択は保つ）。
  *
- * Scrapbox の記法はほぼ角括弧なので、閉じ忘れを防ぐ。
- * 選択範囲があるときは、それを囲んで選択を保つ。
+ * 選択が無いとき（キャレットだけの単純な入力）はここでは何もしない。
+ * 日本語入力で「ひらがな」入力中に `[` キーを押すと、IME が composition を
+ * 経由せずに全角の `「` へ直接置き換えることがある（`event.key` は半角の
+ * `[` のままでも、実際に入るのは全角）。ここで `event.key` だけを見て
+ * 決め打ちすると、その全角入力まで half-width の `[]` に変換してしまう。
+ * そのため単純な入力は preventDefault せず、実際に入った文字を
+ * `onInput`（`maybeAutoCloseBracket`）側で見てから決める。
  */
 function onOpenBracket(event: KeyboardEvent) {
   if (composing.value) return
   const el = input.value
   if (activeIndex.value === null || !el) return
 
-  event.preventDefault()
-
   const start = el.selectionStart ?? 0
   const end = el.selectionEnd ?? start
+  if (start === end) return
+
+  event.preventDefault()
+
   const value = activeText.value
   const selected = value.slice(start, end)
 
   replaceActiveLine(`${value.slice(0, start)}[${selected}]${value.slice(end)}`)
   void setCaret(start + 1, start + 1 + selected.length)
+}
+
+/**
+ * 半角 `[` を単独で入力したときだけ、閉じ括弧 `]` を自動で足す。
+ *
+ * `onOpenBracket` を参照。実際に入った文字（`activeText`）を直前の値と
+ * 比べ、キャレット位置に半角 `[` が1文字だけ挿し込まれた場合だけ動く。
+ * 全角の `「` に化けた場合はここも素通りする。
+ */
+function maybeAutoCloseBracket(previousText: string) {
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+
+  const caret = el.selectionStart
+  if (caret === null || caret !== el.selectionEnd) return
+
+  const value = activeText.value
+  if (value.length !== previousText.length + 1) return
+  if (value[caret - 1] !== '[') return
+  if (value.slice(0, caret - 1) !== previousText.slice(0, caret - 1)) return
+  if (value.slice(caret) !== previousText.slice(caret - 1)) return
+
+  const next = `${value.slice(0, caret)}]${value.slice(caret)}`
+  activeText.value = next
+  const lines = [...rawLines.value]
+  lines[index] = activePrefix.value + next
+  // `[` の入力と地続きの、同じ取り消し単位にまとめる
+  commit(lines, { coalesce: true })
+  void setCaret(caret, caret)
 }
 
 /** 続けて `Ctrl` + `T` を押したとみなす間隔。この間なら日付をリンクへ差し替える。 */
@@ -899,6 +1039,20 @@ function indentSelectedLines(delta: 1 | -1) {
  * 無くなってしまうため、`.editor` 自身にフォーカスを持たせて拾う。
  */
 function onContainerKeydown(event: KeyboardEvent) {
+  // 取り消し（Cmd/Ctrl+Z）。複数行選択などで1行編集用の textarea を
+  // 抜けている間（フォーカスがこのコンテナ側にある間）も効くようにする。
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) redo()
+    else undo()
+    return
+  }
+  if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'y') {
+    event.preventDefault()
+    redo()
+    return
+  }
+
   // 全選択（Cmd+A）。1行だけの選択（textarea の既定動作）を上書きする。
   // Ctrl+A は含めない。macOS では Ctrl+A は「行頭へ移動」という
   // OS 標準の Emacs 風操作なので、そちらを奪ってはいけない
