@@ -34,6 +34,28 @@ function writeToStorage<T>(storageKey: string, value: Record<string, T>) {
   }
 }
 
+/**
+ * localStorage への書き戻しは間引く。
+ *
+ * ストアは編集を打鍵のたびに受け取る（docs/14-client-state.md）ので、
+ * そのつど JSON へ直して書くと入力が重くなる。画面に出るのはメモリ上の値
+ * なので、書き戻しが少し遅れても見え方は変わらない。
+ */
+const WRITE_DELAY_MS = 500
+const writeTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function scheduleWrite<T>(storageKey: string, value: Record<string, T>) {
+  const timer = writeTimers.get(storageKey)
+  if (timer) clearTimeout(timer)
+  writeTimers.set(
+    storageKey,
+    setTimeout(() => {
+      writeTimers.delete(storageKey)
+      writeToStorage(storageKey, value)
+    }, WRITE_DELAY_MS),
+  )
+}
+
 export function usePersistedRecordCache<T>(name: string) {
   const storageKey = storageKeyOf(name)
   const cache = useState<Record<string, T>>(name, () => ({}))
@@ -58,7 +80,7 @@ export function usePersistedRecordCache<T>(name: string) {
     }
 
     cache.value = next
-    if (import.meta.client) writeToStorage(storageKey, next)
+    if (import.meta.client) scheduleWrite(storageKey, next)
   }
 
   return { cache, set }

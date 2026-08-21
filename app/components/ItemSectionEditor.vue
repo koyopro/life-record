@@ -3,6 +3,8 @@ import type { SectionDto } from '~~/shared/types/item'
 import { formatAppDate, isAppDate } from '~~/shared/utils/date'
 
 const props = defineProps<{
+  /** この記録が属する Item。ストアを引くのに要る。 */
+  itemId: string
   section: SectionDto
   /** 同じ日付の中で、上下に動かせるか。 */
   canMoveUp?: boolean
@@ -10,29 +12,24 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  save: [body: string]
   changeDate: [date: string]
   move: [delta: -1 | 1]
   remove: []
 }>()
 
-const body = ref(props.section.body)
+const store = useItemDetailStore()
 
-const { state, errorMessage, markSynced } = useAutosave({
-  source: body,
-  save: async (value) => emit('save', value),
+/*
+ * 下書きを画面側に持たない。打鍵はそのままストアへ渡し、送信はストアが
+ * 遅らせて裏で行う（docs/14-client-state.md）。持たないので、
+ * 「編集中はサーバーの内容で上書きしない」という手当ても要らない。
+ */
+const body = computed({
+  get: () => store.sectionBodyOf(props.itemId, props.section.id),
+  set: (value: string) => store.editSectionBody(props.itemId, props.section.id, value),
 })
 
-// 親が再取得したときに追随する。編集中の内容は上書きしない。
-watch(
-  () => props.section.body,
-  (value) => {
-    if (state.value !== 'idle' && state.value !== 'saved') return
-    if (value === body.value) return
-    body.value = value
-    markSynced()
-  },
-)
+const save = computed(() => store.sectionStatus(props.itemId, props.section.id))
 
 const dateLabel = computed(() => formatAppDate(props.section.date))
 
@@ -79,7 +76,7 @@ defineExpose({ focus: () => editor.value?.focus() })
         日記
       </NuxtLink>
       <span class="section__save">
-        <SaveDot :state="state" />
+        <SaveDot :state="save.state" />
       </span>
       <button
         v-if="canMoveUp"
@@ -114,8 +111,8 @@ defineExpose({ focus: () => editor.value?.focus() })
       :aria-label="`${dateLabel} の作業記録`"
       placeholder="この日にやったこと"
     />
-    <p v-if="errorMessage" class="section__error" role="alert">
-      {{ errorMessage }}
+    <p v-if="save.error" class="section__error" role="alert">
+      {{ save.error }}
     </p>
   </article>
 </template>
