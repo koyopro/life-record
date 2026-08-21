@@ -3,8 +3,6 @@ import type { Executor } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
 import { toItemDtos } from '~~/server/utils/items'
 import type { ItemDto } from '~~/shared/types/item'
-import { DIARY_EXCERPT_LENGTH } from '~~/shared/types/diary'
-import { toPlainText } from '~~/shared/utils/scrapbox/render'
 
 /**
  * その日に作業した Item を引く（docs/02-data-model.md 2.7）。
@@ -30,15 +28,4 @@ export async function itemsWorkedOn(
     .orderBy(desc(items.updatedAt))
 
   return await toItemDtos(db, found)
-}
-
-/**
- * 一覧に出す抜粋。
- *
- * カレンダーの枠内にそのまま表示するため、記法を除いたプレーンテキストにする。
- */
-export function excerptOf(body: string): string {
-  const text = toPlainText(body)
-  if (text.length <= DIARY_EXCERPT_LENGTH) return text
-  return `${text.slice(0, DIARY_EXCERPT_LENGTH)}…`
 }

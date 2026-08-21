@@ -7,6 +7,7 @@ import {
   lastFetchedAt,
   mergeServerItems,
   pruneConflicts,
+  setItemBody,
   toLocalItem,
 } from '~/utils/offline/todo-repository'
 import {
@@ -133,6 +134,19 @@ export function useItemStore() {
   // ローカルへ書いて読み直し、送信は列へ積むだけ（app/utils/offline/todo-actions.ts）。
   // オンラインかどうかで呼び分けない。
 
+  /**
+   * 一覧カードに出す本文の写しを揃える。
+   *
+   * 本文の正本は Section（サーバー）で、詳細画面が保存した時点で届いている。
+   * ここを更新しないと、本文を書き換えて一覧へ戻っても、次の取り直しまで
+   * 古い抜粋が出たままになる（docs/15-client-state.md）。
+   */
+  async function setBodyCopy(id: string, body: string | null): Promise<void> {
+    if (!import.meta.client) return
+    await setItemBody(id, body)
+    await reload()
+  }
+
   async function apply(action: () => Promise<void>): Promise<void> {
     await action()
     await reload()
@@ -151,6 +165,7 @@ export function useItemStore() {
     hydrateFromLocal,
     fetchFromServer,
     refreshIfStale,
+    setBodyCopy,
     create: (draft: ItemDto, text: string) => apply(() => createTodo(draft, text)),
     patch: (ids: string[], values: ItemPatch) => apply(() => patchTodos(ids, values)),
     applyTags: (ids: string[], add: string[], remove: string[]) =>
