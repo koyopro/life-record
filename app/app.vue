@@ -90,6 +90,15 @@ function composerReady(): Promise<(() => void) | null> {
   })
 }
 
+/*
+ * チェックしたタスクの操作は下端の帯（SelectionBar）で行う。同じ場所を
+ * 「＋」が占めてしまうので、選択中は退ける。
+ *
+ * 幅の判定と違って初期値（0件）はサーバー描画と食い違わないため、
+ * CSS ではなく v-if で消してよい。
+ */
+const selectionCount = useSelectionCount()
+
 const shortcuts: Shortcut[] = [
   {
     keys: ['t'],
@@ -187,6 +196,7 @@ function isActive(to: string): boolean {
       （日記・検索・詳細）からはタスク一覧へ移ってから開く。
     -->
     <button
+      v-if="!selectionCount"
       type="button"
       class="add"
       aria-label="タスクを追加"

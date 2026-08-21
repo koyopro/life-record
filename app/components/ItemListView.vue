@@ -90,7 +90,16 @@ const dueOpen = ref(false)
 const tagOpen = ref(false)
 const tagFocusRemoval = ref(false)
 const recurrenceOpen = ref(false)
-const actionTarget = ref<ItemDto | null>(null)
+
+/**
+ * 操作シート（ItemActionSheet）を開いている対象。
+ *
+ * 長押しは触れたその1件、チェックからはチェックしたもの全部が対象。
+ * どちらも同じシートを出すが、対象の決め方だけが違う。
+ */
+const sheetFor = ref<
+  { mode: 'longpress'; item: ItemDto } | { mode: 'selection' } | null
+>(null)
 
 // --- 分割表示（docs/03-functional-spec.md 3.1） ---------------------------
 //
@@ -486,13 +495,13 @@ const shortcuts = computed<Shortcut[]>(() => [
         dueOpen.value ||
         tagOpen.value ||
         recurrenceOpen.value ||
-        actionTarget.value
+        sheetFor.value
       ) {
         helpOpen.value = false
         dueOpen.value = false
         tagOpen.value = false
         recurrenceOpen.value = false
-        actionTarget.value = null
+        sheetFor.value = null
         return
       }
       list.clearSelection()
@@ -548,15 +557,62 @@ async function applyRecurrence(recurrence: Recurrence | null) {
   await list.setRecurrence(recurrence)
 }
 
-async function fromSheet(action: () => Promise<void>) {
-  const target = actionTarget.value
-  actionTarget.value = null
-  if (!target) return
-  list.focusItem(target.id)
-  list.clearSelection()
-  await nextTick()
+/** 操作シートの対象。 */
+const sheetItems = computed<ItemDto[]>(() => {
+  const opened = sheetFor.value
+  if (!opened) return []
+  return opened.mode === 'longpress' ? [opened.item] : list.targets.value
+})
+
+/**
+ * 操作シートから実行する。
+ *
+ * 長押しは触れた1件だけが対象なので、チェックを解いてカーソルを合わせてから
+ * 実行する（操作は list.targets を見るため）。チェックからのときは、それが
+ * そのまま対象なので何も動かさない。
+ */
+async function fromSheet(action: () => unknown) {
+  const opened = sheetFor.value
+  sheetFor.value = null
+  if (!opened) return
+
+  if (opened.mode === 'longpress') {
+    list.focusItem(opened.item.id)
+    list.clearSelection()
+    await nextTick()
+  }
   await action()
 }
+
+/**
+ * 詳細を開く（シートに出るのは1件のときだけ）。
+ *
+ * 対象はシートを閉じる前に控える。閉じると sheetItems は空になる。
+ */
+function openFromSheet() {
+  const target = sheetItems.value[0]
+  return fromSheet(() => target && open(target))
+}
+
+/** チェックしたタスクをまとめて完了にする（完了側を見ているときは戻す）。 */
+function completeSelection() {
+  return completed.value ? list.setStatus('backlog') : list.complete()
+}
+
+/*
+ * 選択中は下端に操作の帯（SelectionBar）が出る。同じ場所にある「＋」
+ * （app.vue）と重ならないよう、選んでいる件数を知らせる。
+ */
+const selectionCount = useSelectionCount()
+
+watchEffect(() => {
+  selectionCount.value = list.selectedIds.value.size
+})
+
+// 画面を離れたら帯も消える。「＋」を隠したままにしない
+onUnmounted(() => {
+  selectionCount.value = 0
+})
 
 defineExpose({
   create: list.create,
@@ -567,7 +623,8 @@ defineExpose({
 
 <template>
   <div class="split" :class="{ 'split--active': selectedId }">
-    <div class="list">
+    <!-- 選択中は下端に帯が出るので、最後のカードが隠れないよう空ける -->
+    <div class="list" :class="{ 'list--selecting': list.selectedIds.value.size }">
       <nav v-if="showTagFilter && allTags.length" class="tags" aria-label="タグで絞り込む">
         <button
           type="button"
@@ -694,7 +751,7 @@ defineExpose({
                 @select="list.toggleSelect(item.id)"
                 @complete="toggleComplete(item)"
                 @open="open(item)"
-                @longpress="actionTarget = item"
+                @longpress="sheetFor = { mode: 'longpress', item }"
                 @filter-tag="selectTag"
               />
             </li>
@@ -743,38 +800,32 @@ defineExpose({
     />
 
     <ItemActionSheet
-      v-if="actionTarget"
-      :item="actionTarget"
-      @close="actionTarget = null"
-      @complete="fromSheet(() => toggleComplete(actionTarget!))"
+      v-if="sheetFor"
+      :items="sheetItems"
+      @close="sheetFor = null"
+      @status="(value) => fromSheet(() => list.setStatus(value))"
       @priority="(value) => fromSheet(() => list.setPriority(value))"
       @postpone="fromSheet(() => list.postpone())"
-      @recurrence="
-        () => {
-          actionTarget && list.focusItem(actionTarget.id)
-          actionTarget = null
-          list.clearSelection()
-          recurrenceOpen = true
-        }
-      "
-      @tags="
-        () => {
-          actionTarget && list.focusItem(actionTarget.id)
-          actionTarget = null
-          list.clearSelection()
-          openTags(false)
-        }
-      "
-      @due="
-        () => {
-          actionTarget && list.focusItem(actionTarget.id)
-          actionTarget = null
-          list.clearSelection()
-          dueOpen = true
-        }
-      "
-      @open="open(actionTarget)"
+      @due="fromSheet(() => (dueOpen = true))"
+      @tags="fromSheet(() => openTags(false))"
+      @recurrence="fromSheet(() => (recurrenceOpen = true))"
+      @open="openFromSheet"
       @remove="fromSheet(() => list.remove())"
+    />
+
+    <!--
+      チェックしたタスクをまとめて操作する帯。1件も選んでいなければ描かない
+      （docs/08-todo-management.md 8.4）。
+    -->
+    <SelectionBar
+      v-if="list.selectedIds.value.size"
+      :count="list.selectedIds.value.size"
+      :complete-label="completed ? '未完了に戻す' : '完了'"
+      @complete="completeSelection"
+      @due="dueOpen = true"
+      @tags="openTags(false)"
+      @more="sheetFor = { mode: 'selection' }"
+      @clear="list.clearSelection()"
     />
   </div>
 </template>
@@ -823,6 +874,11 @@ defineExpose({
    */
   grid-template-columns: minmax(0, 1fr);
   gap: 0.625rem;
+}
+
+/* 下端に浮かせた操作の帯（SelectionBar）のぶん、最後のカードの下を空ける */
+.list--selecting {
+  padding-bottom: 4rem;
 }
 
 .tags {

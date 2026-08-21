@@ -79,6 +79,15 @@ function matches(
 }
 
 function onKeydown(event: KeyboardEvent) {
+  /*
+   * すでに手前で扱われた打鍵には重ねて反応しない。
+   *
+   * ダイアログは自分で Esc を受けて閉じる（`@keydown.esc.prevent`）。
+   * そのあとここでも Esc を扱うと、閉じるだけのつもりが選択解除まで
+   * 進んでしまい、チェックしたタスクが消える。
+   */
+  if (event.defaultPrevented) return
+
   // 修飾キーとの組み合わせはブラウザ標準の操作を邪魔しない
   if (event.metaKey || event.ctrlKey || event.altKey) return
   if (MODIFIER_KEYS.has(event.key)) return

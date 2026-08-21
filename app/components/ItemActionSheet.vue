@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import { PRIORITIES, PRIORITY_LABELS, type ItemDto } from '~~/shared/types/item'
+import {
+  ITEM_STATUSES,
+  PRIORITIES,
+  PRIORITY_LABELS,
+  STATUS_LABELS,
+  type ItemDto,
+  type ItemStatus,
+  type Priority,
+} from '~~/shared/types/item'
 
-defineProps<{ item: ItemDto }>()
+/**
+ * タスクの操作をまとめたシート（docs/08-todo-management.md 8.4）。
+ *
+ * 長押しした1件と、チェックしたタスクのまとめて操作の両方から開く。
+ * どちらも「対象に対して同じことをする」だけなので、対象を配列で受けて
+ * 1つの部品で兼ねる。
+ */
+const props = defineProps<{ items: ItemDto[] }>()
 
 const emit = defineEmits<{
-  complete: []
-  priority: [value: 1 | 2 | 3 | null]
+  status: [value: ItemStatus]
+  priority: [value: Priority | null]
   due: []
   tags: []
   recurrence: []
@@ -14,36 +29,68 @@ const emit = defineEmits<{
   remove: []
   close: []
 }>()
+
+const title = computed(() =>
+  props.items.length === 1
+    ? props.items[0]!.title
+    : `${props.items.length}件を選択中`,
+)
+
+/**
+ * いまの値。対象すべてが同じときだけ返す。
+ *
+ * まとめて操作するとき、対象の値がばらばらなら「いまこれ」と示せない。
+ * その場合はどのボタンも点灯させず、押した値に揃うことだけを示す。
+ */
+function shared<T>(pick: (item: ItemDto) => T): T | undefined {
+  const [first, ...rest] = props.items
+  if (!first) return undefined
+  const value = pick(first)
+  return rest.every((item) => pick(item) === value) ? value : undefined
+}
+
+const status = computed(() => shared((item) => item.status))
+const priority = computed(() => shared((item) => item.priority))
 </script>
 
 <template>
   <!--
     スマートフォンではキーボードショートカットが使えないため、
-    長押しから同じ操作へ到達できるようにする（docs/08-todo-management.md 8.4）。
+    長押し・チェックから同じ操作へ到達できるようにする。
   -->
   <div class="overlay" @click.self="emit('close')">
-    <div class="sheet" role="dialog" aria-modal="true" :aria-label="item.title">
-      <p class="sheet__title">{{ item.title }}</p>
+    <div class="sheet" role="dialog" aria-modal="true" :aria-label="title">
+      <p class="sheet__title">{{ title }}</p>
 
-      <button type="button" class="sheet__action" @click="emit('complete')">
-        {{ item.status === 'closed' ? '未完了に戻す' : '完了にする' }}
-      </button>
+      <!-- 状態は `b` / `w` / `c`、重要度は `1`〜`4` に当たる -->
+      <div class="sheet__row" role="group" aria-label="状態">
+        <button
+          v-for="value in ITEM_STATUSES"
+          :key="value"
+          type="button"
+          class="sheet__choice"
+          :class="{ 'sheet__choice--active': status === value }"
+          @click="emit('status', value)"
+        >
+          {{ STATUS_LABELS[value] }}
+        </button>
+      </div>
 
-      <div class="sheet__priorities">
+      <div class="sheet__row" role="group" aria-label="重要度">
         <button
           v-for="value in PRIORITIES"
           :key="value"
           type="button"
-          class="sheet__priority"
-          :class="{ 'sheet__priority--active': item.priority === value }"
+          class="sheet__choice"
+          :class="{ 'sheet__choice--active': priority === value }"
           @click="emit('priority', value)"
         >
           重要度{{ PRIORITY_LABELS[value] }}
         </button>
         <button
           type="button"
-          class="sheet__priority"
-          :class="{ 'sheet__priority--active': item.priority === null }"
+          class="sheet__choice"
+          :class="{ 'sheet__choice--active': priority === null }"
           @click="emit('priority', null)"
         >
           なし
@@ -62,7 +109,13 @@ const emit = defineEmits<{
       <button type="button" class="sheet__action" @click="emit('recurrence')">
         繰り返しを設定
       </button>
-      <button type="button" class="sheet__action" @click="emit('open')">
+      <!-- 詳細は1つの画面にしか出せないので、1件のときだけ -->
+      <button
+        v-if="items.length === 1"
+        type="button"
+        class="sheet__action"
+        @click="emit('open')"
+      >
         詳細を開く
       </button>
       <button
@@ -123,13 +176,15 @@ const emit = defineEmits<{
   color: var(--danger);
 }
 
-.sheet__priorities {
+/* 選ぶだけのもの（状態・重要度）は横に並べて、1タップで終わらせる */
+.sheet__row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.375rem;
 }
 
-.sheet__priority {
+.sheet__choice {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -139,7 +194,8 @@ const emit = defineEmits<{
   font-size: 0.8125rem;
 }
 
-.sheet__priority--active {
+/* いまの値。対象がばらばらならどれも点灯しない */
+.sheet__choice--active {
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
