@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { DiaryDetailDto } from '~~/shared/types/diary'
 import type { ItemDto } from '~~/shared/types/item'
 import {
   formatAppDate,
@@ -24,39 +23,26 @@ if (!isAppDate(date.value)) {
   throw createError({ statusCode: 404, message: '日付が正しくありません' })
 }
 
+const store = useDiaryStore()
+
 /*
  * top-level await にしない。待つと、日付を移るたびに画面遷移そのものが
  * 取得の完了までブロックされ、切り替えるたびにラグが出る。
  */
-const { data: diary, error: fetchError, refresh } = useFetch<DiaryDetailDto>(
-  () => `/api/diaries/${date.value}`,
-)
+const { error: fetchError } = store.track(date)
 
 /**
- * 日記は Item と違ってオフライン用の永続キャッシュ（IndexedDB）を持たないが、
- * 直近に開いた日は控えておき（リロードしても消えないよう localStorage にも
- * 書き戻す）、取得が終わるまでの間だけ初期表示に使う。正本はサーバーなので、
- * 届き次第 `diary`（本物）に切り替わる。
- * 初めて開く日は、控えが無いので届くまで読み込み中の表示になる。
+ * 画面に出す日記。
+ *
+ * 読むのはストアの控えだけにする。サーバーから取った内容も、書いた内容も
+ * そこへ入るので、書いてから別の日へ移って戻っても編集前の本文は出ない
+ * （docs/15-client-state.md）。初めて開く日は、控えが無いので届くまで
+ * 読み込み中の表示になる。
  */
-const { cache: diaryCache, set: setDiaryCache } = usePersistedRecordCache<DiaryDetailDto>(
-  'diary-detail-cache',
-)
-
-// immediate: true にしておく。SSR で diary が最初から入っている画面では
-// 値が変わる瞬間が無く、immediate 無しだと watch が一度も走らない
-watch(
-  diary,
-  (value) => {
-    if (value) setDiaryCache(date.value, value)
-  },
-  { immediate: true },
-)
-
-const cachedDiary = computed(() => diary.value ?? diaryCache.value[date.value] ?? null)
+const diary = computed(() => store.byDate(date.value))
 
 /** 読み込めなかった。控えが出せているときは、それを優先して知らせない。 */
-const error = computed(() => (cachedDiary.value ? null : fetchError.value))
+const error = computed(() => (diary.value ? null : fetchError.value))
 
 useHead({ title: () => `${formatAppDate(date.value)}の日記` })
 
@@ -64,33 +50,17 @@ const today = toAppDate()
 const isToday = computed(() => date.value === today)
 
 // --- 本文（リアルタイム保存） ------------------------------------------
+//
+// 打鍵はそのままストアへ渡す。控えが即座に変わり、サーバーへの送信だけが
+// 遅れて裏で走る。下書きを画面側に持たないので、書きかけのまま画面を
+// 離れても内容は残る。
 
-const bodyDraft = ref<string | null>(null)
 const body = computed({
-  get: () => bodyDraft.value ?? cachedDiary.value?.body ?? '',
-  set: (value: string) => {
-    bodyDraft.value = value
-  },
+  get: () => store.bodyOf(date.value),
+  set: (value: string) => store.editBody(date.value, value),
 })
 
-const save = useAutosave({
-  source: body,
-  save: async (value) => {
-    await $fetch(`/api/diaries/${date.value}`, {
-      method: 'PUT',
-      body: { body: value },
-    })
-  },
-})
-
-// 別の端末での変更や再取得に追随する。編集中の内容は上書きしない。
-watch(cachedDiary, (value) => {
-  if (!value) return
-  if (save.state.value !== 'idle' && save.state.value !== 'saved') return
-  if (value.body === body.value) return
-  body.value = value.body
-  save.markSynced()
-})
+const save = computed(() => store.statusOf(date.value))
 
 // --- 日付の移動 ---------------------------------------------------------
 
@@ -99,7 +69,7 @@ watch(cachedDiary, (value) => {
  * 画面が作り直されるため、待たないと取りこぼす。
  */
 async function goTo(next: string) {
-  await save.flush()
+  await store.flush(date.value)
   await navigateTo(`/diary/${next}`)
 }
 
@@ -111,7 +81,7 @@ function onDateInput(event: Event) {
 
 const { colorOf } = useTags()
 
-const workedOn = computed(() => cachedDiary.value?.items ?? [])
+const workedOn = computed(() => diary.value?.items ?? [])
 
 /**
  * 「この日にやったこと」を、完了したものと作業記録があるだけのものに分ける
@@ -134,12 +104,12 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
       日記を読み込めませんでした
     </p>
 
-    <p v-else-if="!cachedDiary" class="page__placeholder">読み込み中…</p>
+    <p v-else-if="!diary" class="page__placeholder">読み込み中…</p>
 
     <template v-else>
       <header class="head">
         <h1 class="head__title">{{ formatAppDate(date) }}</h1>
-        <SaveDot class="head__save" :state="save.state.value" />
+        <SaveDot class="head__save" :state="save.state" />
       </header>
 
       <nav class="nav" aria-label="日付">
@@ -172,8 +142,8 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
         placeholder="今日のことを書く"
         aria-label="日記の本文"
       />
-      <p v-if="save.errorMessage.value" class="page__error" role="alert">
-        {{ save.errorMessage.value }}
+      <p v-if="save.error" class="page__error" role="alert">
+        {{ save.error }}
       </p>
 
       <!--

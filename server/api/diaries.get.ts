@@ -1,7 +1,7 @@
 import { and, desc, gte, lte } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { diaries } from '~~/server/db/schema'
-import { excerptOf } from '~~/server/utils/diaries'
+import { excerptOf } from '~~/shared/utils/diary'
 import type { DiarySummaryDto } from '~~/shared/types/diary'
 import { isAppDate } from '~~/shared/utils/date'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'

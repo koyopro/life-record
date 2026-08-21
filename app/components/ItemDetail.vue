@@ -45,35 +45,19 @@ const store = useItemStore()
 const { online } = useOnline()
 const { colorOf } = useTags()
 
+const detailStore = useItemDetailStore()
+
 // 分割表示では itemId が切り替わるので、top-level await は使わない
 // （Suspense で一覧ごと再描画されてしまうため）。
-const { data: detail, error: detailError, refresh } = useFetch<ItemDetailDto>(
-  () => `/api/items/${id.value}`,
-  { watch: [id] },
-)
+const { error: detailError } = detailStore.track(id)
 
 /**
  * 本文・作業記録（Section）は Item のメタデータと違い IndexedDB に無いため、
- * 開くたびに取得を待つとラグになる。直近に見た分だけここに控え（リロード
- * しても消えないよう localStorage にも書き戻す）、取得が終わるまでの間だけ
- * 初期表示に使う。正本はサーバーなので、届き次第 `detail` 側（本物）に
- * 切り替わる。取得は毎回行う。
+ * 読むのはストアの控えだけにする。サーバーから取った内容も、書いた内容も
+ * そこへ入るので、書いてから別の Item へ切り替えて戻っても編集前の本文は
+ * 出ない（docs/15-client-state.md）。
  */
-const { cache: detailCache, set: setDetailCache } = usePersistedRecordCache<ItemDetailDto>(
-  'item-detail-cache',
-)
-
-// immediate: true にしておく。SSR で detail が最初から入っている画面では
-// 値が変わる瞬間が無く、immediate 無しだと watch が一度も走らない
-watch(
-  detail,
-  (value) => {
-    if (value) setDetailCache(id.value, value)
-  },
-  { immediate: true },
-)
-
-const cachedDetail = computed(() => detail.value ?? detailCache.value[id.value] ?? null)
+const cachedDetail = computed(() => detailStore.byId(id.value))
 
 /** ローカル（IndexedDB）にある Item。オフラインでもこちらは読める。 */
 const cached = computed(() => store.byId(id.value))
@@ -223,21 +207,22 @@ const logSections = computed<SectionDto[]>(() =>
   sections.value.filter((s) => s.id !== primarySection.value?.id),
 )
 
-const bodyDraft = ref<string | null>(null)
 /**
  * 画面に出す本文。
  *
- * Section が取れていなくても、ローカル（IndexedDB）の Item が本文の写しを
- * 持っている（一覧カードに出しているもの）。取得を待つ間はそれを出すことで、
- * 追加した直後や初めて開いたときにも、本文が空のまま数百ミリ秒置かれる
- * ことがなくなる。編集は Section が分かってから（下の readonly）。
+ * 下書きを画面側に持たない。打鍵はそのままストアへ渡し、送信はストアが
+ * 遅らせて裏で行う（docs/15-client-state.md）。Section が取れていなくても、
+ * ローカル（IndexedDB）の Item が本文の写しを持っているので、取得を待つ間は
+ * それが出る（追加した直後や初めて開いたときに空のまま置かれない）。
+ * 編集は Section が分かってから（下の readonly）。
  */
 const body = computed({
-  get: () => bodyDraft.value ?? primarySection.value?.body ?? item.value?.body ?? '',
-  set: (value: string) => {
-    bodyDraft.value = value
-  },
+  get: () => detailStore.bodyOf(id.value) ?? item.value?.body ?? '',
+  set: (value: string) => detailStore.editBody(id.value, value),
 })
+
+const bodySave = computed(() => detailStore.bodyStatus(id.value))
+
 const bodyEditor = ref<{ focus: () => void } | null>(null)
 
 /**
@@ -271,65 +256,6 @@ defineExpose({
   /** 一覧の `Shift` + `y` から、今日の作業記録へ移る。 */
   focusTodaySection: () => addTodaySection(),
 })
-const createdSectionId = ref<string | null>(null)
-
-/** Section 1 つ分の変更を、取得済みの詳細に当てたものを返す。 */
-function withUpdatedSection(source: ItemDetailDto, updated: SectionDto): ItemDetailDto {
-  return {
-    ...source,
-    sections: source.sections.map((s) => (s.id === updated.id ? updated : s)),
-    // body は一覧カードに出す本文（先頭 Section の写し）。それを編集したときだけ揃える
-    body: updated.id === source.primarySectionId ? updated.body : source.body,
-  }
-}
-
-/**
- * 保存できた Section を、取得済みの詳細にも当てておく。
- *
- * PATCH では `detail`（useFetch）を取り直さないので、当てておかないと
- * 編集前の内容が残ったままになる。`detail` は URL ごとの控え
- * （useAsyncData のキャッシュ）なので、別の Item へ切り替えて戻ると
- * その残ったままの内容が即座に出て、次の取得が終わるまで編集前の本文が
- * 見えてしまう。localStorage 側の控え（detailCache）も同じ理由で当てる
- * （リロードを挟んだときはこちらが初期表示に使われる）。
- */
-function applySavedSection(targetId: string, updated: SectionDto) {
-  // 保存の往復中に別の Item へ切り替わっていたら、そちらの控えを触らない
-  if (targetId !== id.value) return
-
-  if (detail.value) detail.value = withUpdatedSection(detail.value, updated)
-
-  const cached = detailCache.value[targetId]
-  if (cached) setDetailCache(targetId, withUpdatedSection(cached, updated))
-}
-
-const bodySave = useAutosave({
-  source: body,
-  save: async (value) => {
-    const sectionId = createdSectionId.value ?? primarySection.value?.id
-    const targetId = id.value
-
-    if (sectionId) {
-      const updated = await $fetch<SectionDto>(`/api/sections/${sectionId}`, {
-        method: 'PATCH',
-        body: { body: value },
-      })
-      applySavedSection(targetId, updated)
-      return
-    }
-
-    // まだ Section がない。空文字のまま作っても意味がないので、
-    // 実際に何か書かれてから作る。
-    if (!value.trim()) return
-
-    const created = await $fetch<SectionDto>('/api/sections', {
-      method: 'POST',
-      body: { itemId: id.value, body: value },
-    })
-    createdSectionId.value = created.id
-    await refresh()
-  },
-})
 
 // --- URL（リアルタイム保存） -------------------------------------------
 
@@ -357,6 +283,9 @@ const urlSave = useAutosave({
  * このとき markSynced を忘れると、内容が届いただけで「変わった」と
  * 見なされ、同じ値をそのまま保存してしまう（オフラインでは、触っても
  * いないタスクに未同期の印が付く）。
+ *
+ * 本文はここに出てこない。下書きを持たず、サーバーの内容を当てるかどうかも
+ * ストアが決めている（docs/15-client-state.md）。
  */
 watch(item, (value) => {
   if (!value) return
@@ -372,12 +301,6 @@ watch(item, (value) => {
   if (urlDraft.value === null || urlIdle) {
     urlDraft.value = null
     urlSave.markSynced()
-  }
-
-  const bodyIdle = bodySave.state.value === 'idle' || bodySave.state.value === 'saved'
-  if (bodyDraft.value === null || bodyIdle) {
-    bodyDraft.value = null
-    bodySave.markSynced()
   }
 })
 
@@ -645,11 +568,7 @@ async function addTodaySection() {
 
   addingSection.value = true
   try {
-    const created = await $fetch<SectionDto>('/api/sections', {
-      method: 'POST',
-      body: { itemId: id.value, date: today, body: '' },
-    })
-    await refresh()
+    const created = await detailStore.addSection(id.value, today)
     emit('changed')
     focusSection(created.id)
   } finally {
@@ -662,24 +581,10 @@ async function focusSection(sectionId: string) {
   sectionEditors.get(sectionId)?.focus()
 }
 
-async function saveSection(section: SectionDto, value: string) {
-  const targetId = id.value
-  // 一覧カードに出るのは本文（最初の記録）だけなので、changed は投げない
-  const updated = await $fetch<SectionDto>(`/api/sections/${section.id}`, {
-    method: 'PATCH',
-    body: { body: value },
-  })
-  applySavedSection(targetId, updated)
-}
-
 async function changeSectionDate(section: SectionDto, date: string) {
   actionError.value = null
   try {
-    await $fetch(`/api/sections/${section.id}`, {
-      method: 'PATCH',
-      body: { date },
-    })
-    await refresh()
+    await detailStore.changeSectionDate(id.value, section.id, date)
   } catch {
     actionError.value = '日付を変更できませんでした'
   }
@@ -701,8 +606,7 @@ async function moveSection(index: number, delta: -1 | 1) {
 
   actionError.value = null
   try {
-    await $fetch('/api/sections/reorder', { method: 'POST', body: { ids } })
-    await refresh()
+    await detailStore.reorderSections(id.value, ids)
   } catch {
     actionError.value = '並べ替えできませんでした'
   }
@@ -711,9 +615,14 @@ async function moveSection(index: number, delta: -1 | 1) {
 async function removeSection(section: SectionDto) {
   if (!confirm('この作業記録を削除します。よろしいですか？')) return
   sectionEditors.delete(section.id)
-  await $fetch(`/api/sections/${section.id}`, { method: 'DELETE' })
-  await refresh()
-  emit('changed')
+
+  actionError.value = null
+  try {
+    await detailStore.removeSection(id.value, section.id)
+    emit('changed')
+  } catch {
+    actionError.value = '削除できませんでした'
+  }
 }
 </script>
 
@@ -939,7 +848,7 @@ async function removeSection(section: SectionDto) {
           >
             {{ formatAppDate(primarySection.date) }} の日記
           </NuxtLink>
-          <SaveDot class="body__save" :state="bodySave.state.value" />
+          <SaveDot class="body__save" :state="bodySave.state" />
         </div>
         <!--
           Section が取れるまでは読むだけ。保存先が決まっていないまま
@@ -952,8 +861,8 @@ async function removeSection(section: SectionDto) {
           aria-label="本文"
           :readonly="!hasDetail"
         />
-        <p v-if="bodySave.errorMessage.value" class="page__error" role="alert">
-          {{ bodySave.errorMessage.value }}
+        <p v-if="bodySave.error" class="page__error" role="alert">
+          {{ bodySave.error }}
         </p>
       </section>
 
@@ -989,10 +898,10 @@ async function removeSection(section: SectionDto) {
           v-for="(section, index) in logSections"
           :key="section.id"
           :ref="(el) => setSectionEditor(section.id, el)"
+          :item-id="id"
           :section="section"
           :can-move-up="canMove(index, -1)"
           :can-move-down="canMove(index, 1)"
-          @save="(value) => saveSection(section, value)"
           @change-date="(date) => changeSectionDate(section, date)"
           @move="(delta) => moveSection(index, delta)"
           @remove="removeSection(section)"

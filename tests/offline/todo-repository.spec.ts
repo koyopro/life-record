@@ -9,6 +9,7 @@ import {
   pruneConflicts,
   putConflict,
   putItem,
+  setItemBody,
   toLocalItem,
 } from '~/utils/offline/todo-repository'
 import { itemDto, resetLocalDatabase } from '../helpers'
@@ -109,5 +110,25 @@ describe('TodoRepository', () => {
     await pruneConflicts(new Date('2026-08-18T00:00:00.000Z'))
 
     expect((await listConflicts()).map((record) => record.itemId)).toEqual(['b'])
+  })
+
+  describe('setItemBody', () => {
+    it('一覧カードに出す本文の写しだけを差し替える', async () => {
+      const item = itemDto({ title: '買い物', body: '書く前' })
+      await mergeServerItems([item])
+
+      await setItemBody(item.id, '書いたあと')
+
+      const stored = await getItem(item.id)
+      expect(stored?.body).toBe('書いたあと')
+      // 本文はサーバー（Section）へ既に届いている。送信の対象にはしない
+      expect(stored?.syncState).toBe('synced')
+      expect(stored?.title).toBe('買い物')
+    })
+
+    it('まだローカルに無い Item は何もしない', async () => {
+      await setItemBody('00000000-0000-4000-8000-999999999999', '書いたあと')
+      expect(await allItems()).toEqual([])
+    })
   })
 })
