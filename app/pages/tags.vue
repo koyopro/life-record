@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { LEGACY_TAG_COLORS, RTM_TAG_COLORS, type TagColor } from '~~/shared/types/tag'
+import {
+  LEGACY_TAG_COLORS,
+  RTM_TAG_COLORS,
+  TAG_NAME_MAX_LENGTH,
+  normalizeTagName,
+  type TagColor,
+  type TagDto,
+} from '~~/shared/types/tag'
 
 /**
  * タグ一覧（docs/09-tags.md 9.3）。
@@ -8,7 +15,7 @@ import { LEGACY_TAG_COLORS, RTM_TAG_COLORS, type TagColor } from '~~/shared/type
  * 入るための入口。`g` `s` は特定のタグへ直接移れる別の入口
  * （app.vue の GoToTagDialog）を使う。
  */
-const { tags, pending, colorOf, setColor } = useTags()
+const { tags, pending, colorOf, setColor, rename } = useTags()
 
 useHead({ title: 'タグ' })
 
@@ -27,6 +34,8 @@ const openColorId = ref<string | null>(null)
 
 function toggleColorPicker(id: string) {
   openColorId.value = openColorId.value === id ? null : id
+  // 1行の下に2つ開くと、どちらのボタンの中身なのか読み取れない
+  if (openColorId.value) renamingId.value = null
 }
 
 /** サーバーから取れていない（オフラインの手元集計）タグは id が本物でないため、色を変えられない。 */
@@ -48,6 +57,75 @@ async function pickColor(id: string, color: TagColor | null) {
     await setColor(id, color)
   } catch {
     errorMessage.value = '色を変更できませんでした'
+  }
+}
+
+// --- 名前の変更（docs/09-tags.md 9.3） ---------------------------------
+//
+// 表記ゆれを直すための操作。付いている全 Item に反映される。
+// 行の下にその場で入力欄を開く。別の画面へ移ると、どのタグを直していたのかを
+// 見失いやすいため。
+
+/** 名前を変えているタグの id。同時に開くのは1つだけ。 */
+const renamingId = ref<string | null>(null)
+const renameInput = ref('')
+const renameError = ref<string | null>(null)
+const renaming = ref(false)
+
+function startRename(tag: TagDto) {
+  openColorId.value = null
+  renamingId.value = tag.id
+  renameInput.value = tag.name
+  renameError.value = null
+}
+
+function cancelRename() {
+  renamingId.value = null
+  renameError.value = null
+}
+
+/**
+ * 変更後の名前。使えない文字ならnull（サーバーと同じ正規化を通す）。
+ */
+const renameNormalized = computed(() => normalizeTagName(renameInput.value))
+
+/**
+ * 変更先にすでに別のタグがあるか。
+ *
+ * その場合はエラーにせず統合される（サーバーの挙動。9.2）。
+ * 押す前に何が起きるか分かるよう、先に知らせる。
+ */
+const mergeTarget = computed(() => {
+  const name = renameNormalized.value
+  if (!name) return null
+  return tags.value.find(
+    (tag) => tag.name === name && tag.id !== renamingId.value,
+  ) ?? null
+})
+
+async function submitRename(tag: TagDto) {
+  const name = renameNormalized.value
+
+  if (!name) {
+    renameError.value = 'タグ名として使えません（空白・カンマ・# は使えません）'
+    return
+  }
+  if (name === tag.name) {
+    cancelRename()
+    return
+  }
+
+  renaming.value = true
+  renameError.value = null
+
+  try {
+    await rename(tag.id, name)
+    renamingId.value = null
+  } catch {
+    // オフラインでも起こる。書き換えは送れていないので、入力はそのまま残す
+    renameError.value = '名前を変更できませんでした'
+  } finally {
+    renaming.value = false
   }
 }
 
@@ -91,10 +169,24 @@ function swatchStyle(color: TagColor) {
             </span>
             <span class="tags__count">{{ tag.count }}</span>
           </NuxtLink>
+          <!--
+            オフラインの手元集計（id が local:）は、サーバーの行を指せないので
+            名前も色も変えられない。
+          -->
           <button
             v-if="!isLocalTag(tag.id)"
             type="button"
-            class="tags__color-trigger"
+            class="tags__control"
+            :aria-label="`「${tag.name}」の名前を変更`"
+            :aria-expanded="renamingId === tag.id"
+            @click="startRename(tag)"
+          >
+            <span aria-hidden="true">✎</span>
+          </button>
+          <button
+            v-if="!isLocalTag(tag.id)"
+            type="button"
+            class="tags__control"
             :aria-label="`「${tag.name}」の色を変更`"
             :aria-expanded="openColorId === tag.id"
             @click="toggleColorPicker(tag.id)"
@@ -109,6 +201,52 @@ function swatchStyle(color: TagColor) {
             />
           </button>
         </div>
+
+        <!--
+          名前の変更。付いている全 Item に反映されるので、押した先で
+          何が起きるか（統合されるかどうか）を出してから確定させる。
+        -->
+        <form
+          v-if="renamingId === tag.id"
+          class="rename"
+          @submit.prevent="submitRename(tag)"
+        >
+          <input
+            v-model="renameInput"
+            class="rename__input"
+            type="text"
+            :maxlength="TAG_NAME_MAX_LENGTH"
+            :aria-label="`「${tag.name}」の新しい名前`"
+            autocapitalize="off"
+            autocomplete="off"
+            spellcheck="false"
+            @keydown.esc.prevent="cancelRename"
+          >
+          <div class="rename__actions">
+            <button
+              type="submit"
+              class="rename__submit"
+              :disabled="renaming || !renameNormalized"
+            >
+              変更
+            </button>
+            <button type="button" class="rename__cancel" @click="cancelRename">
+              キャンセル
+            </button>
+          </div>
+          <p v-if="renameError" class="rename__error" role="alert">
+            {{ renameError }}
+          </p>
+          <p v-else-if="mergeTarget" class="rename__note">
+            「{{ mergeTarget.name }}」がすでにあります。変更すると1つにまとまります。
+          </p>
+          <p v-else-if="renameInput && !renameNormalized" class="rename__note">
+            空白・カンマ・# は使えません。
+          </p>
+          <p v-else class="rename__note">
+            このタグが付いた{{ tag.count }}件すべてに反映されます。
+          </p>
+        </form>
 
         <div v-if="openColorId === tag.id" class="tags__palette" role="group" :aria-label="`「${tag.name}」の色`">
           <div v-for="(group, index) in colorGroups" :key="index" class="tags__grid">
@@ -230,7 +368,8 @@ function swatchStyle(color: TagColor) {
   font-variant-numeric: tabular-nums;
 }
 
-.tags__color-trigger {
+/* 名前・色を変えるボタン。並べても押し間違えない大きさを確保する */
+.tags__control {
   flex-shrink: 0;
   width: 2.75rem;
   height: 2.75rem;
@@ -239,11 +378,75 @@ function swatchStyle(color: TagColor) {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1;
 }
 
-.tags__color-trigger .tags__dot {
+.tags__control .tags__dot {
   width: 1rem;
   height: 1rem;
+}
+
+.rename {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.rename__input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.625rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+}
+
+.rename__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.rename__submit {
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.rename__submit:disabled {
+  opacity: 0.5;
+}
+
+.rename__cancel {
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* 何が起きるかの説明。行の高さが変わって下の行が動かないよう、常に1つ出す */
+.rename__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.rename__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8125rem;
 }
 
 .tags__palette {

@@ -78,5 +78,30 @@ export function useTags() {
     }
   }
 
-  return { tags, pending, refresh, suggest, colorOf, setColor }
+  /**
+   * タグの名前を変える。付いている全 Item に反映される（docs/09-tags.md 9.3）。
+   *
+   * 色と違い、これは Item 側の持ち物（`tags`）まで変える操作なので、
+   * 応答を待ってから反映する。手元の写し（IndexedDB）にある古い名前は
+   * サーバーから取り直して揃える。取り直しに失敗しても、リネーム自体は
+   * 済んでいるので投げ直さない（次の取得で揃う）。
+   *
+   * 変更先の名前がすでにあれば、サーバーが2つのタグを統合して返す。
+   * 統合で id も件数も変わるため、応答をそのまま一覧へ当てるのではなく
+   * 取り直す（消えたほうの行を残さないため）。
+   */
+  async function rename(id: string, name: string): Promise<TagDto> {
+    const updated = await $fetch<TagDto>(`/api/tags/${id}`, {
+      method: 'PATCH',
+      body: { name },
+    })
+
+    await refresh()
+    // Item に付いている名前も変わっている。一覧・詳細の表示を揃える
+    await store.fetchFromServer().catch(() => false)
+
+    return updated
+  }
+
+  return { tags, pending, refresh, suggest, colorOf, setColor, rename }
 }
