@@ -53,9 +53,24 @@ useHead({ title: '日記' })
 const today = toAppDate()
 const thisMonth = monthOf(today)
 
+const store = useDiaryStore()
+
 const byDate = computed(
   () => new Map((diaries.value ?? []).map((entry) => [entry.date, entry])),
 )
+
+/**
+ * その日に出すプレビュー。
+ *
+ * 一覧はサーバーから取るが、書いた直後はまだ古い内容が返る。手元に控えが
+ * ある日は、そちらの答えを優先する（空にした日を「まだある」と出さないよう、
+ * 控えがあるなら「無い」という答えも尊重する）。書いてから一覧へ戻ったときに
+ * 編集前の抜粋が出ないようにするため（docs/14-client-state.md）。
+ */
+function previewOf(date: string): DiarySummaryDto | undefined {
+  if (store.knows(date)) return store.summaryOf(date) ?? undefined
+  return byDate.value.get(date)
+}
 
 interface DayCell {
   date: string
@@ -63,7 +78,7 @@ interface DayCell {
 }
 
 const days = computed<DayCell[]>(() =>
-  monthGrid(month.value).map((date) => ({ date, preview: byDate.value.get(date) })),
+  monthGrid(month.value).map((date) => ({ date, preview: previewOf(date) })),
 )
 
 /** その日が表示中の月のものか。前後の月の日は控えめに出す。 */
