@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import type { ItemDto } from '~~/shared/types/item'
-import {
-  formatAppDate,
-  isAppDate,
-  shiftAppDate,
-  toAppDate,
-} from '~~/shared/utils/date'
+import { formatAppDate, isAppDate, shiftAppDate } from '~~/shared/utils/date'
 import { groupWorkedOn } from '~/utils/diary-worked-on'
 import { startItemLinkDrag } from '~/utils/item-drag'
 
@@ -46,9 +41,6 @@ const error = computed(() => (diary.value ? null : fetchError.value))
 
 useHead({ title: () => `${formatAppDate(date.value)}の日記` })
 
-const today = toAppDate()
-const isToday = computed(() => date.value === today)
-
 // --- 本文（リアルタイム保存） ------------------------------------------
 //
 // 打鍵はそのままストアへ渡す。控えが即座に変わり、サーバーへの送信だけが
@@ -65,18 +57,27 @@ const save = computed(() => store.statusOf(date.value))
 // --- 日付の移動 ---------------------------------------------------------
 
 /**
- * 別の日へ移る前に、書きかけを保存しておく。
+ * 日記の画面から離れる前に、書きかけを保存しておく。
  * 画面が作り直されるため、待たないと取りこぼす。
  */
-async function goTo(next: string) {
+async function leaveTo(path: string) {
   await store.flush(date.value)
-  await navigateTo(`/diary/${next}`)
+  await navigateTo(path)
 }
 
-function onDateInput(event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  if (!isAppDate(value) || value === date.value) return
-  void goTo(value)
+/** 別の日へ移る。 */
+function goTo(next: string) {
+  return leaveTo(`/diary/${next}`)
+}
+
+/**
+ * カレンダー（日記の一覧）へ移る。
+ *
+ * 任意の日付を選ぶのはこちらに任せる。ヘッダーは1行に収めたいので、
+ * 日付の入力欄は置かない。
+ */
+function goToCalendar() {
+  return leaveTo('/diary')
 }
 
 const { colorOf } = useTags()
@@ -107,35 +108,46 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
     <p v-else-if="!diary" class="page__placeholder">読み込み中…</p>
 
     <template v-else>
+      <!--
+        日付と移動を1行に収める。狭い画面では前後の移動を矢印だけにする
+        （文字まで入れると日付が折り返し、2行に増えてしまう）。
+      -->
       <header class="head">
-        <h1 class="head__title">{{ formatAppDate(date) }}</h1>
-        <SaveDot class="head__save" :state="save.state" />
-      </header>
-
-      <nav class="nav" aria-label="日付">
-        <button type="button" class="nav__button" @click="goTo(shiftAppDate(date, -1))">
-          ← 前の日
-        </button>
-        <input
-          class="nav__date"
-          type="date"
-          :value="date"
-          aria-label="日付を選ぶ"
-          @change="onDateInput"
-        />
         <button
           type="button"
-          class="nav__button"
-          :disabled="isToday"
-          @click="goTo(today)"
+          class="head__step"
+          aria-label="前の日へ"
+          @click="goTo(shiftAppDate(date, -1))"
         >
-          今日
+          <span aria-hidden="true">←</span>
+          <span class="head__step-label">前の日</span>
         </button>
-        <button type="button" class="nav__button" @click="goTo(shiftAppDate(date, 1))">
-          次の日 →
+
+        <!-- 日付・保存状態・カレンダーは1組にして中央に置く -->
+        <div class="head__current">
+          <h1 class="head__title">{{ formatAppDate(date) }}</h1>
+          <SaveDot :state="save.state" />
+          <!-- 任意の日付へはカレンダーから移る（日付の入力欄は置かない） -->
+          <button
+            type="button"
+            class="head__calendar"
+            aria-label="日記のカレンダーへ"
+            @click="goToCalendar"
+          >
+            <span aria-hidden="true">🗓️</span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="head__step"
+          aria-label="次の日へ"
+          @click="goTo(shiftAppDate(date, 1))"
+        >
+          <span class="head__step-label">次の日</span>
+          <span aria-hidden="true">→</span>
         </button>
-        <NuxtLink to="/diary" class="nav__link">一覧</NuxtLink>
-      </nav>
+      </header>
 
       <ScrapboxEditor
         v-model="body"
@@ -206,10 +218,24 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   padding: 2rem 0;
 }
 
+/*
+ * 日付と移動の1行。前後の移動を両端に置き、日付はその間に置く。
+ * 折り返さない（flex-wrap を使わない）ことでどの幅でも1行に収める。
+ */
 .head {
   display: flex;
-  align-items: baseline;
-  gap: 0.625rem;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+/* 余った幅はこの組が持つ。前後のボタンは両端に残る */
+.head__current {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
 }
 
 .head__title {
@@ -217,51 +243,45 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   font-size: 1.25rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.head__save {
-  align-self: center;
-}
-
-.nav {
-  display: flex;
-  flex-wrap: wrap;
+.head__step,
+.head__calendar {
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-}
-
-.nav__button {
+  gap: 0.25rem;
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text);
+  /* タップ目標として十分な大きさを確保する */
   min-height: 2.25rem;
   padding: 0 0.75rem;
   font-size: 0.875rem;
+  white-space: nowrap;
 }
 
-.nav__button:disabled {
-  opacity: 0.4;
-}
-
-.nav__date {
-  font: inherit;
-  /* iOS でフォーカス時に自動ズームされないよう 16px を保つ */
-  font-size: 1rem;
-  font-variant-numeric: tabular-nums;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  min-height: 2.25rem;
+.head__calendar {
   padding: 0 0.5rem;
+  font-size: 1rem;
+  line-height: 1;
 }
 
-.nav__link {
-  margin-left: auto;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 0.875rem;
+/* 狭い画面では矢印だけにする。文字まで入れると日付が押し出される */
+@media (max-width: 30rem) {
+  .head__step-label {
+    display: none;
+  }
+
+  .head__step {
+    padding: 0 0.625rem;
+  }
+
+  .head__title {
+    font-size: 1.125rem;
+  }
 }
 
 .worked {

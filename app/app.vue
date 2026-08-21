@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import type { Shortcut } from '~/composables/useShortcuts'
-import { toAppDate } from '~~/shared/utils/date'
 
 const route = useRoute()
 
-/** 「g d」= 今日の日記編集ページへ（RTM の `g` に合わせる）。 */
+/**
+ * 「今日」。開いたまま日付をまたいでも、行き先が前日のままにならない。
+ */
+const today = useToday()
+
+/** 今日の日記（「日記」タブと `g` `d` の行き先）。 */
+const todayDiary = computed(() => `/diary/${today.value}`)
+
 function goToTodayDiary() {
-  return navigateTo(`/diary/${toAppDate()}`)
+  return navigateTo(todayDiary.value)
 }
 
 /**
@@ -19,13 +25,18 @@ function goToTodayDiary() {
 const wide = computed(() => route.meta.wide === true)
 const reading = computed(() => route.meta.wide === 'reading')
 
-const NAV = [
-  { to: '/today', label: '今日' },
-  { to: '/', label: 'タスク' },
-  { to: '/tags', label: 'タグ' },
-  { to: '/diary', label: '日記' },
-  { to: '/search', label: '検索' },
-]
+/*
+ * 「日記」は**その日の日記**へ入れる。日記は開いて書くものなので、
+ * カレンダー（`/diary`）を経由させると必ず1タップ余分になる。
+ * 別の日を選ぶときだけ、日記の画面のカレンダーボタンから移る。
+ */
+const NAV = computed(() => [
+  { to: '/today', label: '今日', match: '/today' },
+  { to: '/', label: 'タスク', match: '/' },
+  { to: '/tags', label: 'タグ', match: '/tags' },
+  { to: todayDiary.value, label: '日記', match: '/diary' },
+  { to: '/search', label: '検索', match: '/search' },
+])
 
 // --- 画面をまたぐショートカット（docs/08-todo-management.md 8.4） ---------
 //
@@ -169,10 +180,10 @@ function isActive(to: string): boolean {
       <nav class="nav">
         <NuxtLink
           v-for="entry in NAV"
-          :key="entry.to"
+          :key="entry.match"
           :to="entry.to"
           class="nav__link"
-          :class="{ 'nav__link--active': isActive(entry.to) }"
+          :class="{ 'nav__link--active': isActive(entry.match) }"
         >
           {{ entry.label }}
         </NuxtLink>
