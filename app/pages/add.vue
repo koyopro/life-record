@@ -77,7 +77,7 @@ async function save(text: string) {
 
     <div class="page__actions">
       <NuxtLink class="button" to="/today">今日を見る</NuxtLink>
-      <NuxtLink class="button" to="/">Inbox を見る</NuxtLink>
+      <NuxtLink class="button" to="/">タスクを見る</NuxtLink>
     </div>
   </div>
 </template>
