@@ -454,11 +454,16 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.remove(),
   },
   {
-    // 小文字の `c` は完了（RTM に倣う）。写す操作は大文字に置く
-    keys: ['C'],
-    shift: true,
+    /*
+     * 写すのは標準のコピーと同じ打鍵にする（小文字の `c` は完了）。
+     * ただし文字を選んでいるなら、その選択を写したいはずなのでブラウザに譲る。
+     */
+    keys: ['c'],
+    display: 'C',
+    meta: true,
     label: 'タイトルと本文をコピー',
     group: 'その他',
+    yieldToBrowser: () => document.getSelection()?.isCollapsed === false,
     run: () => list.copy(),
   },
   {

@@ -323,7 +323,7 @@ function notify(text: string) {
 onUnmounted(() => clearTimeout(actionMessageTimer))
 
 /**
- * 表示中のタスクをクリップボードへ写す（`Shift` + `C`）。
+ * 表示中のタスクをクリップボードへ写す（`⌘ + C`）。
  *
  * 中身の作りは一覧と同じ（composeItemCopyText）。本文はまだ取得できて
  * いなくてもローカルの写しが `item` に入っているので、そのまま渡せる。
@@ -437,7 +437,7 @@ watch(id, () => {
  * 分割表示では一覧側が同じキーを持っているので、二重には登録しない。
  *
  * - `Esc` … 一覧へ戻る（分割表示では一覧がそのまま見えているので不要）
- * - `Shift` + `C` … このタスクを写す（一覧では `list.copy`）
+ * - `⌘ + C` … このタスクを写す（一覧では `list.copy`）
  *
  * タイトルや本文など、入力欄にフォーカスがある間は対象にしない
  * （`useShortcuts` の既定どおり）。編集中の `Esc` を横取りすると、
@@ -464,10 +464,13 @@ useShortcuts(
             },
           },
           {
-            keys: ['C'],
-            shift: true,
+            // 一覧と同じ割り当て。文字を選んでいればブラウザのコピーに譲る
+            keys: ['c'],
+            display: 'C',
+            meta: true,
             label: 'タイトルと本文をコピー',
             group: 'その他',
+            yieldToBrowser: () => document.getSelection()?.isCollapsed === false,
             run: () => copy(),
           },
         ],

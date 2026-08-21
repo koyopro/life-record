@@ -425,7 +425,7 @@ export function useItemList(options: Options) {
   }
 
   /**
-   * 対象をクリップボードへ写す（`Shift` + `C`）。
+   * 対象をクリップボードへ写す（`⌘ + C`）。
    *
    * 本文はローカルの写し（`ItemDto.body`）から取るので、詳細を開いていなくても
    * 一覧から直接コピーできる。中身の作りは composeItemCopyText に任せる

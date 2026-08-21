@@ -4,7 +4,7 @@ import type { ItemDto } from '~~/shared/types/item'
 type Copyable = Pick<ItemDto, 'title' | 'body'>
 
 /**
- * クリップボードへ書く文字列を作る（`Shift` + `C`）。
+ * クリップボードへ書く文字列を作る（`⌘ + C`）。
  *
  * 1件なら「1行目タイトル、2行目以降が本文」。追加の入力と同じ形なので
  * （docs/08-todo-management.md 8.5、buildItemDraft）、貼り直せば同じ内容の

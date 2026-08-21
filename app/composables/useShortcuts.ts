@@ -17,6 +17,20 @@ export interface Shortcut {
   allowInInput?: boolean
   /** Shift が押されていることを要求するか。 */
   shift?: boolean
+  /**
+   * `Cmd`（macOS）/ `Ctrl` を押した組み合わせか。
+   *
+   * 標準の操作と同じ打鍵を横取りすることになるので、`⌘ + C`（コピー）の
+   * ように「その画面ではそちらのほうが自然」と言えるものだけに使う。
+   */
+  meta?: boolean
+  /**
+   * ブラウザ標準の操作に譲る条件。真を返す間はこの割り当てを使わない。
+   *
+   * `⌘ + C` は、文字を選んでいるならその選択を写したいはず、というように
+   * 場面で持ち主が変わる。判断は割り当てた側に持たせる。
+   */
+  yieldToBrowser?: () => boolean
 }
 
 export interface ShortcutGroup {
@@ -74,7 +88,10 @@ function matches(
 ): boolean {
   if (!shortcut.keys.includes(event.key)) return false
   if (Boolean(shortcut.shift) !== event.shiftKey) return false
+  // `c`（完了）と `⌘ + C`（コピー）のように、同じキーで別の操作になる
+  if (Boolean(shortcut.meta) !== (event.metaKey || event.ctrlKey)) return false
   if (typing && !shortcut.allowInInput) return false
+  if (shortcut.yieldToBrowser?.()) return false
   return true
 }
 
@@ -88,17 +105,25 @@ function onKeydown(event: KeyboardEvent) {
    */
   if (event.defaultPrevented) return
 
-  // 修飾キーとの組み合わせはブラウザ標準の操作を邪魔しない
-  if (event.metaKey || event.ctrlKey || event.altKey) return
+  // Alt（macOS の option）は文字入力に使うので触らない
+  if (event.altKey) return
   if (MODIFIER_KEYS.has(event.key)) return
 
   const typing = isTypingTarget(event.target)
   const list = active.value
 
+  /*
+   * `Cmd` / `Ctrl` との組み合わせは、そう宣言した割り当て（`meta`）だけが
+   * 受け取る。2打鍵（`g` → `t`）の待ちには使わない。標準の操作と
+   * 打鍵が重なるため、待ち状態を作ると `⌘ + S` のような無関係な操作まで
+   * 巻き込む。
+   */
+  const withModifier = event.metaKey || event.ctrlKey
+
   // 続きを待っている間は、その組み合わせだけを見る。割り当てがなければ
   // 何もせずに待ちを解く。単独キーの操作まで走らせると、
   // 移動のつもりが編集になってしまうため。
-  if (pendingPrefix) {
+  if (pendingPrefix && !withModifier) {
     const prefix = pendingPrefix
     waitFor(null)
     event.preventDefault()
@@ -114,7 +139,7 @@ function onKeydown(event: KeyboardEvent) {
    * ここで Shift の有無を別途見る必要はない。`g` のような英字プレフィックスも、
    * Shift を押していれば大文字（`G`）になり自然に除外される。
    */
-  if (!typing && list.some((item) => item.prefix === event.key)) {
+  if (!withModifier && !typing && list.some((item) => item.prefix === event.key)) {
     waitFor(event.key)
     event.preventDefault()
     return
@@ -168,8 +193,11 @@ export function useShortcuts(shortcuts: MaybeRefOrGetter<Shortcut[]>) {
 
 /** ヘルプでのキー表示。 */
 export function shortcutDisplay(shortcut: Shortcut): string {
+  const key = shortcut.display ?? shortcut.keys[0] ?? ''
+  // `display` は装飾済みの文字（`?` など）を入れている箇所があるため、
+  // 修飾キーを足すのは自分で宣言したものだけにする
+  if (shortcut.meta) return `⌘ + ${key}`
   if (shortcut.display) return shortcut.display
-  const key = shortcut.keys[0] ?? ''
   if (shortcut.prefix) return `${shortcut.prefix} ${key}`
   return shortcut.shift ? `Shift + ${key}` : key
 }
