@@ -3,6 +3,7 @@ import type { SectionDto } from '~~/shared/types/item'
 import {
   nextPositionIn,
   pickPrimarySection,
+  pickTodaySection,
   sortSectionsForDisplay,
 } from '~/utils/section-order'
 
@@ -24,11 +25,11 @@ function section(values: Partial<SectionDto> & { id: string }): SectionDto {
 }
 
 describe('sortSectionsForDisplay', () => {
-  it('日付は新しい順、同じ日付の中は position 昇順', () => {
+  it('日付は古い順、同じ日付の中は position 昇順', () => {
     const sorted = sortSectionsForDisplay([
-      section({ id: 'c', date: '2026-08-19', position: 0 }),
-      section({ id: 'b', date: '2026-08-20', position: 1 }),
-      section({ id: 'a', date: '2026-08-20', position: 0 }),
+      section({ id: 'c', date: '2026-08-20', position: 1 }),
+      section({ id: 'b', date: '2026-08-20', position: 0 }),
+      section({ id: 'a', date: '2026-08-19', position: 0 }),
     ])
 
     expect(sorted.map((s) => s.id)).toEqual(['a', 'b', 'c'])
@@ -36,11 +37,53 @@ describe('sortSectionsForDisplay', () => {
 
   it('元の配列は変えない', () => {
     const list = [
-      section({ id: 'b', date: '2026-08-19' }),
-      section({ id: 'a', date: '2026-08-20' }),
+      section({ id: 'b', date: '2026-08-20' }),
+      section({ id: 'a', date: '2026-08-19' }),
     ]
     sortSectionsForDisplay(list)
     expect(list.map((s) => s.id)).toEqual(['b', 'a'])
+  })
+})
+
+describe('pickTodaySection', () => {
+  it('当日の記録を当日の枠にする', () => {
+    const today = pickTodaySection(
+      [
+        section({ id: 'old', date: '2026-08-19' }),
+        section({ id: 'now', date: '2026-08-20' }),
+      ],
+      '2026-08-20',
+    )
+
+    expect(today?.id).toBe('now')
+  })
+
+  it('同じ日に複数あれば最後のもの（画面の一番下）を使う', () => {
+    const today = pickTodaySection(
+      [
+        section({ id: 'second', date: '2026-08-20', position: 1 }),
+        section({ id: 'first', date: '2026-08-20', position: 0 }),
+      ],
+      '2026-08-20',
+    )
+
+    expect(today?.id).toBe('second')
+  })
+
+  it('その日の記録がまだ無ければ null', () => {
+    expect(
+      pickTodaySection([section({ id: 'a', date: '2026-08-19' })], '2026-08-20'),
+    ).toBeNull()
+  })
+
+  it('過去の記録があっても、当日の枠には回さない', () => {
+    // 日をまたいで書き足しても前日の記録は前日のまま、というのが要点
+    expect(
+      pickTodaySection(
+        [section({ id: 'yesterday', date: '2026-08-19' })],
+        '2026-08-20',
+      ),
+    ).toBeNull()
   })
 })
 
