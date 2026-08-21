@@ -52,10 +52,13 @@ export function comparePrimarySection(
 
 /**
  * 詳細画面での Section の並び（docs/03-functional-spec.md 3.1）。
- * 日付の新しい順、同じ日付の中は position 昇順。
+ * 日付の**古い**順、同じ日付の中は position 昇順。
+ *
+ * 当日の枠を一番下に置くため（docs/03-functional-spec.md 3.2）。
+ * クライアント（app/utils/section-order.ts）と同じ規則にする。
  */
 export function compareSectionsForDisplay(a: Section, b: Section): number {
-  if (a.date !== b.date) return a.date < b.date ? 1 : -1
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1
   if (a.position !== b.position) return a.position - b.position
   return a.createdAt.getTime() - b.createdAt.getTime()
 }

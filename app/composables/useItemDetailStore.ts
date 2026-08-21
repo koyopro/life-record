@@ -2,8 +2,10 @@ import type { ItemDetailDto, SectionDto } from '~~/shared/types/item'
 import {
   nextPositionIn,
   pickPrimarySection,
+  pickTodaySection,
   sortSectionsForDisplay,
 } from '~/utils/section-order'
+import { toAppDate } from '~~/shared/utils/date'
 import {
   createSaveScheduler,
   IDLE_STATUS,
@@ -42,9 +44,14 @@ const scheduler = createSaveScheduler({
   },
 })
 
-/** 本文（先頭 Section）の保存に使う鍵。 */
-function bodyKey(itemId: string): string {
-  return `${itemId}|body`
+/**
+ * 当日の枠（＝画面が既定で編集している作業記録）の保存に使う鍵。
+ *
+ * 日付ではなく Item ごとに持つ。日付をまたいだ瞬間に鍵が変わると、
+ * まだ送れていない前日の分の保存状態が行方不明になるため。
+ */
+function todayKey(itemId: string): string {
+  return `${itemId}|today`
 }
 
 /** 作業記録1件の保存に使う鍵。 */
@@ -78,27 +85,26 @@ export function useItemDetailStore() {
    * 作業記録の増減・メタデータ）はサーバーが正なので、そのまま採る。
    * 丸ごと捨てると、書いている最中に「この日にやったこと」のような
    * 触っていない部分まで古いままになる。
+   *
+   * 当日の枠はまだ Section が無いこともあるが、その分の打鍵は控えではなく
+   * 下書き（`drafts`）に置いてあるので、ここで守る必要はない。
    */
   function mergeServer(id: string, server: ItemDetailDto): ItemDetailDto {
     const local = byId(id)
     if (!local) return server
 
+    const todaySectionId = pickTodaySection(server.sections, toAppDate())?.id
+
     const merged = server.sections.map((section) => {
       const busy =
         scheduler.busy(sectionKey(id, section.id)) ||
-        (section.id === server.primarySectionId && scheduler.busy(bodyKey(id)))
+        (section.id === todaySectionId && scheduler.busy(todayKey(id)))
       if (!busy) return section
       const mine = local.sections.find((s) => s.id === section.id)
       return mine ? { ...section, body: mine.body } : section
     })
 
-    const next = replaceSections(server, merged)
-
-    // Section を作っている最中（まだ id が無い）。書いた本文を消さない
-    if (!next.primarySectionId && scheduler.busy(bodyKey(id))) {
-      return { ...next, body: local.body }
-    }
-    return next
+    return replaceSections(server, merged)
   }
 
   /**
@@ -194,77 +200,114 @@ export function useItemDetailStore() {
     await itemStore.setBodyCopy(id, byId(id)?.body ?? null)
   }
 
-  // --- 本文（先頭 Section） ---------------------------------------------
+  // --- 当日の枠（既定で編集している作業記録） -----------------------------
+  //
+  // Item は本文を持たないため、画面が「本文」として出している枠は
+  // **その日の作業記録**（date が当日の Section）として保存する
+  // （docs/03-functional-spec.md 3.2）。日をまたいで書き足しても、
+  // 前の日の記録は前の日のものとして残る。
 
   /**
-   * ストアが持っている本文。
+   * その日の Section がまだ無いあいだ、打った内容を置いておく場所。
    *
-   * まだ何も取れていないことを `null` で表し、「本文が空」と区別する。
-   * 一緒にしてしまうと、本文を消している最中に、画面が古い写しへ
-   * 戻って見える。
+   * 空の Section を先に作ってしまうと、開いただけの日が記録として残る。
+   * 何か書かれた時点で初めて Section を作り、作れたらここは捨てる。
+   *
+   * 一覧カードの写し（`detail.body`）は最初の Section を指すので、
+   * そちらに混ぜてはいけない（過去の記録が当日の枠に出てしまう）。
    */
-  function bodyOf(id: string): string | null {
+  const drafts = useState<Record<string, string>>(
+    'item-detail-today-draft',
+    () => ({}),
+  )
+
+  function setDraft(id: string, value: string) {
+    drafts.value = { ...drafts.value, [id]: value }
+  }
+
+  function clearDraft(id: string) {
+    if (!(id in drafts.value)) return
+    const { [id]: _dropped, ...rest } = drafts.value
+    drafts.value = rest
+  }
+
+  /**
+   * 当日の枠に出す内容。
+   *
+   * まだ何も取れていないことを `null` で表し、「その日の記録が空」と
+   * 区別する。一緒にしてしまうと、消している最中に古い写しへ戻って見える。
+   */
+  function todayBodyOf(id: string, today: string): string | null {
     const detail = byId(id)
     if (!detail) return null
-    const primary = detail.sections.find((s) => s.id === detail.primarySectionId)
-    return primary?.body ?? detail.body ?? ''
+    const section = pickTodaySection(detail.sections, today)
+    if (section) return section.body
+    return drafts.value[id] ?? ''
   }
 
   /**
-   * 本文を書き換える。控えへ即座に反映し、送信は遅らせて裏で行う。
+   * 当日の枠を書き換える。控えへ即座に反映し、送信は遅らせて裏で行う。
    *
-   * Section がまだ無いときは、写しの本文だけを先に持たせる。実際の
-   * Section は、何か書かれたときの最初の送信で作る。
+   * その日の Section がまだ無ければ下書きへ置き、最初の送信で作る。
    */
-  function editBody(id: string, value: string) {
-    update(id, (detail) => {
-      const primaryId = detail.primarySectionId
-      if (!primaryId) return { ...detail, body: value }
-      return {
-        ...detail,
-        body: value,
-        sections: detail.sections.map((s) =>
-          s.id === primaryId ? { ...s, body: value } : s,
-        ),
-      }
-    })
+  function editTodayBody(id: string, today: string, value: string) {
+    const section = pickTodaySection(byId(id)?.sections ?? [], today)
 
-    scheduler.schedule(bodyKey(id), () => sendBody(id, value))
+    if (section) {
+      update(id, (detail) =>
+        replaceSections(
+          detail,
+          detail.sections.map((s) =>
+            s.id === section.id ? { ...s, body: value } : s,
+          ),
+        ),
+      )
+    } else {
+      setDraft(id, value)
+    }
+
+    scheduler.schedule(todayKey(id), () => sendTodayBody(id, today, value))
   }
 
-  async function sendBody(id: string, value: string) {
-    const detail = byId(id)
-    const primaryId = detail?.primarySectionId ?? null
+  async function sendTodayBody(id: string, today: string, value: string) {
+    // 送るときに引き直す。打ってから送るまでの間に、その日の Section が
+    // できていることがある（別のタブ・直前の送信）
+    const section = pickTodaySection(byId(id)?.sections ?? [], today)
 
-    if (primaryId) {
-      const updated = await $fetch<SectionDto>(`/api/sections/${primaryId}`, {
+    if (section) {
+      const updated = await $fetch<SectionDto>(`/api/sections/${section.id}`, {
         method: 'PATCH',
         body: { body: value },
       })
       applySavedSection(id, updated)
-      await syncBodyCopy(id)
+      if (updated.id === byId(id)?.primarySectionId) await syncBodyCopy(id)
       return
     }
 
-    // まだ Section がない。空文字のまま作っても意味がないので、
+    // まだその日の Section がない。空文字のまま作っても意味がないので、
     // 実際に何か書かれてから作る
     if (!value.trim()) return
 
     const created = await $fetch<SectionDto>('/api/sections', {
       method: 'POST',
-      body: { itemId: id, body: value },
+      body: { itemId: id, date: today, body: value },
     })
+    clearDraft(id)
     update(id, (current) =>
       replaceSections(current, [...current.sections, created]),
     )
+    // 最初の記録なら、これが一覧カードに出る本文になる
     await syncBodyCopy(id)
   }
 
-  function bodyStatus(id: string): SaveStatus {
-    return statusOf(bodyKey(id))
+  function todayStatus(id: string): SaveStatus {
+    return statusOf(todayKey(id))
   }
 
-  // --- 作業記録（本文以外の Section） -------------------------------------
+  // --- 個別の作業記録（当日の枠より上に出す、過去の記録） -------------------
+  //
+  // 既定では確定済みの見た目で出し、編集アイコンを押したときだけ書ける
+  // （docs/03-functional-spec.md 3.2）。書き換えの扱いは当日の枠と同じ。
 
   function sectionBodyOf(id: string, sectionId: string): string {
     return byId(id)?.sections.find((s) => s.id === sectionId)?.body ?? ''
@@ -409,9 +452,9 @@ export function useItemDetailStore() {
 
   return {
     byId,
-    bodyOf,
-    bodyStatus,
-    editBody,
+    todayBodyOf,
+    todayStatus,
+    editTodayBody,
     sectionBodyOf,
     sectionStatus,
     editSectionBody,

@@ -77,7 +77,7 @@ export default defineEventHandler(async (event) => {
       )
     }
 
-    // 本文は最初に作られた Section。スナップショットは表示順（日付降順）で
+    // 本文は最初に作られた Section。スナップショットは表示順（日付昇順）で
     // 並んでいるので、先頭をそのまま使うと別の日の記録を拾ってしまう。
     const primaryBody =
       [...restoredSections].sort((a, b) =>

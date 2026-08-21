@@ -32,9 +32,20 @@ const props = withDefaults(
      * 行き先が無い。取得が終わるまでの間だけこれを立てる（ItemDetail.vue）。
      */
     readonly?: boolean
+    /**
+     * 確定済みの見た目にするか。読むだけにしたうえで、入力欄としての
+     * 囲み（枠線・背景・最低の高さ）と画像の追加も出さない。
+     *
+     * 過去の作業記録は既定でこの形で並べる（docs/03-functional-spec.md 3.2）。
+     * 枠を並べたままにすると、どれが今日書ける欄なのか分からなくなる。
+     */
+    view?: boolean
   }>(),
-  { placeholder: '', ariaLabel: '本文', readonly: false },
+  { placeholder: '', ariaLabel: '本文', readonly: false, view: false },
 )
+
+/** 書き換えを受け付けないか。`view` は読むだけを含む。 */
+const locked = computed(() => props.readonly || props.view)
 
 /** 行の配列。空文字でも1行として扱う。 */
 const rawLines = computed(() => model.value.replace(/\r\n?/g, '\n').split('\n'))
@@ -74,7 +85,7 @@ const isEmpty = computed(() => !model.value.trim())
  */
 function commit(lines: string[], options: { coalesce?: boolean } = {}) {
   // 本文の変更はすべてここを通る。読むだけのときはここで止めれば足りる
-  if (props.readonly) return
+  if (locked.value) return
 
   const next = lines.join('\n')
   if (next === model.value) return
@@ -185,7 +196,7 @@ async function activate(
   lines: string[] = rawLines.value,
 ) {
   // 読むだけのときは、どの行も編集状態にしない（入力欄を出さない）
-  if (props.readonly) return
+  if (locked.value) return
 
   // 1行だけの編集に戻るので、複数行選択の状態は捨てる
   shiftSelectAnchor = null
@@ -1265,7 +1276,7 @@ async function insertItemLink(payload: ItemDragPayload) {
 
 function onDrop(event: DragEvent) {
   // 書き込めないので、画像を上げるだけ上げてしまわないよう先に降りる
-  if (props.readonly) return
+  if (locked.value) return
 
   const itemLink = readItemLinkDrag(event.dataTransfer)
   if (itemLink) {
@@ -1284,7 +1295,7 @@ function onDrop(event: DragEvent) {
 
 function onDragOver(event: DragEvent) {
   // 落とせないので、落とせるようには見せない
-  if (props.readonly) return
+  if (locked.value) return
 
   // 画像・タスクのリンクを落とせる場所であることをブラウザに伝える
   const dataTransfer = event.dataTransfer
@@ -1294,7 +1305,7 @@ function onDragOver(event: DragEvent) {
 }
 
 function onPaste(event: ClipboardEvent) {
-  if (props.readonly) return
+  if (locked.value) return
 
   const files = images.imagesFrom(event.clipboardData)
   if (files.length === 0) return
@@ -1318,7 +1329,7 @@ defineExpose({
   <div
     ref="editorRoot"
     class="editor"
-    :class="{ 'editor--dragging': dragging }"
+    :class="{ 'editor--dragging': dragging, 'editor--view': view }"
     :aria-label="props.ariaLabel"
     tabindex="-1"
     @dragover="onDragOver"
@@ -1329,7 +1340,7 @@ defineExpose({
     @keydown="onContainerKeydown"
   >
     <button
-      v-if="isEmpty && activeIndex === null && !readonly"
+      v-if="isEmpty && activeIndex === null && !locked"
       type="button"
       class="editor__start"
       @click="activate(0)"
@@ -1415,7 +1426,7 @@ defineExpose({
       スマートフォンにはどちらもないのでボタンを置く。
       order で常に末尾に置く（行は order で並べているため）。
     -->
-    <footer class="editor__foot">
+    <footer v-if="!view" class="editor__foot">
       <!--
         読むだけの間も置いたままにする（隠すと、編集できるようになった
         ときにこの行の分だけ下がってしまう）。押せないことだけを伝える。
@@ -1423,7 +1434,7 @@ defineExpose({
       <button
         type="button"
         class="editor__image"
-        :disabled="readonly || images.uploading.value > 0"
+        :disabled="locked || images.uploading.value > 0"
         @click="filePicker?.click()"
       >
         {{ images.uploading.value > 0 ? '画像を追加中…' : '画像を追加' }}
@@ -1465,6 +1476,19 @@ defineExpose({
  */
 .editor:focus {
   outline: none;
+}
+
+/*
+ * 確定済みの表示。入力欄に見えないよう囲みを外し、高さは中身に任せる
+ * （docs/03-functional-spec.md 3.2）。記法の見た目はそのまま。
+ */
+.editor--view {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  padding: 0;
+  min-height: 0;
+  cursor: default;
 }
 
 /* 画像を落とせる場所であることを示す */

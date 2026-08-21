@@ -16,7 +16,7 @@ import {
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
-import { formatAppDate, toAppDate } from '~~/shared/utils/date'
+import { formatAppDate } from '~~/shared/utils/date'
 
 const props = defineProps<{
   itemId: string
@@ -46,6 +46,12 @@ const { online } = useOnline()
 const { colorOf } = useTags()
 
 const detailStore = useItemDetailStore()
+
+/**
+ * 「今日」。開いたまま日付をまたいだら切り替わる（useToday）。
+ * 作業記録は当日の枠に書き込むので、これが画面の状態になる。
+ */
+const today = useToday()
 
 // 分割表示では itemId が切り替わるので、top-level await は使わない
 // （Suspense で一覧ごと再描画されてしまうため）。
@@ -189,52 +195,58 @@ function onTitleKeydown(event: KeyboardEvent) {
   ;(event.target as HTMLTextAreaElement).blur()
 }
 
-// --- 本文（リアルタイム保存） ------------------------------------------
+// --- 作業記録（リアルタイム保存） ----------------------------------------
 //
-// Item は本文を持たないため、本文は先頭 Section に書く
-// （docs/02-data-model.md 2.9-1）。Section がなければ最初の保存時に作る。
+// Item は本文を持たないため、書いた内容は日付付きの Section に入る
+// （docs/02-data-model.md 2.9-1）。画面が既定で出している枠は
+// **その日の作業記録**で、日をまたげば枠が分かれる
+// （docs/03-functional-spec.md 3.2）。Section は書かれるまで作らない。
 
 const sections = computed<SectionDto[]>(() => item.value?.sections ?? [])
 
-/** 本文として扱う Section。最初に作られたもの（一覧カードと同じ）。 */
-const primarySection = computed<SectionDto | null>(
-  () =>
-    sections.value.find((s) => s.id === item.value?.primarySectionId) ?? null,
-)
-
-/** 本文を除いた、日々の作業記録。日付の新しい順に並んでいる。 */
-const logSections = computed<SectionDto[]>(() =>
-  sections.value.filter((s) => s.id !== primarySection.value?.id),
+/**
+ * 既定で編集する枠に当たる Section。その日の記録がまだ無ければ null で、
+ * 何か書かれた時点でストアが作る。
+ */
+const todaySection = computed<SectionDto | null>(() =>
+  pickTodaySection(sections.value, today.value),
 )
 
 /**
- * 画面に出す本文。
+ * 当日の枠より上に積む、確定済みの作業記録。
+ *
+ * 日付の古い順に並んでいるので、当日の枠のすぐ上が直近の記録になる。
+ * 同じ日に複数あるときは、最後の1件だけが当日の枠になり、残りはここへ来る。
+ */
+const pastSections = computed<SectionDto[]>(() =>
+  sections.value.filter((s) => s.id !== todaySection.value?.id),
+)
+
+/**
+ * 当日の枠に書く内容。
  *
  * 下書きを画面側に持たない。打鍵はそのままストアへ渡し、送信はストアが
- * 遅らせて裏で行う（docs/15-client-state.md）。Section が取れていなくても、
- * ローカル（IndexedDB）の Item が本文の写しを持っているので、取得を待つ間は
- * それが出る（追加した直後や初めて開いたときに空のまま置かれない）。
- * 編集は Section が分かってから（下の readonly）。
+ * 遅らせて裏で行う（docs/15-client-state.md）。
  */
-const body = computed({
-  get: () => detailStore.bodyOf(id.value) ?? item.value?.body ?? '',
-  set: (value: string) => detailStore.editBody(id.value, value),
+const todayBody = computed({
+  get: () => detailStore.todayBodyOf(id.value, today.value) ?? '',
+  set: (value: string) => detailStore.editTodayBody(id.value, today.value, value),
 })
 
-const bodySave = computed(() => detailStore.bodyStatus(id.value))
+const todaySave = computed(() => detailStore.todayStatus(id.value))
 
 const bodyEditor = ref<{ focus: () => void } | null>(null)
 
 /**
- * 本文の欄を出すか。
+ * 作業記録の欄を出すか。
  *
- * Section が取れていなくても、写しに本文があるなら読むだけは出す。
- * 本文が無いときは、書ける状態になってから出す（空の欄を先に置いても
- * 書けないだけで、書けるようになった瞬間に見た目も変わらない）。
+ * Section が取れていない間も、ローカル（IndexedDB）の写しに本文があるなら
+ * 読むだけは出す。ただし写しが指すのは**その Item の最初の記録**なので、
+ * 当日の枠としてではなく、確定済みの見た目で出す（下の template）。
  */
-const showBody = computed(() => hasDetail.value || Boolean(body.value))
+const showRecords = computed(() => hasDetail.value || Boolean(item.value?.body))
 
-/** 本文へフォーカスする。一覧の `y` から呼ばれる。 */
+/** 当日の枠へフォーカスする。一覧の `y` から呼ばれる。 */
 function focusBody() {
   bodyEditor.value?.focus()
 }
@@ -325,15 +337,16 @@ onUnmounted(() => clearTimeout(actionMessageTimer))
 /**
  * 表示中のタスクをクリップボードへ写す（`Shift` + `C`）。
  *
- * 中身の作りは一覧と同じ（composeItemCopyText）。本文はまだ取得できて
- * いなくてもローカルの写しが `item` に入っているので、そのまま渡せる。
+ * 中身の作りは一覧と同じ（composeItemCopyText）。写すのは一覧カードと同じ
+ * 本文＝最初の作業記録で、当日の枠に書きかけの分ではない。同じキーなのに
+ * 一覧と詳細で違うものが写ると、どちらが写ったのか分からなくなる。
+ * まだ取得できていなくてもローカルの写しが `item` に入っている。
  */
 async function copy() {
   if (!item.value) return
 
   actionError.value = null
-  // 写すのは画面に出ているもの。書きかけ（下書き）もそのまま渡す
-  const source = { title: title.value, body: body.value }
+  const source = { title: title.value, body: item.value.body ?? '' }
   // 打鍵の流れのまま書き込む。間に待ちを挟むとブラウザに拒まれる
   const written = await writeToClipboard(composeItemCopyText([source]))
 
@@ -531,20 +544,12 @@ async function remove() {
 
 const addingSection = ref(false)
 
-/** 作成直後の記録へフォーカスするための参照。 */
-const sectionEditors = new Map<string, { focus: () => void }>()
-
-function setSectionEditor(id: string, el: unknown) {
-  if (el) sectionEditors.set(id, el as { focus: () => void })
-  else sectionEditors.delete(id)
-}
-
 /**
  * 同じ日付の中で前後に動かせるか。
  * position は同一日付内の並び順なので、日付をまたいでは動かさない。
  */
 function canMove(index: number, delta: -1 | 1): boolean {
-  const list = logSections.value
+  const list = pastSections.value
   const current = list[index]
   const next = list[index + delta]
   return Boolean(current && next && current.date === next.date)
@@ -553,32 +558,27 @@ function canMove(index: number, delta: -1 | 1): boolean {
 /**
  * 今日の作業記録へ移る（`Shift` + `y` / 「今日の記録を追加」）。
  *
- * すでに今日の記録があって、まだ何も書いていなければそれを使う。
- * 押すたびに空の記録が増えていくのを避けるため。
+ * 当日の枠はいつでも出ているので、たいていはそこへフォーカスするだけで足りる。
+ * すでに書き込まれているときだけ、同じ日の2件目を作る（同一日付に複数の記録を
+ * 置けるのは docs/03-functional-spec.md 3.2 のとおり）。新しく作ったものが
+ * 当日の枠になり、それまでの分は確定済みとして上へ回る。
  */
 async function addTodaySection() {
-  const today = toAppDate()
-  const existing = logSections.value.filter((s) => s.date === today)
-  const reusable = existing.find((s) => !s.body.trim())
-
-  if (reusable) {
-    focusSection(reusable.id)
+  const current = todaySection.value
+  if (!current || !current.body.trim()) {
+    focusBody()
     return
   }
 
   addingSection.value = true
   try {
-    const created = await detailStore.addSection(id.value, today)
+    await detailStore.addSection(id.value, today.value)
     emit('changed')
-    focusSection(created.id)
+    await nextTick()
+    focusBody()
   } finally {
     addingSection.value = false
   }
-}
-
-async function focusSection(sectionId: string) {
-  await nextTick()
-  sectionEditors.get(sectionId)?.focus()
 }
 
 async function changeSectionDate(section: SectionDto, date: string) {
@@ -592,15 +592,18 @@ async function changeSectionDate(section: SectionDto, date: string) {
 
 /** 同じ日付の記録どうしを入れ替える。並びはまとめて送る。 */
 async function moveSection(index: number, delta: -1 | 1) {
-  const list = logSections.value
+  const list = pastSections.value
   const current = list[index]
   const other = list[index + delta]
   if (!current || !other || current.date !== other.date) return
 
-  const sameDate = list.filter((s) => s.date === current.date)
-  const from = sameDate.indexOf(current)
-  const to = sameDate.indexOf(other)
-  const ids = sameDate.map((s) => s.id)
+  // 並びは、当日の枠になっている記録も含めたその日の全件で送る。
+  // 抜いて送ると、残った1件の position が重なったままになる
+  const ids = sections.value
+    .filter((s) => s.date === current.date)
+    .map((s) => s.id)
+  const from = ids.indexOf(current.id)
+  const to = ids.indexOf(other.id)
   ids[from] = other.id
   ids[to] = current.id
 
@@ -614,7 +617,6 @@ async function moveSection(index: number, delta: -1 | 1) {
 
 async function removeSection(section: SectionDto) {
   if (!confirm('この作業記録を削除します。よろしいですか？')) return
-  sectionEditors.delete(section.id)
 
   actionError.value = null
   try {
@@ -837,33 +839,58 @@ async function removeSection(section: SectionDto) {
         </div>
       </section>
 
-      <section v-if="showBody" class="body">
-        <div class="body__head">
-          <h2 class="body__title">本文</h2>
-          <!-- 本文も日付を持つ Section なので、その日の日記へ行ける -->
-          <NuxtLink
-            v-if="primarySection"
-            class="body__diary"
-            :to="`/diary/${primarySection.date}`"
-          >
-            {{ formatAppDate(primarySection.date) }} の日記
-          </NuxtLink>
-          <SaveDot class="body__save" :state="bodySave.state" />
-        </div>
+      <!--
+        作業記録。日付の古い順に積み、**当日の枠を一番下**に置く
+        （docs/03-functional-spec.md 3.2）。過去の分は確定済みの見た目で、
+        編集アイコンを押したときだけ書ける。
+      -->
+      <section v-if="showRecords" class="log">
+        <h2 class="log__title">作業記録</h2>
+
         <!--
-          Section が取れるまでは読むだけ。保存先が決まっていないまま
-          書けてしまうと、書いたものの行き先が無い（docs/12-offline.md 12.9）。
+          まだ Section を取れていない。書ける枠を出すと、書いたものの行き先が
+          無い（docs/12-offline.md 12.9）。写しにある本文だけを読むだけで出す。
+          写しが指すのは最初の記録なので、当日の枠のようには見せない。
         -->
         <ScrapboxEditor
-          ref="bodyEditor"
-          v-model="body"
-          placeholder="このタスクについてのメモ"
+          v-if="!hasDetail"
+          view
+          :model-value="item.body ?? ''"
           aria-label="本文"
-          :readonly="!hasDetail"
         />
-        <p v-if="bodySave.error" class="page__error" role="alert">
-          {{ bodySave.error }}
-        </p>
+
+        <template v-else>
+          <ItemSectionRecord
+            v-for="(section, index) in pastSections"
+            :key="section.id"
+            :item-id="id"
+            :section="section"
+            :can-move-up="canMove(index, -1)"
+            :can-move-down="canMove(index, 1)"
+            @change-date="(date) => changeSectionDate(section, date)"
+            @move="(delta) => moveSection(index, delta)"
+            @remove="removeSection(section)"
+          />
+
+          <article class="today">
+            <header class="today__head">
+              <span class="today__date">{{ formatAppDate(today) }}</span>
+              <span class="today__badge">今日</span>
+              <!-- 作業記録と日記は日付だけで結び付く（docs/02-data-model.md 2.7） -->
+              <NuxtLink class="today__diary" :to="`/diary/${today}`">日記</NuxtLink>
+              <SaveDot class="today__save" :state="todaySave.state" />
+            </header>
+            <ScrapboxEditor
+              ref="bodyEditor"
+              v-model="todayBody"
+              placeholder="今日やったこと"
+              aria-label="今日の作業記録"
+            />
+            <p v-if="todaySave.error" class="page__error" role="alert">
+              {{ todaySave.error }}
+            </p>
+          </article>
+        </template>
       </section>
 
       <section v-if="pastOccurrences.length" class="series">
@@ -886,26 +913,6 @@ async function removeSection(section: SectionDto) {
             </NuxtLink>
           </li>
         </ul>
-      </section>
-
-      <!--
-        日々の作業記録。日付の新しい順、同じ日付の中は position 順
-        （docs/03-functional-spec.md 3.1）。
-      -->
-      <section v-if="hasDetail && logSections.length" class="log">
-        <h2 class="log__title">作業記録</h2>
-        <ItemSectionEditor
-          v-for="(section, index) in logSections"
-          :key="section.id"
-          :ref="(el) => setSectionEditor(section.id, el)"
-          :item-id="id"
-          :section="section"
-          :can-move-up="canMove(index, -1)"
-          :can-move-down="canMove(index, 1)"
-          @change-date="(date) => changeSectionDate(section, date)"
-          @move="(delta) => moveSection(index, delta)"
-          @remove="removeSection(section)"
-        />
       </section>
 
       <div class="page__actions">
@@ -1098,10 +1105,6 @@ async function removeSection(section: SectionDto) {
   background: var(--priority-3);
 }
 
-.body__save {
-  align-self: center;
-}
-
 /*
  * RTM のように、ラベルと値を同じ行に収めて縦を詰める。
  * ラベルは行ごとの折り返し行を持たせず、値（チップ）とまとめて
@@ -1263,26 +1266,46 @@ async function removeSection(section: SectionDto) {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-.body {
+/* 当日の枠。書ける欄はここだけなので、日付を添えて見分けられるようにする */
+.today {
   display: grid;
   gap: 0.375rem;
 }
 
-.body__head {
+.today__head {
   display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 0.375rem;
 }
 
-.body__diary {
-  margin-left: auto;
+.today__date {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding-left: 1rem;
+}
+
+.today__badge {
+  font-size: 0.6875rem;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.0625rem 0.375rem;
+}
+
+.today__diary {
   color: var(--text-muted);
   text-decoration: none;
   font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
 }
 
-.body__title,
+.today__save {
+  flex: 1;
+}
+
 .log__title {
   margin: 0;
   font-size: 0.8125rem;
