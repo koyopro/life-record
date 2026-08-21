@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SaveState } from '~/composables/useAutosave'
+import type { SaveState } from '~/utils/save-scheduler'
 
 /**
  * `idle` 以外に、サーバーへまだ送れていない（オフライン等）を示す状態を足す。

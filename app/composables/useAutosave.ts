@@ -1,4 +1,7 @@
-export type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+import {
+  extractSaveError,
+  type SaveState,
+} from '~/utils/save-scheduler'
 
 interface Options<T> {
   /** 監視する値。変化するたびに保存する。 */
@@ -104,14 +107,4 @@ export function useAutosave<T>(options: Options<T>) {
   })
 
   return { state, errorMessage, flush, markSynced }
-}
-
-function extractSaveError(e: unknown): string {
-  if (typeof e === 'object' && e !== null) {
-    // サーバーは message で返す。statusMessage は HTTP ステータス行に載るため
-    // 日本語が壊れる（h3 も将来サニタイズすると警告している）。
-    const data = (e as { data?: { message?: string } }).data
-    if (data?.message) return data.message
-  }
-  return '保存に失敗しました'
 }
