@@ -336,7 +336,20 @@ RTM で管理している繰り返しタスクを、挙動を変えずに移せ�
 
 ---
 
-## Milestone 13 以降（将来検討）
+## Milestone 13: ホーム画面アイコンからの追加（完了）
+
+ホーム画面のアイコンを長押しして、そのまま書き始められるようにする。
+詳細は [14-app-shortcuts.md](14-app-shortcuts.md)。
+
+- [x] manifest の `shortcuts`（「タスクを追加」→ `/add`）
+- [x] 追加だけをする画面（`app/pages/add.vue`。一覧と同じ入力欄を使う）
+- [x] 開いた時点で入力欄へフォーカスする（`ItemComposer` の `autofocus`）
+- [x] 追加は一覧・共有と同じ経路（オフラインでも追加でき、後から送られる）
+- [ ] Android 実機での確認（[14-app-shortcuts.md](14-app-shortcuts.md) 14.5）
+
+---
+
+## Milestone 14 以降（将来検討）
 
 - Section・日記のオフライン対応（いまは TODO 本体のみ）
 - Section への時刻の付与

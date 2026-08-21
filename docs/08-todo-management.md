@@ -240,7 +240,9 @@ RTM の[キーボードショートカット](https://www.rememberthemilk.com/he
   からはタスク一覧へ移ってから開く
 - 閉じるのは「閉じる」・背景のタップ・`Esc`
 - 広い画面はこれまでどおり入力欄を常に出す。書くことが目的の画面
-  （共有の受付。[13-share-target.md](13-share-target.md)）は幅に関わらず常に出す
+  （共有の受付。[13-share-target.md](13-share-target.md)、ホーム画面アイコンからの
+  追加。[14-app-shortcuts.md](14-app-shortcuts.md)）は幅に関わらず常に出す。
+  後者は開いた時点でフォーカスもする（一覧が無く、操作を横取りしないため）
 
 #### 期限・重要度を選ぶボタン
 
