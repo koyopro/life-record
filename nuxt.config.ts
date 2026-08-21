@@ -52,6 +52,24 @@ export default defineNuxtConfig({
         method: 'GET',
         params: { title: 'title', text: 'text', url: 'url' },
       },
+      /*
+       * ホーム画面アイコンの長押しから出る項目（docs/14-app-shortcuts.md）。
+       *
+       * アプリを開いて一覧の読み込みを待つ間を挟まずに書き始められるよう、
+       * 追加だけをする画面（/add）へ直接入れる。項目は増やさない。
+       * 増やすほど長押しの先から目当てを選ぶ手間が増え、速さが薄れる。
+       */
+      shortcuts: [
+        {
+          name: 'タスクを追加',
+          short_name: '追加',
+          description: '入力欄を開いた状態で起動する',
+          url: '/add',
+          icons: [
+            { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          ],
+        },
+      ],
       icons: [
         { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
