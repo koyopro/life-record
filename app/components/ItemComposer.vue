@@ -224,6 +224,111 @@ function submit() {
   })
 }
 
+// --- タグ候補（`#` で出す。docs/09-tags.md 9.4） -------------------------
+//
+// 記号を打ってからタグ名を思い出す・打ち直す手間を無くす。既にあるタグを
+// 拾えるので、表記ゆれ（`shoping`）で新しいタグができてしまうのも防げる。
+// 本文エディタの絵文字候補（`:`）と同じ操作にそろえる。
+
+const { suggest } = useTags()
+
+/** 候補を出すきっかけになった `#` の位置。null なら出していない。 */
+const tagStart = ref<number | null>(null)
+const tagQuery = ref('')
+const tagIndex = ref(0)
+
+/**
+ * いま書いている `#...` 以外の、すでに書いたタグ。候補から外す。
+ *
+ * 書きかけのものまで外すと、打ち終えた瞬間に候補から消えて確定できなくなる。
+ */
+const otherTags = computed(() => {
+  const names: string[] = []
+  for (const match of text.value.matchAll(/#([^\s,#]+)/g)) {
+    if (match.index === tagStart.value) continue
+    names.push(match[1]!.toLowerCase())
+  }
+  return names
+})
+
+const tagMatches = computed(() =>
+  tagStart.value === null ? [] : suggest(tagQuery.value, otherTags.value),
+)
+
+/** 候補を出しているか。出せるものが無ければ、Enter は追加に使う。 */
+const tagPickerOpen = computed(() => tagMatches.value.length > 0)
+
+function closeTagPicker() {
+  tagStart.value = null
+  tagQuery.value = ''
+  tagIndex.value = 0
+}
+
+/**
+ * キャレットの直前にある `#` を探し、候補を出すべきか判断する。
+ *
+ * 対象は、`#` からキャレットまでに区切り（空白・`,`・`#`）を挟まないもの。
+ * SmartAdd のタグ記法（`#([^\s,#]+)`）と同じ切り方にする。
+ */
+function updateTagTrigger() {
+  const el = textarea.value
+  if (!el || el.selectionStart !== el.selectionEnd) {
+    closeTagPicker()
+    return
+  }
+
+  const caret = el.selectionStart ?? text.value.length
+  const before = text.value.slice(0, caret)
+  const at = before.lastIndexOf('#')
+
+  if (at === -1) {
+    closeTagPicker()
+    return
+  }
+
+  const query = before.slice(at + 1)
+  if (/[\s,#]/.test(query)) {
+    closeTagPicker()
+    return
+  }
+
+  // 選んでいる位置は、書いている内容が変わったときだけ先頭へ戻す。
+  // 上下で選んでいる最中に呼ばれても、選択が飛ばないようにするため
+  if (tagStart.value !== at || tagQuery.value !== query) tagIndex.value = 0
+  tagStart.value = at
+  tagQuery.value = query
+}
+
+/** 候補を選び、`#` からキャレットまでをそのタグ名に置き換える。 */
+function selectTag(name: string) {
+  const start = tagStart.value
+  const el = textarea.value
+  if (start === null || !el) return
+
+  const caret = el.selectionStart ?? text.value.length
+  // 続けて書けるよう空白を添える。SmartAdd のタグはここで切れる
+  const inserted = `#${name} `
+  text.value = text.value.slice(0, start) + inserted + text.value.slice(caret)
+  closeTagPicker()
+
+  const next = start + inserted.length
+  void nextTick(() => {
+    el.focus()
+    el.setSelectionRange(next, next)
+    autoGrow()
+  })
+}
+
+function moveTagIndex(delta: number) {
+  const count = tagMatches.value.length
+  tagIndex.value = (tagIndex.value + delta + count) % count
+}
+
+function onInput() {
+  autoGrow()
+  updateTagTrigger()
+}
+
 /**
  * 日本語入力の変換中か。
  *
@@ -239,6 +344,38 @@ function isComposing(event: KeyboardEvent) {
 }
 
 function onKeydown(event: KeyboardEvent) {
+  /*
+   * タグ候補を出している間は、上下で選び Enter / Tab で確定する。
+   * 追加（Enter）より優先する。候補が無ければ何も横取りしない。
+   */
+  if (tagPickerOpen.value && !isComposing(event)) {
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        return moveTagIndex(1)
+      case 'ArrowUp':
+        event.preventDefault()
+        return moveTagIndex(-1)
+      case 'Enter':
+      case 'Tab':
+        // 改行を入れる Shift+Enter は、候補が出ていても改行のまま
+        if (event.key === 'Enter' && event.shiftKey) break
+        event.preventDefault()
+        return selectTag(tagMatches.value[tagIndex.value]!.name)
+    }
+  }
+
+  if (event.key === 'Escape') {
+    // 出している候補を先に閉じる。入力欄ごと閉じると書きかけが消える
+    if (tagPickerOpen.value) {
+      event.preventDefault()
+      closeTagPicker()
+      return
+    }
+    close()
+    return
+  }
+
   if (event.key === 'Enter') {
     if (isComposing(event)) return
     // Shift+Enter は常に改行。1行入力（PC の新規タスク追加）でも
@@ -300,10 +437,41 @@ useComposerRegistration(focus)
         :rows="multiline ? 2 : 1"
         :placeholder="placeholder"
         autocapitalize="off"
-        @input="autoGrow"
+        @input="onInput"
         @keydown="onKeydown"
-        @keydown.esc="close"
+        @keyup.left="updateTagTrigger"
+        @keyup.right="updateTagTrigger"
+        @keyup.home="updateTagTrigger"
+        @keyup.end="updateTagTrigger"
+        @click="updateTagTrigger"
+        @blur="closeTagPicker"
       />
+
+      <!--
+        タグ候補（`#` で出す）。押すときは mousedown を preventDefault し、
+        入力欄の blur（＝候補を閉じる）より前に確定させる。
+      -->
+      <div
+        v-if="tagPickerOpen"
+        class="composer__tags"
+        role="listbox"
+        aria-label="タグの候補"
+      >
+        <button
+          v-for="(tag, i) in tagMatches"
+          :key="tag.id"
+          type="button"
+          class="composer__tag"
+          :class="{ 'composer__tag--active': i === tagIndex }"
+          role="option"
+          :aria-selected="i === tagIndex"
+          @mousedown.prevent
+          @click="selectTag(tag.name)"
+        >
+          #{{ tag.name }}
+          <span class="composer__tag-count">{{ tag.count }}</span>
+        </button>
+      </div>
 
       <div v-if="showPreview" class="composer__preview">
         <span class="composer__preview-title">{{ parsed?.title || '（タイトルなし）' }}</span>
@@ -534,6 +702,49 @@ useComposerRegistration(focus)
  * 広い画面は記法（^ ! # *）を打つほうが速く、ヒントも出しているので置かない。
  * 入力欄と同じく CSS で切り替える（幅の判定は最初の描画に間に合わない）。
  */
+/*
+ * タグの候補。狭い画面でも押せるよう、入りきらないぶんは横に流す
+ * （小さくすると押し間違える）。
+ */
+.composer__tags {
+  display: flex;
+  gap: 0.375rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.composer__tags::-webkit-scrollbar {
+  display: none;
+}
+
+.composer__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  /* タップ目標として十分な大きさを確保する */
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+/* 上下で選んでいるもの。Enter で入るのがどれか分かるようにする */
+.composer__tag--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.composer__tag-count {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .composer__tools {
   display: none;
   flex-wrap: wrap;

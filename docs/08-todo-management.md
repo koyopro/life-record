@@ -402,7 +402,7 @@ RTM の記法に準拠する。
 |---|---|---|---|
 | `^` | 期限 | `^tomorrow` `^明日` `^8/25` `^金曜` `^なし`（期限なしを明示） | Milestone 3 |
 | `!` | 重要度 | `!1` `!2` `!3` | Milestone 3 |
-| `#` | タグ | `#買い物` `#急ぎ` | Milestone 4（[09-tags.md](09-tags.md) 9.4） |
+| `#` | タグ | `#買い物` `#急ぎ` | Milestone 4（[09-tags.md](09-tags.md) 9.4。入力中は候補を出す） |
 | `*` | 繰り返し | `*every week` `*毎週月曜` `*after 3 days` | Milestone 5（[10-recurrence.md](10-recurrence.md) 10.7） |
 
 記号の前後の空白は許容し、記号として解釈された部分はタイトルから取り除く。
