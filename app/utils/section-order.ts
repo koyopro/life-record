@@ -3,7 +3,7 @@ import type { SectionDto } from '~~/shared/types/item'
 /**
  * Section の並びを、クライアント側で計算する。
  *
- * ストアは編集をローカルへ即座に反映するため（docs/14-client-state.md）、
+ * ストアは編集をローカルへ即座に反映するため（docs/15-client-state.md）、
  * 追加・日付変更・並べ替えのあとも取り直しを待たずに正しい順で出せる必要が
  * ある。サーバー（server/utils/items.ts）の並びと同じ結果にならないと、
  * 取り直したときに記録が飛んで見える。

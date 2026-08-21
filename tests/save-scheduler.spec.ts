@@ -6,7 +6,7 @@ import {
 } from '~/utils/save-scheduler'
 
 /**
- * 保存の遅延送信（docs/14-client-state.md）。
+ * 保存の遅延送信（docs/15-client-state.md）。
  *
  * ストアは編集を打鍵のたびに受け取り、送信だけを遅らせる。途中の値を
  * 送らないこと・同じ鍵で追い越さないこと・失敗を握り潰さないことを確かめる。

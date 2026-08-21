@@ -23,7 +23,7 @@ import {
  *
  * こうすると、編集してから画面を切り替えて戻っても編集前の内容は出ない。
  * 画面ごとに `useFetch` の結果と控えの2つを見ていた頃は、どちらか片方だけが
- * 新しくなり、戻ったときに古い方が出ていた（docs/14-client-state.md）。
+ * 新しくなり、戻ったときに古い方が出ていた（docs/15-client-state.md）。
  */
 
 /**
@@ -133,7 +133,7 @@ export function useItemDetailStore() {
      * は間に合わないことがある**。送信そのものが打ち切られるため。ここを
      * 確実にするには、送るものを IndexedDB へ置いて次回に持ち越す必要が
      * あり、それは Section と日記をオフライン対応させる話になる
-     * （docs/12-offline.md 12.9 / docs/14-client-state.md）。
+     * （docs/12-offline.md 12.9 / docs/15-client-state.md）。
      */
     if (import.meta.client) {
       const onLeaving = () => {

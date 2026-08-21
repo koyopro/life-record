@@ -7,7 +7,7 @@ import { toPlainText } from '~~/shared/utils/scrapbox/render'
  * カレンダーの枠内にそのまま表示するため、記法を除いたプレーンテキストにする。
  *
  * 画面と API の両方で使う。書いた直後の一覧は、取り直しを待たずに
- * ストアの控えから同じ抜粋を作って出す（docs/14-client-state.md）。
+ * ストアの控えから同じ抜粋を作って出す（docs/15-client-state.md）。
  */
 export function excerptOf(body: string): string {
   const text = toPlainText(body)

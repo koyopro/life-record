@@ -19,7 +19,8 @@
 | [11-scrapbox-notation.md](11-scrapbox-notation.md) | 本文の記法（Scrapbox 記法） |
 | [12-offline.md](12-offline.md) | オフライン対応（IndexedDB / Service Worker / 同期） |
 | [13-share-target.md](13-share-target.md) | 共有からの取り込み（Web Share Target / /share） |
-| [14-client-state.md](14-client-state.md) | クライアントの状態管理（ストア / 編集の即時反映 / 遅延送信） |
+| [14-app-shortcuts.md](14-app-shortcuts.md) | ホーム画面アイコンからの追加（App Shortcuts / /add） |
+| [15-client-state.md](15-client-state.md) | クライアントの状態管理（ストア / 編集の即時反映 / 遅延送信） |
 
 ## 基本コンセプト
 

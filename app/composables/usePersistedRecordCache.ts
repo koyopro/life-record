@@ -37,7 +37,7 @@ function writeToStorage<T>(storageKey: string, value: Record<string, T>) {
 /**
  * localStorage への書き戻しは間引く。
  *
- * ストアは編集を打鍵のたびに受け取る（docs/14-client-state.md）ので、
+ * ストアは編集を打鍵のたびに受け取る（docs/15-client-state.md）ので、
  * そのつど JSON へ直して書くと入力が重くなる。画面に出るのはメモリ上の値
  * なので、書き戻しが少し遅れても見え方は変わらない。
  */

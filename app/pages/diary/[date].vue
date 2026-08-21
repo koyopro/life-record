@@ -36,7 +36,7 @@ const { error: fetchError } = store.track(date)
  *
  * 読むのはストアの控えだけにする。サーバーから取った内容も、書いた内容も
  * そこへ入るので、書いてから別の日へ移って戻っても編集前の本文は出ない
- * （docs/14-client-state.md）。初めて開く日は、控えが無いので届くまで
+ * （docs/15-client-state.md）。初めて開く日は、控えが無いので届くまで
  * 読み込み中の表示になる。
  */
 const diary = computed(() => store.byDate(date.value))

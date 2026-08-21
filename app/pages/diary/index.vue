@@ -65,7 +65,7 @@ const byDate = computed(
  * 一覧はサーバーから取るが、書いた直後はまだ古い内容が返る。手元に控えが
  * ある日は、そちらの答えを優先する（空にした日を「まだある」と出さないよう、
  * 控えがあるなら「無い」という答えも尊重する）。書いてから一覧へ戻ったときに
- * 編集前の抜粋が出ないようにするため（docs/14-client-state.md）。
+ * 編集前の抜粋が出ないようにするため（docs/15-client-state.md）。
  */
 function previewOf(date: string): DiarySummaryDto | undefined {
   if (store.knows(date)) return store.summaryOf(date) ?? undefined

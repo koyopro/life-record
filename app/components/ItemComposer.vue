@@ -32,6 +32,14 @@ const props = withDefaults(
      * （共有の受付）では、開く操作を挟まずそのまま出す。
      */
     inline?: boolean
+    /**
+     * 置かれた時点で入力欄へフォーカスするか。
+     *
+     * 一覧のある画面では邪魔になるので既定は false（下の defineExpose の
+     * 近くを参照）。書くことしかしない画面（ホーム画面アイコンの長押しから
+     * 開く /add。docs/14-app-shortcuts.md）でだけ true にする。
+     */
+    autofocus?: boolean
   }>(),
   {
     placeholder: '思いついたことを書く\n1行目がタイトルになります',
@@ -39,6 +47,7 @@ const props = withDefaults(
     initialText: '',
     submitLabel: '追加',
     inline: false,
+    autofocus: false,
   },
 )
 
@@ -257,13 +266,15 @@ function focus() {
 // 最初から入っているテキストは、高さを合わせないと後ろが隠れる
 onMounted(() => {
   if (props.initialText) autoGrow()
+  if (props.autofocus) focus()
 })
 
 defineExpose({ focus })
 
 /*
- * 開いた直後の自動フォーカスは持たない。フォーカスされていると一覧の
- * キーボード操作が入力欄に吸われ、スマートフォンでは勝手にキーボードが出る。
+ * 一覧のある画面では、開いた直後に自動でフォーカスしない（既定）。
+ * フォーカスされていると一覧のキーボード操作が入力欄に吸われ、
+ * スマートフォンでは勝手にキーボードが出る。
  * 書き始めるときは `t` でここへ移る（docs/08-todo-management.md 8.4）。
  */
 useComposerRegistration(focus)

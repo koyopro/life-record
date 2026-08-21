@@ -55,7 +55,7 @@ const { error: detailError } = detailStore.track(id)
  * 本文・作業記録（Section）は Item のメタデータと違い IndexedDB に無いため、
  * 読むのはストアの控えだけにする。サーバーから取った内容も、書いた内容も
  * そこへ入るので、書いてから別の Item へ切り替えて戻っても編集前の本文は
- * 出ない（docs/14-client-state.md）。
+ * 出ない（docs/15-client-state.md）。
  */
 const cachedDetail = computed(() => detailStore.byId(id.value))
 
@@ -211,7 +211,7 @@ const logSections = computed<SectionDto[]>(() =>
  * 画面に出す本文。
  *
  * 下書きを画面側に持たない。打鍵はそのままストアへ渡し、送信はストアが
- * 遅らせて裏で行う（docs/14-client-state.md）。Section が取れていなくても、
+ * 遅らせて裏で行う（docs/15-client-state.md）。Section が取れていなくても、
  * ローカル（IndexedDB）の Item が本文の写しを持っているので、取得を待つ間は
  * それが出る（追加した直後や初めて開いたときに空のまま置かれない）。
  * 編集は Section が分かってから（下の readonly）。
@@ -285,7 +285,7 @@ const urlSave = useAutosave({
  * いないタスクに未同期の印が付く）。
  *
  * 本文はここに出てこない。下書きを持たず、サーバーの内容を当てるかどうかも
- * ストアが決めている（docs/14-client-state.md）。
+ * ストアが決めている（docs/15-client-state.md）。
  */
 watch(item, (value) => {
   if (!value) return

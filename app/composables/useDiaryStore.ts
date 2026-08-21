@@ -12,7 +12,7 @@ import {
  *
  * Item 詳細（useItemDetailStore）と同じ形で、**画面が読むのはこの控えだけ**に
  * する。編集はローカルへ即座に反映し、送信は裏で遅らせて行うので、書いてから
- * 別の日へ移って戻っても編集前の本文は出ない（docs/14-client-state.md）。
+ * 別の日へ移って戻っても編集前の本文は出ない（docs/15-client-state.md）。
  */
 
 /** 遅延送信は画面より長生きするのでモジュールに置く（useItemDetailStore と同じ）。 */
@@ -81,7 +81,7 @@ export function useDiaryStore() {
      * は間に合わないことがある**。送信そのものが打ち切られるため。ここを
      * 確実にするには、送るものを IndexedDB へ置いて次回に持ち越す必要が
      * あり、それは Section と日記をオフライン対応させる話になる
-     * （docs/12-offline.md 12.9 / docs/14-client-state.md）。
+     * （docs/12-offline.md 12.9 / docs/15-client-state.md）。
      */
     if (import.meta.client) {
       const onLeaving = () => {

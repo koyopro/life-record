@@ -85,7 +85,7 @@ Vercel 上での API 実装・ルーティング・型共有が一体化され�
 
 本文（Section）と日記は IndexedDB に持たないが、考え方は同じで、画面が読むのは
 **ストアの控えだけ**にする。編集はそこへ即座に反映し、送信はストアが遅らせて
-裏で行う（詳細は [14-client-state.md](14-client-state.md)）。
+裏で行う（詳細は [15-client-state.md](15-client-state.md)）。
 
 - 操作はまず IndexedDB へ書き、画面はそれを読み直す（`useItemStore`）
 - 送信は列（`SyncQueue`）へ積むだけで待たない。実際に送るのは `useSync`
@@ -114,7 +114,7 @@ Item に対する操作の宛先が、応答を待たずに決まっている必
 - ルーティング: Nuxt のファイルベースルーティング
 - 状態管理: composable によるストア（`useItemStore` / `useItemDetailStore` /
   `useDiaryStore`）。Pinia は入れていない。問題は置き場ではなく「書き込みが
-  読み取り経路を通っているか」だったため（[14-client-state.md](14-client-state.md) 14.5）
+  読み取り経路を通っているか」だったため（[15-client-state.md](15-client-state.md) 14.5）
 - スタイル: 未確定（Tailwind CSS 等）
 
 ### 画面構成（想定）

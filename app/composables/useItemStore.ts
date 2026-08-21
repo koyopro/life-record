@@ -139,7 +139,7 @@ export function useItemStore() {
    *
    * 本文の正本は Section（サーバー）で、詳細画面が保存した時点で届いている。
    * ここを更新しないと、本文を書き換えて一覧へ戻っても、次の取り直しまで
-   * 古い抜粋が出たままになる（docs/14-client-state.md）。
+   * 古い抜粋が出たままになる（docs/15-client-state.md）。
    */
   async function setBodyCopy(id: string, body: string | null): Promise<void> {
     if (!import.meta.client) return

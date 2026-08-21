@@ -8,7 +8,7 @@ import {
 
 /**
  * Section の並びは、ストアが編集を即座に反映するためにクライアントでも
- * 計算する（docs/14-client-state.md）。サーバー（server/utils/items.ts）と
+ * 計算する（docs/15-client-state.md）。サーバー（server/utils/items.ts）と
  * 同じ結果にならないと、取り直したときに記録が飛んで見える。
  */
 

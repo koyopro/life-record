@@ -21,7 +21,7 @@ const store = useItemDetailStore()
 
 /*
  * 下書きを画面側に持たない。打鍵はそのままストアへ渡し、送信はストアが
- * 遅らせて裏で行う（docs/14-client-state.md）。持たないので、
+ * 遅らせて裏で行う（docs/15-client-state.md）。持たないので、
  * 「編集中はサーバーの内容で上書きしない」という手当ても要らない。
  */
 const body = computed({
