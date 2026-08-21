@@ -490,6 +490,15 @@ function onKeydown(event: KeyboardEvent) {
       // macOS の Ctrl+D は「カーソルより後ろを1文字消す」
       if (event.ctrlKey) return onForwardDelete(event)
       return
+    case 'h':
+      /*
+       * macOS の Ctrl+H は Backspace。1文字消すところは入力欄が自分で行うが、
+       * 行頭で押したときに前の行と繋ぐ（＝改行を消す）のはこちらの担当なので、
+       * Backspace と同じ経路へ送る。行頭以外なら onBackspace は何もせずに
+       * 素通しするため、二重に消えることはない。
+       */
+      if (event.ctrlKey) return onBackspace(event)
+      return
     case 'k':
       // macOS の Ctrl+K は「カーソルより後ろを行末まで消す」(Emacs 由来)。
       // 空行なら消す文字がなく、そこにあるのは改行なので Ctrl+D と同じ扱いにする
