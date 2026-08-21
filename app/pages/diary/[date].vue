@@ -225,6 +225,11 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 <style scoped>
 .page {
   display: grid;
+  /*
+   * 列は必ず親の幅に収める。既定（auto）だと、中身のいちばん広いものの
+   * 最小幅まで列が広がり、狭い端末ではページが横スクロールする。
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
@@ -263,10 +268,14 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 
 .head__title {
   margin: 0;
+  min-width: 0;
   font-size: 1.25rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  /* 入りきらないときは日付が縮む。前後のボタンを押し出さないため */
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .head__step,

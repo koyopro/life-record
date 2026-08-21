@@ -180,6 +180,8 @@ function messageOf(e: unknown): string {
 <style scoped>
 .page {
   display: grid;
+  /* 列は必ず親の幅に収める（中身の最小幅で広がらないようにする） */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
@@ -239,14 +241,17 @@ function messageOf(e: unknown): string {
   flex: 1;
   min-width: 0;
   display: grid;
+  /* ファイル選択の固有幅で列が広がらないようにする */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.375rem;
 }
 
 .add__file {
   font-size: 0.8125rem;
   color: var(--text-muted);
-  /* ファイル名が長くても、行を押し広げない */
+  /* 選択ボタンとファイル名の固有幅で、行を押し広げない */
   min-width: 0;
+  max-width: 100%;
 }
 
 .add__name {

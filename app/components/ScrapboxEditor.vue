@@ -1513,6 +1513,14 @@ defineExpose({
   /* 行の並べ替えに order を使うので flex にする */
   display: flex;
   flex-direction: column;
+  /*
+   * 親より広くならないようにする。
+   *
+   * 中の textarea は既定で 20 文字ぶんの固有幅を持ち、これが縮まないと
+   * この枠ごと画面より広くなる。狭い端末や文字を大きくした端末では、
+   * それだけでページが横スクロールし、少し縮小して表示される。
+   */
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1655,6 +1663,8 @@ defineExpose({
 .editor__input {
   font: inherit;
   width: 100%;
+  /* 20 文字ぶんの固有幅（cols の既定）で枠を押し広げさせない */
+  min-width: 0;
   display: block;
   resize: none;
   overflow: hidden;

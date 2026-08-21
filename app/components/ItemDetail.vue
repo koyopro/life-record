@@ -957,6 +957,13 @@ async function removeSection(section: SectionDto) {
 <style scoped>
 .page {
   display: grid;
+  /*
+   * 列は必ず親の幅に収める。既定（auto）だと、中身のいちばん広いものの
+   * 最小幅まで列が広がる。タイトルの入力欄（textarea）は 20 文字ぶんの
+   * 固有幅を持つため、狭い端末や文字を大きくした端末ではページごと
+   * 横スクロールし、少し縮小して表示される。
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
@@ -988,6 +995,7 @@ async function removeSection(section: SectionDto) {
 
 .head {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
 }
 
@@ -999,7 +1007,12 @@ async function removeSection(section: SectionDto) {
 }
 
 .head__title {
-  flex: 1 1 auto;
+  /*
+   * 基準を 0 にする。textarea は既定で 20 文字ぶんの固有幅を持ち、それを
+   * 基準にすると、狭い端末や文字を大きくした端末で行ごと画面より広くなる
+   * （ページが横スクロールし、少し縮小して表示される）。
+   */
+  flex: 1 1 0;
   min-width: 0;
   resize: none;
   background: transparent;
@@ -1115,6 +1128,7 @@ async function removeSection(section: SectionDto) {
  */
 .meta {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.375rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1159,6 +1173,8 @@ async function removeSection(section: SectionDto) {
 .meta__values {
   display: flex;
   flex-wrap: wrap;
+  /* 値が長くても、行ごと画面より広くならないようにする */
+  min-width: 0;
   gap: 0.375rem;
 }
 
