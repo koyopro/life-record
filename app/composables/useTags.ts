@@ -1,6 +1,28 @@
 import type { TagColor, TagDto } from '~~/shared/types/tag'
 
 /**
+ * 直近に取れたタグの色を控えておく場所（名前 → 色）。
+ *
+ * リロードは Service Worker が返す殻から始まるため、サーバー描画の内容が
+ * 無く、`/api/tags` の応答が届くまでタグの色を持たない（docs/12-offline.md 12.2）。
+ * その間は手元の Item から数えたタグを出しており、色を持たないので
+ * すべて既定の灰色になってしまう。前回の色を控え、届くまでこれで描く。
+ *
+ * 正本はサーバー。ここにあるのは初期表示のための控えでしかない
+ * （docs/15-client-state.md 14.4）。
+ */
+const COLORS_STORAGE_KEY = 'datalake:tag-colors'
+
+/**
+ * 最後に控えた内容。
+ *
+ * `useTags()` は一覧のカードそれぞれから呼ばれるので、取得のたびに
+ * 同じ内容を何十回も書き出さないよう、変わったときだけ書く。
+ * 読み書きするのはブラウザだけなので、サーバー側で共有されることはない。
+ */
+let lastRememberedColors: string | null = null
+
+/**
  * タグ一覧。候補表示と絞り込みで使う。
  *
  * 画面をまたいで同じ内容を見せたいので useFetch のキーで共有する。
@@ -16,6 +38,45 @@ export function useTags() {
   })
 
   const store = useItemStore()
+
+  /** 覚えている色。取得が終わるまでの間だけ使う。 */
+  const rememberedColors = useState<Record<string, TagColor | null>>(
+    'tags:remembered-colors',
+    () => ({}),
+  )
+
+  onMounted(() => {
+    if (Object.keys(rememberedColors.value).length > 0) return
+    try {
+      const raw = localStorage.getItem(COLORS_STORAGE_KEY)
+      if (raw) rememberedColors.value = JSON.parse(raw) as Record<string, TagColor | null>
+    } catch {
+      // 読めない環境（プライベートブラウズなど）では、取得が終わるまで既定の色
+    }
+  })
+
+  // 取れたら控え直す。次のリロードで最初から色を出せるようにする
+  watch(
+    data,
+    (list) => {
+      if (!import.meta.client || !list?.length) return
+
+      const next: Record<string, TagColor | null> = {}
+      for (const tag of list) next[tag.name] = tag.color
+
+      const json = JSON.stringify(next)
+      if (json === lastRememberedColors) return
+      lastRememberedColors = json
+
+      rememberedColors.value = next
+      try {
+        localStorage.setItem(COLORS_STORAGE_KEY, json)
+      } catch {
+        // 書けなくても、その回の表示は変わらない
+      }
+    },
+    { immediate: true },
+  )
 
   /**
    * 手元の Item から数えたタグ。id はサーバーのものではないと分かる形にする。
@@ -38,8 +99,13 @@ export function useTags() {
 
   const tags = computed(() => {
     const fetched = data.value ?? []
-    if (error.value || fetched.length === 0) return local.value
-    return fetched
+    if (!error.value && fetched.length > 0) return fetched
+
+    // 色だけは覚えているものを重ねる。件数は手元の Item から数えたほうが新しい
+    return local.value.map((tag) => ({
+      ...tag,
+      color: rememberedColors.value[tag.name] ?? null,
+    }))
   })
 
   /** 入力途中の文字列に対する候補。すでに付いているものは除く。 */
