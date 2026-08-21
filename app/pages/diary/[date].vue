@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ItemDto } from '~~/shared/types/item'
+import type { Shortcut } from '~/composables/useShortcuts'
 import { formatAppDate, isAppDate, shiftAppDate } from '~~/shared/utils/date'
 import { groupWorkedOn } from '~/utils/diary-worked-on'
 import { startItemLinkDrag } from '~/utils/item-drag'
@@ -69,6 +70,28 @@ async function leaveTo(path: string) {
 function goTo(next: string) {
   return leaveTo(`/diary/${next}`)
 }
+
+/*
+ * 日付の移動はキーボードからも行えるようにする（`h` / `l`）。
+ * 一覧の `j` / `k` と同じく vi の並びに合わせる。本文を書いている間は
+ * 効かない（入力欄では無効。docs/08-todo-management.md 8.4）。
+ */
+useShortcuts(
+  computed<Shortcut[]>(() => [
+    {
+      keys: ['h'],
+      label: '前の日へ',
+      group: '移動',
+      run: () => goTo(shiftAppDate(date.value, -1)),
+    },
+    {
+      keys: ['l'],
+      label: '次の日へ',
+      group: '移動',
+      run: () => goTo(shiftAppDate(date.value, 1)),
+    },
+  ]),
+)
 
 /**
  * カレンダー（日記の一覧）へ移る。
@@ -159,7 +182,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
       </p>
 
       <!--
-        その日に作業した Item。Section の日付から導出し（docs/02-data-model.md 2.7）、
+        その日に作業した Item。Section の日付から導出し（docs/02-data-model.md 2.8）、
         完了したものとそれ以外に分けて出す（app/utils/diary-worked-on.ts）。
       -->
       <section

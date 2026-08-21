@@ -198,7 +198,7 @@ function onTitleKeydown(event: KeyboardEvent) {
 // --- 作業記録（リアルタイム保存） ----------------------------------------
 //
 // Item は本文を持たないため、書いた内容は日付付きの Section に入る
-// （docs/02-data-model.md 2.9-1）。画面が既定で出している枠は
+// （docs/02-data-model.md 2.10-1）。画面が既定で出している枠は
 // **その日の作業記録**で、日をまたげば枠が分かれる
 // （docs/03-functional-spec.md 3.2）。Section は書かれるまで作らない。
 
@@ -879,7 +879,7 @@ async function removeSection(section: SectionDto) {
             <header class="today__head">
               <span class="today__date">{{ formatAppDate(today) }}</span>
               <span class="today__badge">今日</span>
-              <!-- 作業記録と日記は日付だけで結び付く（docs/02-data-model.md 2.7） -->
+              <!-- 作業記録と日記は日付だけで結び付く（docs/02-data-model.md 2.8） -->
               <NuxtLink class="today__diary" :to="`/diary/${today}`">日記</NuxtLink>
               <SaveDot class="today__save" :state="todaySave.state" />
             </header>

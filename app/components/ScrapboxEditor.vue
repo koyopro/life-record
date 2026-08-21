@@ -368,9 +368,40 @@ const emojiStart = ref<number | null>(null)
 const emojiQuery = ref('')
 const emojiIndex = ref(0)
 
-const emojiMatches = computed<EmojiEntry[]>(() =>
-  emojiStart.value === null ? [] : searchEmoji(emojiQuery.value),
-)
+/**
+ * 候補ひとつ。絵文字（Unicode 文字）と、自分で登録したアイコン（画像）の
+ * どちらかになる（docs/11-scrapbox-notation.md 11.8）。
+ *
+ * 絵文字は選んだ時点で文字に置き換わるが、アイコンは文字が無いので
+ * `:name:` を本文に残し、表示のときに画像へ変える。
+ */
+type PickerEntry =
+  | { kind: 'emoji'; name: string; char: string }
+  | { kind: 'icon'; name: string; path: string }
+
+const { map: iconMap, search: searchIcons } = useIcons()
+
+/**
+ * 候補。自分で登録したアイコンを先に出す。
+ *
+ * 数が少なく、探しているのはたいていこちら。絵文字は数が多いので、
+ * 先に出すと登録したものが埋もれる。
+ */
+const emojiMatches = computed<PickerEntry[]>(() => {
+  if (emojiStart.value === null) return []
+
+  const icons = searchIcons(emojiQuery.value).map(
+    (icon): PickerEntry => ({ kind: 'icon', name: icon.name, path: icon.path }),
+  )
+  const emoji = searchEmoji(emojiQuery.value, 8 - icons.length).map(
+    (entry: EmojiEntry): PickerEntry => ({
+      kind: 'emoji',
+      name: entry.name,
+      char: entry.char,
+    }),
+  )
+  return [...icons, ...emoji]
+})
 
 function closeEmojiPicker() {
   emojiStart.value = null
@@ -417,18 +448,25 @@ function updateEmojiTrigger() {
   emojiIndex.value = 0
 }
 
-/** 候補を選び、`:` からキャレットまでを絵文字に置き換える。 */
-function selectEmoji(entry: EmojiEntry) {
+/**
+ * 候補を選び、`:` からキャレットまでを置き換える。
+ *
+ * 絵文字は文字そのものに、登録したアイコンは `:name:` に置き換える。
+ * アイコンには文字が無いため、本文には名前を残しておく必要がある。
+ */
+function selectEmoji(entry: PickerEntry) {
   const start = emojiStart.value
   const el = input.value
   if (start === null || !el) return
 
+  const inserted = entry.kind === 'emoji' ? entry.char : `:${entry.name}:`
+
   const caret = el.selectionStart ?? activeText.value.length
   const value = activeText.value
-  const next = value.slice(0, start) + entry.char + value.slice(caret)
+  const next = value.slice(0, start) + inserted + value.slice(caret)
   replaceActiveLine(next)
 
-  const newCaret = start + entry.char.length
+  const newCaret = start + inserted.length
   void setCaret(newCaret, newCaret)
   closeEmojiPicker()
 }
@@ -1395,7 +1433,7 @@ defineExpose({
           preventDefault し、textarea の blur（＝行の編集解除）より前に
           selectEmoji を確定させる。
         -->
-        <ul v-if="emojiStart !== null" class="editor__emoji" role="listbox" aria-label="絵文字候補">
+        <ul v-if="emojiStart !== null" class="editor__emoji" role="listbox" aria-label="絵文字・アイコンの候補">
           <li
             v-for="(entry, i) in emojiMatches"
             :key="entry.name"
@@ -1405,18 +1443,25 @@ defineExpose({
             :aria-selected="i === emojiIndex"
             @mousedown.prevent="selectEmoji(entry)"
           >
-            <span class="editor__emoji-char" aria-hidden="true">{{ entry.char }}</span>
+            <img
+              v-if="entry.kind === 'icon'"
+              class="editor__emoji-icon"
+              :src="entry.path"
+              alt=""
+              loading="lazy"
+            />
+            <span v-else class="editor__emoji-char" aria-hidden="true">{{ entry.char }}</span>
             <span class="editor__emoji-name">:{{ entry.name }}:</span>
           </li>
           <li v-if="!emojiMatches.length" class="editor__emoji-empty">
-            該当する絵文字がありません
+            該当する絵文字・アイコンがありません
           </li>
         </ul>
       </div>
 
       <!--
         renderLine は入力を全てエスケープしてから組み立てるため、
-        ここで v-html を使ってよい（docs/11-scrapbox-notation.md 11.9）。
+        ここで v-html を使ってよい（docs/11-scrapbox-notation.md 11.10）。
       -->
       <div
         v-for="(line, index) in parsed"
@@ -1426,7 +1471,7 @@ defineExpose({
         :style="{ order: index, '--sb-indent': line.indent }"
         :data-line-index="index"
         @click="onLineClick($event, index)"
-        v-html="renderLine(line)"
+        v-html="renderLine(line, { icons: iconMap })"
       />
     </template>
 
@@ -1555,6 +1600,13 @@ defineExpose({
 .editor__emoji-char {
   font-size: 1.125rem;
   line-height: 1;
+}
+
+/* 登録したアイコン。絵文字1文字と同じ大きさに収める */
+.editor__emoji-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
 }
 
 .editor__emoji-name {
@@ -1788,5 +1840,19 @@ defineExpose({
 
 .editor :deep(.sb-image--large) {
   width: 100%;
+}
+
+/*
+ * 自分で登録したアイコン（`:name:`）。
+ *
+ * 文字の一部として文中に置くものなので、行の高さに収める。em で持たせて、
+ * 見出し（`[* ]`）の中では文字と一緒に大きくなるようにする。
+ */
+.editor :deep(.sb-icon) {
+  height: 1.25em;
+  width: auto;
+  max-height: none;
+  vertical-align: -0.25em;
+  object-fit: contain;
 }
 </style>

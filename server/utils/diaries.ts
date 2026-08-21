@@ -5,7 +5,7 @@ import { toItemDtos } from '~~/server/utils/items'
 import type { ItemDto } from '~~/shared/types/item'
 
 /**
- * その日に作業した Item を引く（docs/02-data-model.md 2.7）。
+ * その日に作業した Item を引く（docs/02-data-model.md 2.8）。
  *
  * Diary と Section は直接の関連を持たず、同じ日付であることだけで結び付く。
  */

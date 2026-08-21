@@ -71,6 +71,13 @@
       "when": 1787193883597,
       "tag": "0009_pink_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787298665098,
+      "tag": "0010_black_nextwave",
+      "breakpoints": true
     }
   ]
 }

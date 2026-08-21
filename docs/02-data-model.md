@@ -256,7 +256,27 @@ Diary は Section に分割せず、1日分の文章を直接 `body` として�
 
 ---
 
-## 2.7 Diary と Item の相互ナビゲーション
+## 2.7 Icon
+
+本文に `:name:` と書いて置ける、自分で登録したアイコン
+（[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.8）。
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| id | UUID | Yes | アイコンID |
+| name | text | Yes | 呼び名（小文字・英数字と `_` `-`・32文字まで・一意） |
+| path | text | Yes | 画像の場所（`/images/<ID>.<拡張子>`） |
+| created_at | timestamptz | Yes | 作成日時 |
+
+画像の実体は本文中の画像と同じく S3 に置き、ここは**その場所と名前だけ**を
+持つ。アイコンのための置き場は作らない。
+
+本文はこの表を参照しない（`:name:` という文字列があるだけ）。したがって、
+アイコンを消しても本文は壊れず、書いた `:name:` が文字として残る。
+
+---
+
+## 2.8 Diary と Item の相互ナビゲーション
 
 Diary と Section を直接関連付ける中間テーブルは不要。同じ `date` を持つことを利用する。
 
@@ -306,7 +326,7 @@ Diary.date
 
 ---
 
-## 2.8 検索対象
+## 2.9 検索対象
 
 検索対象となる文章は2種類。加えて Item のタイトルも対象とする。
 
@@ -336,7 +356,7 @@ DB設計のテーブル構成を検討した。
 
 ---
 
-## 2.9 設計上の重要な考え方
+## 2.10 設計上の重要な考え方
 
 ### 1. Item に body を持たせない
 
@@ -370,7 +390,7 @@ Diary と Item を直接紐付ける中間テーブルは基本的に不要。
 
 ---
 
-## 2.10 DDL（PostgreSQL / Neon 想定）
+## 2.11 DDL（PostgreSQL / Neon 想定）
 
 最終的な全体像を示す。実際のマイグレーションは `drizzle/` にマイルストーンごとに
 分かれて入っており、スキーマ定義は `server/db/schema.ts` にある。
@@ -455,6 +475,16 @@ CREATE INDEX sections_item_id_idx
 CREATE INDEX sections_date_idx
   ON sections(date);
 
+CREATE TABLE icons (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  path       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT icons_name_unique UNIQUE (name),
+  CONSTRAINT icons_name_not_blank CHECK (length(btrim(name)) > 0),
+  CONSTRAINT icons_name_length CHECK (length(name) <= 32)
+);
+
 CREATE TABLE diaries (
   date       DATE PRIMARY KEY,
   body       TEXT NOT NULL,
@@ -473,7 +503,7 @@ CREATE TABLE diaries (
 
 ---
 
-## 2.11 将来的に検討できること
+## 2.12 将来的に検討できること
 
 - Section に時刻を持たせる（`started_at` など）
 - Scrapbox 記法の対応範囲を広げる（テーブル・アイコンなど）

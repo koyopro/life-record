@@ -65,6 +65,7 @@ export type Inline =
   | PageLinkNode
   | ImageNode
   | HashTagNode
+  | IconNode
 
 export interface TextNode {
   type: 'text'
@@ -118,4 +119,19 @@ export interface ImageNode {
 export interface HashTagNode {
   type: 'hashtag'
   name: string
+}
+
+/**
+ * `:name:` で書く、自分で登録したアイコン（docs/11-scrapbox-notation.md 11.8）。
+ *
+ * 登録されているかどうかは、記法を読む時点では分からない（一覧はサーバーに
+ * ある）。ここでは形だけを見て取り、画像にするか文字のまま出すかは
+ * 描画時に決める。そのため、書かれたままの文字列も持っておく。
+ */
+export interface IconNode {
+  type: 'icon'
+  /** 引くための名前（小文字）。 */
+  name: string
+  /** 書かれたままの `:Name:`。登録が無ければこれをそのまま出す。 */
+  raw: string
 }

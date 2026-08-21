@@ -32,10 +32,25 @@ function safeUrl(value: string): string | null {
   return null
 }
 
+/**
+ * 描画のときだけ要る情報。
+ *
+ * `:name:`（自分で登録したアイコン）は、記法を読む時点では画像かどうかを
+ * 決められない。登録の一覧はサーバーにあるので、描画する側から渡す
+ * （docs/11-scrapbox-notation.md 11.8）。
+ */
+export interface RenderOptions {
+  /** アイコンの名前 → 画像のパス。渡さなければ、書かれたままの文字を出す。 */
+  icons?: Record<string, string>
+}
+
 /** 全行をまとめて描画する（読み取り専用の表示向け）。 */
-export function renderScrapbox(input: string): string {
+export function renderScrapbox(input: string, options: RenderOptions = {}): string {
   return parseScrapbox(input)
-    .map((line) => `<div class="${lineClass(line)}"${indentStyle(line)}>${renderLine(line)}</div>`)
+    .map(
+      (line) =>
+        `<div class="${lineClass(line)}"${indentStyle(line)}>${renderLine(line, options)}</div>`,
+    )
     .join('')
 }
 
@@ -45,7 +60,7 @@ export function renderScrapbox(input: string): string {
  * 行の外側（`div` と字下げ）は呼び出し側が組み立てる。カーソルのある行だけを
  * テキスト入力に差し替えるとき、外枠を共通にしておくと見た目がずれない。
  */
-export function renderLine(line: Line): string {
+export function renderLine(line: Line, options: RenderOptions = {}): string {
   switch (line.type) {
     case 'codeHeader':
       // `code:` は行頭として余白に置き換えるので、ここではファイル名だけを出す
@@ -54,7 +69,7 @@ export function renderLine(line: Line): string {
       return `<code class="sb-code__text">${escapeHtml(line.content) || '&nbsp;'}</code>`
     case 'quote':
     case 'text': {
-      const html = renderInline(line.nodes)
+      const html = renderInline(line.nodes, options)
       // 空行の高さを保つ
       return html || '&nbsp;'
     }
@@ -78,11 +93,11 @@ function kebab(value: string): string {
   return value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)
 }
 
-export function renderInline(nodes: Inline[]): string {
-  return nodes.map(renderNode).join('')
+export function renderInline(nodes: Inline[], options: RenderOptions = {}): string {
+  return nodes.map((node) => renderNode(node, options)).join('')
 }
 
-function renderNode(node: Inline): string {
+function renderNode(node: Inline, options: RenderOptions): string {
   switch (node.type) {
     case 'text':
       return escapeHtml(node.value)
@@ -91,7 +106,7 @@ function renderNode(node: Inline): string {
       return `<code class="sb-code-inline">${escapeHtml(node.value)}</code>`
 
     case 'decoration': {
-      const inner = renderInline(node.nodes)
+      const inner = renderInline(node.nodes, options)
       const classes = ['sb-deco']
       // Scrapbox は `*` の数で文字サイズが変わる。見出し記法はない。
       if (node.level > 0) classes.push(`sb-deco--level${Math.min(node.level, 6)}`)
@@ -103,7 +118,7 @@ function renderNode(node: Inline): string {
 
     case 'link': {
       const href = safeUrl(node.href)
-      const inner = renderInline(node.nodes)
+      const inner = renderInline(node.nodes, options)
       if (!href) return inner
       // アプリ内のパス（/items/... /diary/...）は、同じタブの中の
       // ページ遷移として扱う。外部リンクと違い、新規タブを開くと
@@ -130,6 +145,17 @@ function renderNode(node: Inline): string {
 
     case 'hashtag':
       return `<span class="sb-hashtag">#${escapeHtml(node.name)}</span>`
+
+    case 'icon': {
+      const src = options.icons?.[node.name]
+      // 登録が無ければ書かれたままの文字を出す。`12:30:45` のような
+      // 普通の文章を、記法として食べてしまわないため
+      if (!src) return escapeHtml(node.raw)
+
+      const safe = safeUrl(src)
+      if (!safe) return escapeHtml(node.raw)
+      return `<img class="sb-icon" src="${escapeHtml(safe)}" alt="${escapeHtml(node.raw)}" title="${escapeHtml(node.raw)}" loading="lazy" />`
+    }
   }
 }
 
@@ -173,6 +199,9 @@ function plainInline(nodes: Inline[]): string {
           return ''
         case 'hashtag':
           return `#${node.name}`
+        // 抜粋では画像を出さないので、書かれたままの `:name:` を残す
+        case 'icon':
+          return node.raw
       }
     })
     .join('')

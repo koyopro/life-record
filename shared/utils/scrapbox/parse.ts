@@ -27,6 +27,14 @@ const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i
 const APP_IMAGE_PATH = /^\/images\//
 
 /**
+ * `:name:`（自分で登録したアイコン）。
+ *
+ * 使える文字は絵文字のショートコードと同じ範囲にそろえる
+ * （shared/types/icon.ts の ICON_NAME_PATTERN）。
+ */
+const ICON_PATTERN = /^:([a-zA-Z0-9_-]+):/
+
+/**
  * このサービスの Item 詳細を指すパス。
  *
  * 日記とタスクの本文で相互にリンクを書けるように、画像リンク
@@ -208,6 +216,26 @@ export function parseInline(input: string): Inline[] {
       if (match) {
         flush()
         nodes.push({ type: 'hashtag', name: match[1]! })
+        i += match[0].length
+        continue
+      }
+    }
+
+    /*
+     * `:name:` は自分で登録したアイコン（11.8）。
+     *
+     * ここでは形だけを見る。登録が無ければ描画側が書かれたままの文字を
+     * 出すので、`12:30:45` のような普通の文章が壊れることはない。
+     */
+    if (char === ':') {
+      const match = ICON_PATTERN.exec(input.slice(i))
+      if (match) {
+        flush()
+        nodes.push({
+          type: 'icon',
+          name: match[1]!.toLowerCase(),
+          raw: match[0],
+        })
         i += match[0].length
         continue
       }

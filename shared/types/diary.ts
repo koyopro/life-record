@@ -18,7 +18,7 @@ export interface DiaryDetailDto extends DiaryDto {
   exists: boolean
   /**
    * その日に作業した Item。同じ日付の Section から導出する
-   * （docs/02-data-model.md 2.7）。
+   * （docs/02-data-model.md 2.8）。
    */
   items: ItemDto[]
 }

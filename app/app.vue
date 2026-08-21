@@ -8,6 +8,17 @@ const route = useRoute()
  */
 const today = useToday()
 
+/*
+ * 本文の `:name:` を画像にするための対応表を、アプリの起動時に取っておく
+ * （docs/11-scrapbox-notation.md 11.8）。
+ *
+ * 本文エディタは日記や詳細を読み込んだあとに現れるので、そちらの setup から
+ * 取りに行くと初回の描画に間に合わない（ハイドレーションの後に作られる
+ * コンポーネントの useFetch はその場では走らない）。どの画面にもある
+ * ここで1回だけ取る。
+ */
+useIcons()
+
 /** 今日の日記（「日記」タブと `g` `d` の行き先）。 */
 const todayDiary = computed(() => `/diary/${today.value}`)
 
@@ -34,6 +45,7 @@ const NAV = computed(() => [
   { to: '/today', label: '今日', match: '/today' },
   { to: '/', label: 'タスク', match: '/' },
   { to: '/tags', label: 'タグ', match: '/tags' },
+  { to: '/icons', label: 'アイコン', match: '/icons' },
   { to: todayDiary.value, label: '日記', match: '/diary' },
   { to: '/search', label: '検索', match: '/search' },
 ])
@@ -295,16 +307,28 @@ function isActive(to: string): boolean {
   padding-bottom: 0.5rem;
 }
 
+/*
+ * 区分の並び。数が増えても1行に収める。
+ *
+ * 折り返すと、狭い端末（360px）でヘッダーだけで2行ぶんの高さを取る。
+ * 入りきらないぶんは横に流し、テーマの切り替えは右端に残す。
+ */
 .nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  /* 区分が増えても、テーマの切り替えは右端に残す */
+  gap: 0.875rem;
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
 }
 
 .nav__link {
   color: var(--text-muted);
+  white-space: nowrap;
   text-decoration: none;
   font-weight: 600;
   font-size: 0.9375rem;

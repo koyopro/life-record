@@ -18,6 +18,7 @@ import { relations, sql } from 'drizzle-orm'
 import { ITEM_STATUSES } from '../../shared/types/item'
 import { TAG_COLORS, TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
 import { RECURRENCE_BASES } from '../../shared/types/recurrence'
+import { ICON_NAME_MAX_LENGTH } from '../../shared/types/icon'
 
 /**
  * データモデルの定義は docs/02-data-model.md を正とする。
@@ -161,6 +162,32 @@ export const itemTags = pgTable(
   ],
 )
 
+/**
+ * 自分で登録するアイコン（docs/11-scrapbox-notation.md 11.8）。
+ *
+ * 画像そのものは本文中の画像と同じく S3 に置き、ここにはその場所
+ * （`/images/<ID>.<拡張子>`）と呼び名だけを持つ。
+ */
+export const icons = pgTable(
+  'icons',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    path: text('path').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique('icons_name_unique').on(t.name),
+    check('icons_name_not_blank', sql`length(btrim(${t.name})) > 0`),
+    check(
+      'icons_name_length',
+      sql`length(${t.name}) <= ${sql.raw(String(ICON_NAME_MAX_LENGTH))}`,
+    ),
+  ],
+)
+
 /** カレンダーベースの1日1ページの日記。date が主キー。 */
 export const diaries = pgTable('diaries', {
   date: date('date').primaryKey(),
@@ -208,4 +235,6 @@ export type Diary = typeof diaries.$inferSelect
 export type NewDiary = typeof diaries.$inferInsert
 export type Tag = typeof tags.$inferSelect
 export type NewTag = typeof tags.$inferInsert
+export type Icon = typeof icons.$inferSelect
+export type NewIcon = typeof icons.$inferInsert
 export type ItemStatus = Item['status']

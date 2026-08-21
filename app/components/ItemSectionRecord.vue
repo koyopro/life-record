@@ -114,7 +114,7 @@ defineExpose({
 
       <!--
         その日の日記へ。Section と Diary は日付だけで結び付く
-        （docs/02-data-model.md 2.7）。
+        （docs/02-data-model.md 2.8）。
       -->
       <NuxtLink
         class="record__diary"
