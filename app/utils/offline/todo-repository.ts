@@ -143,6 +143,22 @@ export async function markSynced(
   await tx.done
 }
 
+/**
+ * 一覧カードに出す本文の写しだけを差し替える。
+ *
+ * 本文の正本は Section（サーバー）で、ここに置いているのはその写し
+ * （`ItemDto.body`）。詳細で本文を保存した時点でサーバーには届いている
+ * ため、送信は積まない。同期状態にも触らない（触ると、書いていない
+ * メタデータまで未送信の扱いになる）。
+ */
+export async function setItemBody(id: string, body: string | null): Promise<void> {
+  const db = await openLocalDatabase()
+  const tx = db.transaction('items', 'readwrite')
+  const local = await tx.store.get(id)
+  if (local && local.body !== body) await tx.store.put({ ...local, body })
+  await tx.done
+}
+
 /** 同期状態を書き換える。送信の成否に応じて印を付け替えるために使う。 */
 export async function setSyncState(
   id: string,
