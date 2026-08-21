@@ -17,12 +17,19 @@ export function useTags() {
 
   const store = useItemStore()
 
-  /** 手元の Item から数えたタグ。id はサーバーのものではないと分かる形にする。 */
+  /**
+   * 手元の Item から数えたタグ。id はサーバーのものではないと分かる形にする。
+   *
+   * 数えるのはサーバー（GET /api/tags）と同じく未完了のものだけ。
+   * 繋がっているかどうかで件数が変わって見えないようにする。
+   */
   const local = computed<TagDto[]>(() => {
     const counts = new Map<string, number>()
     for (const item of store.items.value) {
       if (item.syncState === 'pending_delete') continue
-      for (const name of item.tags) counts.set(name, (counts.get(name) ?? 0) + 1)
+      // 完了済みしか無いタグも、サーバー側と同じく0件として残す
+      const open = item.status === 'closed' ? 0 : 1
+      for (const name of item.tags) counts.set(name, (counts.get(name) ?? 0) + open)
     }
     return [...counts.entries()]
       .map(([name, count]) => ({ id: `local:${name}`, name, count, color: null }))

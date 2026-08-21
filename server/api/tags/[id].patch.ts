@@ -2,6 +2,7 @@ import { and, eq, inArray, ne } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { itemTags, tags } from '~~/server/db/schema'
 import { assertUuid } from '~~/server/utils/items'
+import { countOpenItems } from '~~/server/utils/tags'
 import { isTagColor, normalizeTagName, type TagColor, type TagDto } from '~~/shared/types/tag'
 
 interface Body {
@@ -96,16 +97,12 @@ export default defineEventHandler(async (event): Promise<TagDto> => {
     }
 
     const [row] = await tx.select().from(tags).where(eq(tags.id, finalId))
-    return { id: row!.id, name: row!.name, color: row!.color, count: await countFor(tx, finalId) }
+    return {
+      id: row!.id,
+      name: row!.name,
+      color: row!.color,
+      // 一覧（GET /api/tags）と同じ数え方にする。混ざると統合の直後だけ件数が飛ぶ
+      count: await countOpenItems(tx, finalId),
+    }
   })
 })
-
-type Tx = Parameters<Parameters<ReturnType<typeof useDb>['transaction']>[0]>[0]
-
-async function countFor(tx: Tx, tagId: string): Promise<number> {
-  const rows = await tx
-    .select({ itemId: itemTags.itemId })
-    .from(itemTags)
-    .where(eq(itemTags.tagId, tagId))
-  return rows.length
-}
