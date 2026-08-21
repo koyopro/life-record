@@ -340,6 +340,8 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* タグまで入りきらないときは、タグを次の行へ送る */
+  flex-wrap: wrap;
   gap: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -351,14 +353,22 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   font-size: 0.875rem;
 }
 
+/*
+ * 長いタイトルは画面の幅で折り返す。
+ *
+ * 1行に収めて端を省略すると、そのぶん行の最小幅がタイトルの長さになり、
+ * ページごと横に広がってしまう（読めない上に横スクロールが出る）。
+ */
 .worked__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .worked__tags {
   display: flex;
+  /* タグが多いときは、タグどうしも折り返す */
+  flex-wrap: wrap;
   gap: 0.375rem;
   flex-shrink: 0;
 }
