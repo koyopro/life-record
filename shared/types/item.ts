@@ -96,11 +96,14 @@ export interface SectionDto {
 }
 
 export interface ItemDetailDto extends ItemDto {
-  /** 日付降順、同一日付内は position 昇順（docs/03-functional-spec.md 3.1）。 */
+  /** 日付昇順、同一日付内は position 昇順（docs/03-functional-spec.md 3.1）。 */
   sections: SectionDto[]
   /**
-   * 「本文」として扱う Section の id。最初に作られたもの。
-   * 一覧カードに出す本文（`body`）と同じ Section を指す。
+   * 一覧カードに出す本文（`body`）と同じ Section の id。最初に作られたもの。
+   *
+   * 詳細画面で編集する枠は**当日の Section**であって、これではない
+   * （docs/03-functional-spec.md 3.2）。日をまたいで書き足しても、
+   * 一覧の抜粋がその Item の最初の記録のまま動かないようにするために持つ。
    */
   primarySectionId: string | null
 }

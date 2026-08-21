@@ -27,7 +27,7 @@
 
 ### 2. 書き込みもストアを通す
 
-編集はストアの操作（`editBody` など）を呼ぶ。ストアが控えへ即座に反映し、
+編集はストアの操作（`editTodayBody` など）を呼ぶ。ストアが控えへ即座に反映し、
 送信を予約する。画面はサーバーの応答を待たない。
 
 ### 3. デバウンスするのは送信であって、ローカル反映ではない
@@ -50,9 +50,19 @@
 ### 5. 写しは、写した先も一緒に更新する
 
 `ItemDto.body` は先頭 Section の本文の写しで、IndexedDB にも入っている
-（一覧の `⌘` + `C` でのコピー元、詳細を開いた直後の初期表示）。本文を
-保存したら、この写しも更新する。しないと、次にサーバーから取り直すまで
-（最大30秒）古い本文が残る。
+（一覧の `⌘` + `C` でのコピー元、詳細を開いた直後の初期表示）。先頭
+Section を保存したら、この写しも更新する。しないと、次にサーバーから
+取り直すまで（最大30秒）古い本文が残る。
+
+### 6. まだ Section が無い日の打鍵は、控えとは別に持つ
+
+詳細で書く枠は**その日の Section** で、日をまたげば別の枠になる
+（docs/03-functional-spec.md 3.2）。その日の記録がまだ無いうちは、打った内容を
+ストアの下書き（`item-detail-today-draft`）へ置き、何か書かれた最初の送信で
+Section を作る。
+
+`ItemDto.body`（＝最初の Section の写し）に混ぜてはいけない。混ぜると、
+過去に書いた記録が当日の枠に出てしまう。
 
 ## 14.3 層
 
@@ -60,7 +70,7 @@
 pages / components        読む（computed）／書く（ストアの操作）だけ
         ↓
 ストア                     useItemStore      … TODO のメタデータ（IndexedDB が正）
-                          useItemDetailStore … 本文と作業記録（Section）
+                          useItemDetailStore … 作業記録（Section）
                           useDiaryStore      … 日記
         ↓ 即座に反映              ↓ 送信は遅らせて裏で
 控え（useState + localStorage）   save-scheduler → API
@@ -70,7 +80,8 @@ IndexedDB                        SyncQueue → sync-engine → API
 | ファイル | 役割 |
 |---|---|
 | `app/utils/save-scheduler.ts` | 鍵ごとの遅延送信。順序・失敗・保存状態を持つ。Vue 非依存 |
-| `app/utils/section-order.ts` | Section の並びと先頭 Section の決め方（サーバーと同じ規則） |
+| `app/utils/section-order.ts` | Section の並び・先頭 Section・当日の枠の決め方（サーバーと同じ規則） |
+| `app/composables/useToday.ts` | 「今日」。開いたまま日付をまたいだら切り替わる |
 | `app/composables/usePersistedRecordCache.ts` | 控えの置き場（`useState` ＋ localStorage への書き戻し） |
 | `app/composables/useItemDetailStore.ts` | 本文・作業記録の唯一の入口 |
 | `app/composables/useDiaryStore.ts` | 日記の唯一の入口 |

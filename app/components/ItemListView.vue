@@ -418,7 +418,7 @@ const shortcuts = computed<Shortcut[]>(() => [
   },
   {
     keys: ['y'],
-    label: 'ノートを追加（本文）',
+    label: '今日の作業記録を書く',
     group: '編集',
     run: () => focusDetail('Body'),
   },
@@ -426,7 +426,8 @@ const shortcuts = computed<Shortcut[]>(() => [
     keys: ['Y'],
     display: 'y',
     shift: true,
-    label: '今日の作業記録を書く',
+    // 当日の枠にもう書いてあるときだけ、同じ日の2件目を作る
+    label: '今日の作業記録をもう1件足す',
     group: '編集',
     run: () => focusDetail('TodaySection'),
   },
