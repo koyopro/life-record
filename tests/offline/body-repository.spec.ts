@@ -5,6 +5,7 @@ import {
   getSection,
   mergeServerDiary,
   mergeServerSections,
+  mergeServerSectionsOnDate,
   putDiary,
   putSection,
   sectionsOfItem,
@@ -126,6 +127,53 @@ describe('作業記録のローカル保管', () => {
 
     const found = await sectionsOnDate('2026-08-22')
     expect(found.map((section) => section.date)).toEqual(['2026-08-22'])
+  })
+})
+
+describe('日付ごとの重ね方（日記の「この日にやったこと」）', () => {
+  beforeEach(resetLocalDatabase)
+
+  const OTHER_ITEM = '00000000-0000-4000-8000-0000000000bb'
+
+  it('他の端末で書かれた作業記録を、手元へ写す', async () => {
+    const section = sectionDto({ date: '2026-08-22' })
+    await mergeServerSectionsOnDate(
+      '2026-08-22',
+      [{ ...section, itemId: OTHER_ITEM }],
+      '2026-08-22T10:00:00.000Z',
+    )
+
+    const stored = await getSection(section.id)
+    expect(stored?.itemId).toBe(OTHER_ITEM)
+    expect(stored?.syncState).toBe('synced')
+    expect((await sectionsOnDate('2026-08-22')).map((s) => s.id)).toEqual([section.id])
+  })
+
+  it('別の日付の記録には触らない', async () => {
+    const other = sectionDto({ date: '2026-08-21' })
+    await putSection(toLocalSection(ITEM_ID, other))
+
+    await mergeServerSectionsOnDate('2026-08-22', [], '2026-08-22T10:00:00.000Z')
+
+    expect(await getSection(other.id)).toBeDefined()
+  })
+
+  it('その日の記録が他の端末で消えていれば、手元からも消す', async () => {
+    const removed = sectionDto({ date: '2026-08-22' })
+    await putSection(toLocalSection(ITEM_ID, removed))
+
+    await mergeServerSectionsOnDate('2026-08-22', [], '2026-08-22T10:00:10.000Z')
+
+    expect(await getSection(removed.id)).toBeUndefined()
+  })
+
+  it('まだ送れていない記録は、応答に無くても残す', async () => {
+    const draft = sectionDto({ date: '2026-08-22' })
+    await putSection(toLocalSection(ITEM_ID, draft, 'pending_save'))
+
+    await mergeServerSectionsOnDate('2026-08-22', [], '2026-08-22T10:00:10.000Z')
+
+    expect(await getSection(draft.id)).toBeDefined()
   })
 })
 

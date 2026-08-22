@@ -1,7 +1,8 @@
-import { desc, eq, inArray } from 'drizzle-orm'
+import { asc, desc, eq, inArray } from 'drizzle-orm'
 import type { Executor } from '~~/server/db'
 import { items, sections } from '~~/server/db/schema'
-import { toItemDtos } from '~~/server/utils/items'
+import { toItemDtos, toSectionDto } from '~~/server/utils/items'
+import type { DiarySectionDto } from '~~/shared/types/diary'
 import type { ItemDto } from '~~/shared/types/item'
 
 /**
@@ -28,4 +29,23 @@ export async function itemsWorkedOn(
     .orderBy(desc(items.updatedAt))
 
   return await toItemDtos(db, found)
+}
+
+/**
+ * その日の作業記録を、Item をまたいで引く。
+ *
+ * クライアントは「この日にやったこと」を手元の作業記録から作る
+ * （docs/12-offline.md 12.4）ため、他の端末で書かれた分もここで渡す。
+ */
+export async function sectionsOnDate(
+  db: Executor,
+  date: string,
+): Promise<DiarySectionDto[]> {
+  const rows = await db
+    .select()
+    .from(sections)
+    .where(eq(sections.date, date))
+    .orderBy(asc(sections.position))
+
+  return rows.map((row) => ({ ...toSectionDto(row), itemId: row.itemId }))
 }

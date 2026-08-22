@@ -8,6 +8,7 @@ import {
   allDiaries,
   getDiary,
   mergeServerDiary,
+  mergeServerSectionsOnDate,
   sectionsOnDate,
 } from '~/utils/offline/body-repository'
 import { saveDiaryBody } from '~/utils/offline/body-actions'
@@ -102,7 +103,10 @@ export function useDiaryStore() {
 
   /** 手元へ読み込んである日を、まとめて読み直す（送信が通ったあとなど）。 */
   async function reloadLoaded(): Promise<void> {
-    for (const date of Object.keys(loaded.value)) await reload(date)
+    for (const date of Object.keys(loaded.value)) {
+      await reload(date)
+      await loadWorkedOn(date)
+    }
   }
 
   async function refreshErrors(): Promise<void> {
@@ -152,6 +156,7 @@ export function useDiaryStore() {
 
     async function fetchOne(target: string): Promise<void> {
       await reload(target)
+      await loadWorkedOn(target)
 
       try {
         const detail = await $fetch<DiaryDetailDto>(`/api/diaries/${target}`)
@@ -160,7 +165,20 @@ export function useDiaryStore() {
           { body: detail.body, updatedAt: detail.updatedAt },
           detail.fetchedAt ?? null,
         )
+        /*
+         * その日の作業記録も手元へ重ねる。「この日にやったこと」は手元の
+         * 作業記録から作るので、これをしないと**他の端末で書いた分が出ない**
+         * （この端末で詳細を開いたことのある Item しか手元に無いため）。
+         */
+        await mergeServerSectionsOnDate(target, detail.sections, detail.fetchedAt ?? null)
+
+        // 他の端末で作られた TODO は、まだ手元の一覧に無いことがある
+        if (detail.items.some((item) => !itemStore.byId(item.id))) {
+          await itemStore.fetchFromServer()
+        }
+
         await reload(target)
+        await loadWorkedOn(target)
         error.value = null
         reachable.value = true
       } catch (e) {
@@ -171,10 +189,15 @@ export function useDiaryStore() {
 
     watch(date, (value) => void fetchOne(value), { immediate: true })
 
-    // 画面から出ていくときに、待っているものを送っておく（書いたもの自体は
-    // IndexedDB と列に残るので、送れなくても失われない）
+    /*
+     * 画面から出ていくときは、待っているものを送っておく（書いたもの自体は
+     * IndexedDB と列に残るので、送れなくても失われない）。
+     * 戻ってきたときは取り直す。開いたままにしている間に、別の端末で
+     * 書かれた分を拾うため。
+     */
     const onLeaving = () => {
       if (document.visibilityState === 'hidden') requestFlush()
+      else void fetchOne(unref(date))
     }
     const onPageHide = () => requestFlush()
 

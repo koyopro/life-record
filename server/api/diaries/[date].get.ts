@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { diaries } from '~~/server/db/schema'
 import { assertAppDate } from '~~/server/utils/date'
-import { itemsWorkedOn } from '~~/server/utils/diaries'
+import { itemsWorkedOn, sectionsOnDate } from '~~/server/utils/diaries'
 import type { DiaryDetailDto } from '~~/shared/types/diary'
 
 /**
@@ -18,6 +18,7 @@ export default defineEventHandler(async (event): Promise<DiaryDetailDto> => {
 
   const [found] = await db.select().from(diaries).where(eq(diaries.date, date))
   const items = await itemsWorkedOn(db, date)
+  const sections = await sectionsOnDate(db, date)
 
   return {
     date,
@@ -27,5 +28,6 @@ export default defineEventHandler(async (event): Promise<DiaryDetailDto> => {
     // 応答を作った時刻。手元の保存より前の応答かを、受け取る側が判断できるようにする
     fetchedAt: new Date().toISOString(),
     items,
+    sections,
   }
 })

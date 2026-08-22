@@ -184,9 +184,13 @@ export function useItemDetailStore() {
      * 書いたものは IndexedDB と列に残るので、送る前にページごと消えても
      * 失われない（次に開いたときに送られる）。ここで流すのは、
      * すぐに反映させたいときのため。
+     *
+     * 戻ってきたときは取り直す。開いたままにしている間に、別の端末で
+     * 書かれた分を拾うため。
      */
     const onLeaving = () => {
       if (document.visibilityState === 'hidden') requestFlush()
+      else void fetchOne(unref(id))
     }
     const onPageHide = () => requestFlush()
 

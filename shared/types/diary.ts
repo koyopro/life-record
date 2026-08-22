@@ -1,4 +1,4 @@
-import type { ItemDto } from './item'
+import type { ItemDto, SectionDto } from './item'
 
 /**
  * カレンダーベースの1日1ページの日記（docs/02-data-model.md 2.6）。
@@ -36,6 +36,18 @@ export interface DiaryDetailDto extends DiaryDto {
    * （docs/02-data-model.md 2.8）。
    */
   items: ItemDto[]
+  /**
+   * その日の作業記録そのもの。
+   *
+   * 「この日にやったこと」は手元の作業記録から作る（docs/12-offline.md 12.4）
+   * ので、他の端末で書かれた分もここで受け取って手元へ重ねる。
+   */
+  sections: DiarySectionDto[]
+}
+
+/** 日記から見た作業記録。Item をまたぐので、どの Item のものかを添える。 */
+export interface DiarySectionDto extends SectionDto {
+  itemId: string
 }
 
 /** 一覧に出す1件分。本文は先頭だけを抜き出す。 */

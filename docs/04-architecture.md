@@ -159,7 +159,7 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | POST | `/api/sections/reorder` | 同じ日付の Section の並べ替え |
 | DELETE | `/api/sections/:id` | Section 削除 |
 
-| GET | `/api/diaries/:date` | 指定日の Diary 取得（`updatedAt` / `fetchedAt` つき） |
+| GET | `/api/diaries/:date` | 指定日の Diary 取得（`updatedAt` / `fetchedAt`、その日に作業した Item と作業記録つき） |
 | PUT | `/api/diaries/:date` | Diary の upsert（本文が空なら削除。`updatedAt` を返す） |
 | GET | `/api/diaries` | Diary 一覧 |
 | GET | `/api/days/:date/items` | 指定日に作業した Item 一覧（Section 経由） |

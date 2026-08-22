@@ -1,4 +1,5 @@
 import type { SectionDto } from '~~/shared/types/item'
+import type { DiarySectionDto } from '~~/shared/types/diary'
 import {
   openLocalDatabase,
   type BodySyncState,
@@ -100,6 +101,43 @@ export async function mergeServerSections(
     const local = locals.get(section.id)
     if (local && keepsLocal(local, fetchedAt)) continue
     await tx.store.put(toLocalSection(itemId, section))
+  }
+
+  for (const [id, local] of locals) {
+    if (seen.has(id)) continue
+    if (keepsLocal(local, fetchedAt)) continue
+    await tx.store.delete(id)
+  }
+
+  await tx.done
+}
+
+/**
+ * サーバーから取り直した作業記録を、その日付の分だけ重ねる。
+ *
+ * 日記の「この日にやったこと」は手元の作業記録から作るので、他の端末で
+ * 書かれた分もここで受け取る（docs/12-offline.md 12.4）。Item ごとの
+ * `mergeServerSections` と違い、**同じ日付**を単位に重ねる（応答に入って
+ * いるのはその日の分だけなので、他の日の記録には触らない）。
+ */
+export async function mergeServerSectionsOnDate(
+  date: string,
+  server: DiarySectionDto[],
+  fetchedAt: string | null,
+): Promise<void> {
+  const db = await openLocalDatabase()
+  const tx = db.transaction('sections', 'readwrite')
+  const index = tx.store.index('by-date')
+
+  const locals = new Map<string, LocalSection>()
+  for (const local of await index.getAll(date)) locals.set(local.id, local)
+
+  const seen = new Set<string>()
+  for (const section of server) {
+    seen.add(section.id)
+    const local = locals.get(section.id)
+    if (local && keepsLocal(local, fetchedAt)) continue
+    await tx.store.put(toLocalSection(section.itemId, section))
   }
 
   for (const [id, local] of locals) {
