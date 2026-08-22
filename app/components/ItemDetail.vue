@@ -261,13 +261,70 @@ function focusEnd(el: HTMLTextAreaElement | HTMLInputElement | null) {
   el.setSelectionRange(el.value.length, el.value.length)
 }
 
+/**
+ * URL 欄へ移る（一覧の `u`）。
+ *
+ * URL が空のタスクでは欄そのものを出していない（値があるか、「詳細を追加」
+ * から開いたときだけ出す）。そのままでは移る先が無く、`u` が何も起きない
+ * キーになってしまうので、先に欄を出してから移る。
+ */
+async function focusUrl() {
+  if (!showUrlRow.value) {
+    urlFieldOpen.value = true
+    // 描かれる前にフォーカスしても効かない
+    await nextTick()
+  }
+  focusEnd(urlInput.value)
+}
+
 defineExpose({
   focusBody,
   focusTitle: () => focusEnd(titleInput.value),
-  focusUrl: () => focusEnd(urlInput.value),
+  focusUrl,
   /** 一覧の `Shift` + `y` から、今日の作業記録へ移る。 */
   focusTodaySection: () => addTodaySection(),
 })
+
+/*
+ * 一覧から移ってきたときに入る欄（`?focus=`。docs/08-todo-management.md 8.4）。
+ *
+ * 分割表示なら一覧が右ペインの欄へ直接移せるが、狭い画面には右ペインが無く、
+ * 詳細画面へ移ってからでないと欄そのものが存在しない。そこで、どこへ
+ * 入りたかったのかを URL で受け取り、開けたところで移る。
+ */
+const FOCUS_TARGETS: Record<string, () => void | Promise<void>> = {
+  title: () => focusEnd(titleInput.value),
+  url: () => focusUrl(),
+  body: () => focusBody(),
+  today: () => addTodaySection(),
+}
+
+const route = useRoute()
+const router = useRouter()
+
+/** 一度移ったら、それ以上は追いかけない。 */
+let focusHandled = false
+
+watch(
+  () => item.value?.id,
+  async (loadedId) => {
+    // 分割表示は一覧が直接呼ぶので、こちらでは扱わない
+    if (props.embedded || focusHandled || !loadedId) return
+
+    const run = FOCUS_TARGETS[String(route.query.focus ?? '')]
+    if (!run) return
+
+    focusHandled = true
+    await nextTick()
+    await run()
+
+    // 印は消す。再読み込みのたびに勝手に欄へ入らないようにする
+    const query = { ...route.query }
+    delete query.focus
+    void router.replace({ query })
+  },
+  { immediate: true },
+)
 
 // --- URL（リアルタイム保存） -------------------------------------------
 

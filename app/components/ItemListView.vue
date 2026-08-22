@@ -177,10 +177,18 @@ function open(item: ItemDto) {
 
 interface DetailExposed {
   focusTitle: () => void
-  focusUrl: () => void
+  focusUrl: () => void | Promise<void>
   focusBody: () => void
   focusTodaySection: () => void
 }
+
+/** どの欄へ移りたいかを、詳細画面へ URL で渡すときの名前。 */
+const FOCUS_QUERY = {
+  Title: 'title',
+  Url: 'url',
+  Body: 'body',
+  TodaySection: 'today',
+} as const
 
 const detail = ref<DetailExposed | null>(null)
 
@@ -189,13 +197,17 @@ const detail = ref<DetailExposed | null>(null)
  *
  * 右ペインが出ていればその欄へ。出ていない狭い画面では、
  * 編集できる場所が詳細画面しかないのでそちらへ移動する。
+ * 移動しただけでは欄に入れないので、どこへ入りたかったかを URL で渡す。
  */
 async function focusDetail(field: 'Title' | 'Url' | 'Body' | 'TodaySection') {
   const target = list.cursorItem.value
   if (!target) return
 
   if (!split.value) {
-    await navigateTo(`/items/${target.id}`)
+    await navigateTo({
+      path: `/items/${target.id}`,
+      query: { focus: FOCUS_QUERY[field] },
+    })
     return
   }
 
