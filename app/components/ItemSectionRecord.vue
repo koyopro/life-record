@@ -71,7 +71,18 @@ function onDateInput(event: Event) {
   const value = (event.target as HTMLInputElement).value
   if (!isAppDate(value) || value === props.section.date) return
   emit('changeDate', value)
+  /*
+   * 入力欄を作り直して、いまの日付を出し直す。
+   *
+   * 同じ日にすでに記録があるときは、まとめるかどうかを聞いてから決める
+   * （docs/03-functional-spec.md 3.2）。断られると日付は変わらないのに、
+   * 入力欄には選んだ日付が残ってしまう。
+   */
+  dateInputKey.value += 1
 }
+
+/** 日付の入力欄を作り直すための番号（onDateInput を参照）。 */
+const dateInputKey = ref(0)
 
 const editor = ref<{ focus: () => void } | null>(null)
 
@@ -105,6 +116,7 @@ defineExpose({
       -->
       <input
         v-if="editing"
+        :key="dateInputKey"
         class="record__date-input"
         type="date"
         :value="section.date"

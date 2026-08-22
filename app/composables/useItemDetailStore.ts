@@ -352,6 +352,44 @@ export function useItemDetailStore() {
 
   // --- 記録そのものの操作 ---------------------------------------------------
 
+  /**
+   * その日付の記録を引く。**1つのタスクの記録は、同じ日に1件だけ**
+   * （docs/03-functional-spec.md 3.2）。
+   *
+   * 別の端末で同じ日に書かれた分など、すでに複数ある場合は最後の1件を返す
+   * （当日の枠の決め方と同じ）。
+   */
+  function sectionOnDate(
+    id: string,
+    date: string,
+    exceptId?: string,
+  ): SectionDto | null {
+    return pickTodaySection(
+      sectionsOf(id).filter((section) => section.id !== exceptId),
+      date,
+    )
+  }
+
+  /**
+   * 記録を別の記録へまとめる。
+   *
+   * すでに記録のある日へ日付を移したときに使う。同じ日に2件は作らないが、
+   * 書いたものは捨てないので、本文を続けて書き足してから元の記録を消す。
+   */
+  async function mergeSections(
+    id: string,
+    fromId: string,
+    toId: string,
+  ): Promise<void> {
+    const from = sectionsOf(id).find((s) => s.id === fromId)
+    const to = sectionsOf(id).find((s) => s.id === toId)
+    if (!from || !to) return
+
+    const body = [to.body.trimEnd(), from.body.trim()].filter(Boolean).join('\n')
+    await editSectionBody(id, toId, body)
+    await removeSection(id, fromId)
+  }
+
   /** 作業記録を1件足す。足した記録を返す。 */
   async function addSection(id: string, date: string): Promise<SectionDto> {
     const created: SectionDto = {
@@ -404,6 +442,8 @@ export function useItemDetailStore() {
     changeSectionDate,
     reorderSections,
     removeSection,
+    sectionOnDate,
+    mergeSections,
     reload,
     reloadLoaded,
     track,

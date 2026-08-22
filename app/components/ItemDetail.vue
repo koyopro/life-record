@@ -219,8 +219,6 @@ defineExpose({
   focusBody,
   focusTitle: () => focusEnd(titleInput.value),
   focusUrl,
-  /** 一覧の `Shift` + `y` から、今日の作業記録へ移る。 */
-  focusTodaySection: () => addTodaySection(),
 })
 
 /*
@@ -234,7 +232,6 @@ const FOCUS_TARGETS: Record<string, () => void | Promise<void>> = {
   title: () => focusEnd(titleInput.value),
   url: () => focusUrl(),
   body: () => focusBody(),
-  today: () => addTodaySection(),
 }
 
 const route = useRoute()
@@ -572,17 +569,16 @@ function setRecordRef(sectionId: string, el: unknown) {
  * 作業記録を1件足す（日付は選べる）。
  *
  * 作業した日を後から書くことがあるため、当日以外の記録もここから作る
- * （docs/03-functional-spec.md 3.2）。同じ日付の記録は何件あってもよい。
+ * （docs/03-functional-spec.md 3.2）。
  *
- * ただし**その日の最後の記録がまだ空なら、新しくは作らずそこへ移る**。
- * 押すたびに空の記録が増えると、読み返すときに邪魔になるため。
+ * **1つのタスクの記録は、同じ日に1件だけ**にする。その日の記録がすでに
+ * あれば作らず、そこへ移る（日ごとに1件なら、読み返すときに何をした日か
+ * すぐ分かる）。
  */
 async function addRecord(date: string = addDateValue.value) {
-  const sameDate = sections.value.filter((section) => section.date === date)
-  const last = sameDate[sameDate.length - 1]
-
-  if (last && !last.body.trim()) {
-    focusRecord(last)
+  const existing = detailStore.sectionOnDate(id.value, date)
+  if (existing) {
+    focusRecord(existing)
     return
   }
 
@@ -604,11 +600,6 @@ function focusRecord(section: SectionDto) {
     return
   }
   recordRefs.get(section.id)?.focus()
-}
-
-/** 今日の作業記録へ移る（一覧の `Shift` + `y`）。 */
-function addTodaySection() {
-  return addRecord(today.value)
 }
 
 /**
@@ -637,10 +628,34 @@ function onTodayDateInput(event: Event) {
   void changeSectionDate(section, value)
 }
 
+/**
+ * 記録の日付を変える。
+ *
+ * 移した先にすでに記録があるときは、同じ日に2件にせず**1つにまとめる**
+ * （docs/03-functional-spec.md 3.2）。書いたものは捨てず、本文を続けて
+ * 書き足す。まとめるかどうかは、消える側の記録があるので必ず確認する。
+ */
 async function changeSectionDate(section: SectionDto, date: string) {
   actionError.value = null
+
+  const existing = detailStore.sectionOnDate(id.value, date, section.id)
+
   try {
-    await detailStore.changeSectionDate(id.value, section.id, date)
+    if (!existing) {
+      await detailStore.changeSectionDate(id.value, section.id, date)
+      return
+    }
+
+    if (
+      !confirm(
+        `${formatAppDate(date)} にはすでに作業記録があります。1つにまとめますか？`,
+      )
+    ) {
+      return
+    }
+
+    await detailStore.mergeSections(id.value, section.id, existing.id)
+    emit('changed')
   } catch {
     actionError.value = '日付を変更できませんでした'
   }

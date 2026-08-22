@@ -179,7 +179,6 @@ interface DetailExposed {
   focusTitle: () => void
   focusUrl: () => void | Promise<void>
   focusBody: () => void
-  focusTodaySection: () => void
 }
 
 /** どの欄へ移りたいかを、詳細画面へ URL で渡すときの名前。 */
@@ -187,7 +186,6 @@ const FOCUS_QUERY = {
   Title: 'title',
   Url: 'url',
   Body: 'body',
-  TodaySection: 'today',
 } as const
 
 const detail = ref<DetailExposed | null>(null)
@@ -199,7 +197,7 @@ const detail = ref<DetailExposed | null>(null)
  * 編集できる場所が詳細画面しかないのでそちらへ移動する。
  * 移動しただけでは欄に入れないので、どこへ入りたかったかを URL で渡す。
  */
-async function focusDetail(field: 'Title' | 'Url' | 'Body' | 'TodaySection') {
+async function focusDetail(field: 'Title' | 'Url' | 'Body') {
   const target = list.cursorItem.value
   if (!target) return
 
@@ -433,15 +431,6 @@ const shortcuts = computed<Shortcut[]>(() => [
     label: '今日の作業記録を書く',
     group: '編集',
     run: () => focusDetail('Body'),
-  },
-  {
-    keys: ['Y'],
-    display: 'y',
-    shift: true,
-    // 当日の枠にもう書いてあるときだけ、同じ日の2件目を作る
-    label: '今日の作業記録をもう1件足す',
-    group: '編集',
-    run: () => focusDetail('TodaySection'),
   },
   {
     keys: ['U'],
