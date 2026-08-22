@@ -5,6 +5,7 @@ import type { Line } from '~~/shared/utils/scrapbox/types'
 import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
+import { linePoint } from '~/utils/line-selection'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -1011,20 +1012,6 @@ function onCopy(event: ClipboardEvent) {
   event.preventDefault()
 }
 
-/** 要素の中で最初/最後に見つかるテキストノード。`Range` の起点・終点に使う。 */
-function firstTextNode(el: Element): Text | null {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  return walker.nextNode() as Text | null
-}
-
-function lastTextNode(el: Element): Text | null {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  let node: Node | null
-  let last: Text | null = null
-  while ((node = walker.nextNode())) last = node as Text
-  return last
-}
-
 /**
  * `anchor` 行から `focus` 行までを、ブラウザの選択として実際に選ぶ。
  *
@@ -1036,19 +1023,18 @@ async function applyLineSelection(anchor: number, focus: number) {
   await nextTick()
   const anchorEl = document.querySelector(`[data-line-index="${anchor}"]`)
   const focusEl = document.querySelector(`[data-line-index="${focus}"]`)
-  if (!anchorEl || !focusEl) return
 
-  const forward = anchor <= focus
-  const anchorNode = forward ? firstTextNode(anchorEl) : lastTextNode(anchorEl)
-  const focusNode = forward ? lastTextNode(focusEl) : firstTextNode(focusEl)
-  if (!anchorNode || !focusNode) return
-
-  const anchorOffset = forward ? 0 : anchorNode.length
-  const focusOffset = forward ? focusNode.length : 0
-  window.getSelection()?.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+  if (anchorEl && focusEl) {
+    const forward = anchor <= focus
+    const from = linePoint(anchorEl, forward ? 'start' : 'end')
+    const to = linePoint(focusEl, forward ? 'end' : 'start')
+    window.getSelection()?.setBaseAndExtent(from.node, from.offset, to.node, to.offset)
+  }
 
   // Shift+矢印を続けて押せるよう、フォーカスをコンテナへ移しておく
-  // （1行編集用の textarea は複数行にまたがれないため、すでに外れている）
+  // （1行編集用の textarea は複数行にまたがれないため、すでに外れている）。
+  // 選択を組み立てられなかったときも、フォーカスが本文の外へ逃げないように、
+  // ここは必ず通す
   editorRoot.value?.focus({ preventScroll: true })
 }
 
