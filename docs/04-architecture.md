@@ -153,12 +153,14 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | GET | `/api/tags` | タグ一覧（Item 件数つき） |
 | PATCH | `/api/tags/:id` | タグのリネーム |
 | DELETE | `/api/tags/:id` | タグの削除 |
-| POST | `/api/sections` | Section 作成 |
-| PATCH | `/api/sections/:id` | Section 更新（本文のリアルタイム保存で呼ばれる） |
+| POST | `/api/sections` | Section 作成（id はサーバーが採番） |
+| PUT | `/api/sections/:id` | Section の upsert。**id はクライアントが決める**（オフラインで書いた記録を、繋がってからそのまま送るため。docs/12-offline.md 12.6） |
+| PATCH | `/api/sections/:id` | Section の部分更新（本文・日付） |
+| POST | `/api/sections/reorder` | 同じ日付の Section の並べ替え |
 | DELETE | `/api/sections/:id` | Section 削除 |
 
-| GET | `/api/diaries/:date` | 指定日の Diary 取得 |
-| PUT | `/api/diaries/:date` | Diary の upsert |
+| GET | `/api/diaries/:date` | 指定日の Diary 取得（`updatedAt` / `fetchedAt` つき） |
+| PUT | `/api/diaries/:date` | Diary の upsert（本文が空なら削除。`updatedAt` を返す） |
 | GET | `/api/diaries` | Diary 一覧 |
 | GET | `/api/days/:date/items` | 指定日に作業した Item 一覧（Section 経由） |
 | POST | `/api/uploads` | S3 への署名付きアップロードURLを発行 |

@@ -7,12 +7,26 @@ import {
 } from './todo-repository'
 import {
   cancelOperations,
+  enqueueOnce,
   listOperations,
   nextOperation,
   recordFailure,
   removeOperation,
+  type DiarySavePayload,
   type PatchPayload,
+  type SectionDeletePayload,
+  type SectionReorderPayload,
+  type SectionSavePayload,
 } from './sync-queue'
+import {
+  deleteSection,
+  getDiary,
+  getSection,
+  putDiary,
+  putSection,
+  toLocalSection,
+} from './body-repository'
+import { dropSectionsOfItem } from './body-actions'
 import { rememberDeleted } from './deleted-snapshots'
 import { runOperation, type RequestFn, type SyncOutcome } from './sync-runner'
 
@@ -58,8 +72,11 @@ export async function drainQueue(hooks: EngineHooks): Promise<DrainResult> {
     const operation = await nextOperation(now())
     if (!operation) return { sent, stoppedBy: 'empty' }
 
-    const outcome = await runOperation(await withCurrentBase(operation), hooks.request)
-    const stop = await applyOutcome(operation, outcome, hooks)
+    // 送った内容そのもの（手元の最新を入れ直したもの）を、結果の反映にも使う。
+    // 積んだ時点の値で判断すると、往復中に書き足された分を取りこぼす
+    const sending = await withCurrentValues(operation)
+    const outcome = await runOperation(sending, hooks.request)
+    const stop = await applyOutcome(sending, outcome, hooks)
 
     if (outcome.type === 'done') sent += 1
     if (stop) return { sent, stoppedBy: 'retry' }
@@ -82,13 +99,23 @@ export async function applyOutcome(
       hooks.onReachable?.(true)
       hooks.onError?.(null)
 
+      if (isBodyOperation(operation)) {
+        await applyBodyOutcome(operation, outcome)
+        await hooks.onLocalChange?.()
+        return false
+      }
+
       if (operation.kind === 'delete') {
         // 取り消しで元に戻せるよう、応答の控えを覚えておく
         if (outcome.detail) rememberDeleted(outcome.detail)
         const id = operation.itemIds[0]
         const local = id ? await getItem(id) : undefined
         // 送信中に復元されていたら、その記録は消さない
-        if (local?.syncState === 'pending_delete') await deleteItem(local.id)
+        if (local?.syncState === 'pending_delete') {
+          await deleteItem(local.id)
+          // 宛先の無くなった作業記録を手元に残さない
+          await dropSectionsOfItem(local.id)
+        }
       } else if (outcome.item) {
         /*
          * まだ同じ Item への操作が残っているなら、内容は上書きしない。
@@ -153,7 +180,11 @@ async function handleConflict(
   }
 
   const local = await getItem(itemId)
-  await cancelOperations((rest) => rest.itemIds.includes(itemId))
+  // 本文（作業記録）の操作は取り下げない。メタデータの競合とは別で、
+  // 書いたものはサーバーに無い（取り下げると手元にしか残らない）
+  await cancelOperations(
+    (rest) => rest.itemIds.includes(itemId) && !isBodyOperation(rest),
+  )
 
   if (outcome.reason === 'server_deleted' || !outcome.server) {
     await deleteItem(itemId)
@@ -174,20 +205,153 @@ async function handleConflict(
 }
 
 /**
- * 競合の基準（サーバーで最後に見た updatedAt）を、送る直前の値に入れ替える。
+ * 送る直前に、手元の最新の値を payload へ入れ直す。
  *
- * 積んだ時点の値をそのまま使うと、同じ Item への1つ前の操作が通って
- * サーバーの updatedAt が進んだ時点で、自分の変更なのに競合と見なされる。
+ * - 競合の基準（サーバーで最後に見た updatedAt）。積んだ時点の値をそのまま
+ *   使うと、同じ Item への1つ前の操作が通ってサーバーの updatedAt が
+ *   進んだ時点で、自分の変更なのに競合と見なされる
+ * - 本文（作業記録・日記）。打鍵のたびに操作を積まず、列には1つだけ置いて
+ *   **送るときに手元から取り直す**（docs/12-offline.md 12.7）
  */
-export async function withCurrentBase(
+export async function withCurrentValues(
   operation: PendingOperation,
 ): Promise<PendingOperation> {
-  if (operation.kind !== 'patch') return operation
-  const payload = operation.payload as PatchPayload
-  const local = await getItem(payload.id)
-  return {
-    ...operation,
-    payload: { ...payload, baseUpdatedAt: local?.baseUpdatedAt ?? null },
+  if (operation.kind === 'patch') {
+    const payload = operation.payload as PatchPayload
+    const local = await getItem(payload.id)
+    return {
+      ...operation,
+      payload: { ...payload, baseUpdatedAt: local?.baseUpdatedAt ?? null },
+    }
+  }
+
+  if (operation.kind === 'section_save') {
+    const payload = operation.payload as SectionSavePayload
+    const local = await getSection(payload.id)
+    if (!local) return operation
+    return {
+      ...operation,
+      payload: { ...payload, date: local.date, body: local.body },
+    }
+  }
+
+  if (operation.kind === 'diary_save') {
+    const payload = operation.payload as DiarySavePayload
+    const local = await getDiary(payload.date)
+    if (!local) return operation
+    return { ...operation, payload: { ...payload, body: local.body } }
+  }
+
+  return operation
+}
+
+/** 本文（作業記録・日記）の操作か。Item とは結果の当て方が違う。 */
+function isBodyOperation(operation: PendingOperation): boolean {
+  return (
+    operation.kind === 'section_save' ||
+    operation.kind === 'section_delete' ||
+    operation.kind === 'section_reorder' ||
+    operation.kind === 'diary_save'
+  )
+}
+
+/**
+ * 本文を送り終えたときの後始末。
+ *
+ * **送った内容と手元の内容が食い違っていたら、同期済みにはしない。**
+ * 送信の往復中にも書き足せるため、そのまま同期済みにすると、次に
+ * サーバーから取り直したときに書き足した分が消える。列にもう一度積んで、
+ * 続けて送る。
+ */
+async function applyBodyOutcome(
+  operation: PendingOperation,
+  outcome: Extract<SyncOutcome, { type: 'done' }>,
+): Promise<void> {
+  switch (operation.kind) {
+    case 'section_save': {
+      const payload = operation.payload as SectionSavePayload
+      const local = await getSection(payload.id)
+      if (!local) return
+
+      const sent = outcome.section
+      // 宛先が無くなっていた（404）。手元の記録も残さない
+      if (!sent) {
+        await deleteSection(payload.id)
+        return
+      }
+
+      if (local.body !== payload.body || local.date !== payload.date) {
+        // 送っている間に書き足された。位置や作成日時だけ確定させ、印は残す
+        await putSection({
+          ...local,
+          position: sent.position,
+          createdAt: sent.createdAt,
+        })
+        await enqueueOnce({ kind: 'section_save', itemIds: [payload.itemId], payload }, (rest) =>
+          rest.kind === 'section_save' &&
+          (rest.payload as SectionSavePayload).id === payload.id,
+        )
+        return
+      }
+
+      await putSection(toLocalSection(payload.itemId, sent))
+      return
+    }
+
+    case 'section_delete': {
+      const payload = operation.payload as SectionDeletePayload
+      await deleteSection(payload.id)
+      return
+    }
+
+    case 'section_reorder': {
+      const payload = operation.payload as SectionReorderPayload
+      const remaining = await listOperations()
+
+      for (const section of outcome.sections ?? []) {
+        const local = await getSection(section.id)
+        if (!local) continue
+
+        // まだ本文の保存が残っている記録は、並び順だけ受け取る。
+        // 上書きすると、送信中に書いた分が消える
+        const busy = remaining.some(
+          (rest) =>
+            (rest.kind === 'section_save' &&
+              (rest.payload as SectionSavePayload).id === section.id) ||
+            (rest.kind === 'section_delete' &&
+              (rest.payload as SectionDeletePayload).id === section.id),
+        )
+
+        await putSection(
+          busy
+            ? { ...local, position: section.position }
+            : toLocalSection(payload.itemId, section),
+        )
+      }
+      return
+    }
+
+    case 'diary_save': {
+      const payload = operation.payload as DiarySavePayload
+      const local = await getDiary(payload.date)
+      if (!local) return
+
+      if (local.body !== payload.body) {
+        await enqueueOnce({ kind: 'diary_save', itemIds: [], payload }, (rest) =>
+          rest.kind === 'diary_save' &&
+          (rest.payload as DiarySavePayload).date === payload.date,
+        )
+        return
+      }
+
+      await putDiary({
+        date: payload.date,
+        body: payload.body,
+        updatedAt: outcome.diary?.updatedAt ?? local.updatedAt,
+        syncState: 'synced',
+      })
+      return
+    }
   }
 }
 

@@ -6,14 +6,14 @@ import {
   type IDBPTransaction,
   type StoreNames,
 } from 'idb'
-import type { ItemDto } from '~~/shared/types/item'
+import type { ItemDto, SectionDto } from '~~/shared/types/item'
 
 /**
  * ローカルの保管庫（IndexedDB）。
  *
  * 正本はサーバーの PostgreSQL で、ここはその写しと、まだ送れていない操作を
  * 置く場所（docs/12-offline.md）。長く貯めるための DB ではないので、
- * 一覧に要る Item だけを持ち、Section や日記までは持たない。
+ * 消えてもサーバーから取り直せるものだけを持つ。
  *
  * 直接触るのはこのフォルダの中だけ。画面からは useItemStore を通す。
  */
@@ -27,7 +27,7 @@ export const DB_NAME = 'life-record'
  * ただし未送信の操作（operations）だけは作り直せない。まだサーバーに
  * 届いていない変更そのものなので、移行では必ず持ち越す。
  */
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 
 /** Item ごとの同期状態。 */
 export type SyncState =
@@ -35,6 +35,15 @@ export type SyncState =
   | 'pending_create'
   | 'pending_update'
   | 'pending_delete'
+
+/**
+ * 本文（Section・日記）ごとの同期状態。
+ *
+ * Item と違い、作成と更新を分けない。本文は id（日記は日付）を決めてから
+ * 書くもので、送るときはどちらも「その内容にする」という同じ操作になる
+ * （docs/12-offline.md 12.6）。
+ */
+export type BodySyncState = 'synced' | 'pending_save' | 'pending_delete'
 
 export interface LocalItem extends ItemDto {
   syncState: SyncState
@@ -45,8 +54,42 @@ export interface LocalItem extends ItemDto {
   baseUpdatedAt: string | null
 }
 
+/**
+ * 作業記録（Section）の写し。
+ *
+ * サーバーの `SectionDto` に、どの Item のものか（`itemId`）と同期状態を
+ * 足したもの。`updatedAt` は**同期済みならサーバーが打った時刻**で、
+ * 未送信の間は手元で書いた時刻。取り直した内容と突き合わせるときに使う。
+ */
+export interface LocalSection extends SectionDto {
+  itemId: string
+  syncState: BodySyncState
+}
+
+/**
+ * 日記の写し。日付が主キーなので id は持たない。
+ *
+ * 本文が空の日はサーバーに行が無い（消える）。手元では「空の日記」として
+ * 残し、`updatedAt` は同期済みならサーバーの時刻、まだ届いていなければ null。
+ */
+export interface LocalDiary {
+  date: string
+  body: string
+  updatedAt: string | null
+  syncState: BodySyncState
+}
+
 /** 未送信の操作の種類。API のエンドポイントに1対1で対応する。 */
-export type OperationKind = 'create' | 'patch' | 'delete' | 'tags' | 'restore'
+export type OperationKind =
+  | 'create'
+  | 'patch'
+  | 'delete'
+  | 'tags'
+  | 'restore'
+  | 'section_save'
+  | 'section_delete'
+  | 'section_reorder'
+  | 'diary_save'
 
 export interface PendingOperation {
   /**
@@ -109,6 +152,17 @@ interface LifeRecordDb extends DBSchema {
     indexes: { 'by-op-id': string }
   }
   conflicts: { key: string; value: ConflictRecord }
+  /**
+   * 作業記録。Item ごと（詳細画面）と日付ごと（日記の「この日にやったこと」）に
+   * 引けるようにする。
+   */
+  sections: {
+    key: string
+    value: LocalSection
+    indexes: { 'by-item': string; 'by-date': string }
+  }
+  /** 日記。主キーは日付（YYYY-MM-DD）。 */
+  diaries: { key: string; value: LocalDiary }
   /** 最終取得日時などの雑多な値。 */
   meta: { key: string; value: MetaRecord }
 }
@@ -194,6 +248,17 @@ export function openLocalDatabase(): Promise<LocalDatabase> {
           db.createObjectStore('meta', { keyPath: 'key' })
         }
 
+        // 本文（作業記録と日記）もローカルに持つようにした（docs/12-offline.md 12.3）
+        if (oldVersion < 3) {
+          const sections = db.createObjectStore('sections', { keyPath: 'id' })
+          sections.createIndex('by-item', 'itemId')
+          sections.createIndex('by-date', 'date')
+
+          db.createObjectStore('diaries', { keyPath: 'date' })
+        }
+
+        // 作り直しは非同期になるので最後に置く。オブジェクトストアの作成は
+        // 版を上げる取引が開いている間（＝待つ前）に済ませておく必要がある
         if (oldVersion === 1) return migrateOperationsToSeq(db, transaction)
       },
       /**

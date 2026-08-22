@@ -1,10 +1,15 @@
-import type { ItemDetailDto, ItemDto } from '~~/shared/types/item'
+import type { ItemDetailDto, ItemDto, SectionDto } from '~~/shared/types/item'
+import type { DiaryDto } from '~~/shared/types/diary'
 import type { PendingOperation } from './local-database'
 import type {
   CreatePayload,
   DeletePayload,
+  DiarySavePayload,
   PatchPayload,
   RestorePayload,
+  SectionDeletePayload,
+  SectionReorderPayload,
+  SectionSavePayload,
   TagsPayload,
 } from './sync-queue'
 
@@ -19,8 +24,16 @@ export type SyncOutcome =
   /**
    * 通った。サーバーが返した最新の内容（あれば）を添える。
    * 削除のときは、取り消しで戻すための控え（detail）が付く。
+   * 本文のときは、保存できた作業記録（section / sections）や日記（diary）。
    */
-  | { type: 'done'; item?: ItemDto; detail?: ItemDetailDto }
+  | {
+      type: 'done'
+      item?: ItemDto
+      detail?: ItemDetailDto
+      section?: SectionDto
+      sections?: SectionDto[]
+      diary?: DiaryDto
+    }
   /**
    * 競合。こちらが見ていた版より後に、サーバー側が変わっていた。
    * サーバー側を採る（docs/12-offline.md 12.5）。
@@ -32,7 +45,7 @@ export type SyncOutcome =
   | { type: 'failed'; message: string }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
 }
 
@@ -91,6 +104,45 @@ export async function runOperation(
         })) as ItemDto
         return { type: 'done', item }
       }
+
+      case 'section_save': {
+        const payload = operation.payload as SectionSavePayload
+        // id は手元で決めている。同じ id で二度届いても、サーバーは
+        // 同じ1件を上書きするだけ（server/api/sections/[id].put.ts）
+        const section = (await request(`/api/sections/${payload.id}`, {
+          method: 'PUT',
+          body: {
+            itemId: payload.itemId,
+            date: payload.date,
+            body: payload.body,
+          },
+        })) as SectionDto
+        return { type: 'done', section }
+      }
+
+      case 'section_delete': {
+        const payload = operation.payload as SectionDeletePayload
+        await request(`/api/sections/${payload.id}`, { method: 'DELETE' })
+        return { type: 'done' }
+      }
+
+      case 'section_reorder': {
+        const payload = operation.payload as SectionReorderPayload
+        const sections = (await request('/api/sections/reorder', {
+          method: 'POST',
+          body: { ids: payload.ids },
+        })) as SectionDto[]
+        return { type: 'done', sections }
+      }
+
+      case 'diary_save': {
+        const payload = operation.payload as DiarySavePayload
+        const diary = (await request(`/api/diaries/${payload.date}`, {
+          method: 'PUT',
+          body: { body: payload.body },
+        })) as DiaryDto
+        return { type: 'done', diary }
+      }
     }
   } catch (error) {
     return classify(error, operation)
@@ -124,6 +176,12 @@ function classify(error: unknown, operation: PendingOperation): SyncOutcome {
 
   if (status === 404) {
     if (operation.kind === 'delete') return { type: 'done' }
+    /*
+     * 本文の宛先が無い。作業記録なら、その記録か Item が他の端末で消えている。
+     * 送り直しても通らないので、この操作は送り終えたものとして列から外す
+     * （手元の記録は、次にサーバーから取り直したときに整理される）。
+     */
+    if (isBodyKind(operation.kind)) return { type: 'done' }
     return { type: 'conflict', reason: 'server_deleted', server: null }
   }
 
@@ -144,6 +202,21 @@ function classify(error: unknown, operation: PendingOperation): SyncOutcome {
   }
 
   return { type: 'failed', message: message ?? '送信できませんでした' }
+}
+
+/**
+ * 本文（作業記録・日記）の操作か。
+ *
+ * 本文は競合の確認（`baseUpdatedAt`）を付けずに送る。最後に書いたものが
+ * 残るだけでよく、失敗の扱いも Item とは分かれる（docs/12-offline.md 12.5）。
+ */
+function isBodyKind(kind: PendingOperation['kind']): boolean {
+  return (
+    kind === 'section_save' ||
+    kind === 'section_delete' ||
+    kind === 'section_reorder' ||
+    kind === 'diary_save'
+  )
 }
 
 /**

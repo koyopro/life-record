@@ -24,6 +24,8 @@ export default defineEventHandler(async (event): Promise<DiaryDetailDto> => {
     body: found?.body ?? '',
     exists: Boolean(found),
     updatedAt: found?.updatedAt.toISOString() ?? null,
+    // 応答を作った時刻。手元の保存より前の応答かを、受け取る側が判断できるようにする
+    fetchedAt: new Date().toISOString(),
     items,
   }
 })

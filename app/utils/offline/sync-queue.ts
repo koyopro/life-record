@@ -49,10 +49,50 @@ export interface RestorePayload {
   snapshot: ItemDetailDto
 }
 
+/**
+ * 作業記録（Section）の保存。作成と更新を分けない。
+ *
+ * id は手元で決める。オフラインで書いた記録にもその場で id が要るためで、
+ * 同じ id で二度届いてもサーバーは同じ1件を上書きするだけ（冪等）。
+ * `date` と `body` は**送る直前に手元の最新へ入れ替える**
+ * （sync-engine の `withCurrentBody`）。
+ */
+export interface SectionSavePayload {
+  id: string
+  itemId: string
+  date: string
+  body: string
+}
+
+export interface SectionDeletePayload {
+  id: string
+  itemId: string
+}
+
+export interface SectionReorderPayload {
+  itemId: string
+  ids: string[]
+}
+
+/** 日記の保存。日付が主キーなので、これも同じ内容を何度送っても変わらない。 */
+export interface DiarySavePayload {
+  date: string
+  body: string
+}
+
 export interface NewOperation {
   kind: OperationKind
   itemIds: string[]
-  payload: CreatePayload | PatchPayload | DeletePayload | TagsPayload | RestorePayload
+  payload:
+    | CreatePayload
+    | PatchPayload
+    | DeletePayload
+    | TagsPayload
+    | RestorePayload
+    | SectionSavePayload
+    | SectionDeletePayload
+    | SectionReorderPayload
+    | DiarySavePayload
 }
 
 /** 列の末尾へ積む。積んだ操作を返す。 */
@@ -81,6 +121,39 @@ export async function enqueueOperation(
   const db = await openLocalDatabase()
   const seq = await db.add('operations', record)
   return { ...record, seq }
+}
+
+/**
+ * 同じ対象への未送信の操作があれば積み増さない。本文の保存に使う。
+ *
+ * 本文は打鍵のたびに変わるが、送る内容は**送信の直前に手元から取り直す**
+ * ため、列に1つあれば足りる。打つたびに積むと、同じ内容の送信が
+ * 打鍵の数だけ並んでしまう。
+ *
+ * すでに諦めた印が付いていたら、送り直せる状態に戻す（書き足したのに
+ * いつまでも送られない、という状態を作らない）。
+ */
+export async function enqueueOnce(
+  operation: NewOperation,
+  matches: (existing: PendingOperation) => boolean,
+  now: Date = new Date(),
+): Promise<PendingOperation> {
+  const db = await openLocalDatabase()
+  const existing = (await db.getAll('operations')).find(matches)
+
+  if (!existing) return await enqueueOperation(operation, now)
+
+  if (!existing.givenUp) return existing
+
+  const revived: PendingOperation = {
+    ...existing,
+    attempts: 0,
+    givenUp: false,
+    lastError: null,
+    nextAttemptAt: now.toISOString(),
+  }
+  await db.put('operations', revived)
+  return revived
 }
 
 /** 積まれた順に並べて返す。 */

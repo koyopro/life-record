@@ -3,6 +3,7 @@ import { onFlushRequested } from '~/utils/offline/flush-signal'
 import { dismissConflict, listConflicts } from '~/utils/offline/todo-repository'
 import { listOperations, retryGivenUp, summarize } from '~/utils/offline/sync-queue'
 import { drainQueue } from '~/utils/offline/sync-engine'
+import { resumePendingBodies } from '~/utils/offline/body-actions'
 import type { RequestFn } from '~/utils/offline/sync-runner'
 
 /**
@@ -20,6 +21,8 @@ let timer: ReturnType<typeof setTimeout> | null = null
 
 export function useSync() {
   const store = useItemStore()
+  const detailStore = useItemDetailStore()
+  const diaryStore = useDiaryStore()
   const { browserOnline, reachable } = useOnline()
 
   const syncing = useState('offline:syncing', () => false)
@@ -68,7 +71,12 @@ export function useSync() {
     try {
       const result = await drainQueue({
         request,
-        onLocalChange: () => store.reload(),
+        // 送信の結果はローカルへ入るので、画面が見ている分を読み直す
+        onLocalChange: async () => {
+          await store.reload()
+          await detailStore.reloadLoaded()
+          await diaryStore.reloadLoaded()
+        },
         onReachable: (value) => {
           reachable.value = value
         },
@@ -134,6 +142,10 @@ export function useSync() {
   function start(): void {
     if (!import.meta.client || started) return
     started = true
+
+    // 手元にしか無い本文（作業記録・日記）を、送る列へ戻す。
+    // 前回の起動で書いたまま送れていない分をここで拾う
+    void resumePendingBodies().then(() => refreshStatus())
 
     onFlushRequested(() => void flush())
 

@@ -20,6 +20,7 @@ if (!isAppDate(date.value)) {
 }
 
 const store = useDiaryStore()
+const itemStore = useItemStore()
 
 /*
  * top-level await にしない。待つと、日付を移るたびに画面遷移そのものが
@@ -30,14 +31,14 @@ const { error: fetchError } = store.track(date)
 /**
  * 画面に出す日記。
  *
- * 読むのはストアの控えだけにする。サーバーから取った内容も、書いた内容も
- * そこへ入るので、書いてから別の日へ移って戻っても編集前の本文は出ない
- * （docs/15-client-state.md）。初めて開く日は、控えが無いので届くまで
- * 読み込み中の表示になる。
+ * 読むのはストア（＝IndexedDB の写し）だけにする。サーバーから取った内容も、
+ * 書いた内容もそこへ入るので、書いてから別の日へ移って戻っても編集前の
+ * 本文は出ない（docs/15-client-state.md）。オフラインでも、手元にある日は
+ * そのまま読めて書ける（docs/12-offline.md）。
  */
-const diary = computed(() => store.byDate(date.value))
+const diary = computed(() => (store.knows(date.value) ? store.byDate(date.value) : null))
 
-/** 読み込めなかった。控えが出せているときは、それを優先して知らせない。 */
+/** 読み込めなかった。手元に出せているときは、それを優先して知らせない。 */
 const error = computed(() => (diary.value ? null : fetchError.value))
 
 useHead({ title: () => `${formatAppDate(date.value)}の日記` })
@@ -62,7 +63,8 @@ const save = computed(() => store.statusOf(date.value))
  * 画面が作り直されるため、待たないと取りこぼす。
  */
 async function leaveTo(path: string) {
-  await store.flush(date.value)
+  // 書いたものは手元（IndexedDB）と列に残っているので、送り終わるのは待たない
+  store.flush()
   await navigateTo(path)
 }
 
@@ -105,7 +107,19 @@ function goToCalendar() {
 
 const { colorOf } = useTags()
 
-const workedOn = computed(() => diary.value?.items ?? [])
+/**
+ * 「この日にやったこと」。手元の作業記録から作る（docs/02-data-model.md 2.8）。
+ * サーバーから取り直したあとにも作り直す。
+ */
+const workedOn = computed(() => store.workedOnOf(date.value))
+
+if (import.meta.client) {
+  watch(
+    [date, () => store.byDate(date.value), () => itemStore.items.value],
+    () => void store.loadWorkedOn(date.value),
+    { immediate: true },
+  )
+}
 
 /**
  * 「この日にやったこと」を、完了したものと作業記録があるだけのものに分ける

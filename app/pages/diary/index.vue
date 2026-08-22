@@ -55,6 +55,9 @@ const thisMonth = monthOf(today)
 
 const store = useDiaryStore()
 
+// 手元にある日記（IndexedDB）も抜粋に使う。オフラインでも書いた日が出る
+onMounted(() => void store.loadAll())
+
 const byDate = computed(
   () => new Map((diaries.value ?? []).map((entry) => [entry.date, entry])),
 )

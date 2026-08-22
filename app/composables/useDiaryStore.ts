@@ -1,135 +1,203 @@
-import type { DiaryDetailDto, DiaryDto, DiarySummaryDto } from '~~/shared/types/diary'
+import type { DiaryDetailDto, DiarySummaryDto } from '~~/shared/types/diary'
+import type { ItemDto } from '~~/shared/types/item'
 import { excerptOf } from '~~/shared/utils/diary'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
+import { IDLE_STATUS, type SaveStatus } from '~/utils/save-scheduler'
+import type { LocalDiary } from '~/utils/offline/local-database'
 import {
-  createSaveScheduler,
-  IDLE_STATUS,
-  type SaveStatus,
-} from '~/utils/save-scheduler'
-import { createSavedVersions } from '~/utils/saved-versions'
+  allDiaries,
+  getDiary,
+  mergeServerDiary,
+  sectionsOnDate,
+} from '~/utils/offline/body-repository'
+import { saveDiaryBody } from '~/utils/offline/body-actions'
+import { requestFlush } from '~/utils/offline/flush-signal'
+import { listOperations, type DiarySavePayload } from '~/utils/offline/sync-queue'
+import { isNetworkError } from '~/utils/offline/sync-runner'
 
 /**
  * 日記の置き場。
  *
- * Item 詳細（useItemDetailStore）と同じ形で、**画面が読むのはこの控えだけ**に
- * する。編集はローカルへ即座に反映し、送信は裏で遅らせて行うので、書いてから
- * 別の日へ移って戻っても編集前の本文は出ない（docs/15-client-state.md）。
+ * useItemDetailStore と同じ形で、**クライアントでは IndexedDB が唯一の
+ * 読み取り元**（docs/12-offline.md）。書いた内容はそこへ即座に入り、送信は
+ * 列（SyncQueue）へ積むだけなので、オフラインでも書ける。
+ *
+ * 「この日にやったこと」も手元の作業記録から作る。サーバーの
+ * `itemsWorkedOn`（server/utils/diaries.ts）と同じ規則で、同じ日付の
+ * 作業記録を持つ Item を新しい順に並べる（docs/02-data-model.md 2.8）。
  */
 
-/** 遅延送信は画面より長生きするのでモジュールに置く（useItemDetailStore と同じ）。 */
-let statusStore: Ref<Record<string, SaveStatus>> | null = null
+/** 入力が落ち着くまで送信を待つ時間（useItemDetailStore と同じ）。 */
+const FLUSH_DELAY_MS = 700
 
-const scheduler = createSaveScheduler({
-  onStatus: (key, status) => {
-    if (!statusStore) return
-    statusStore.value = { ...statusStore.value, [key]: status }
-  },
-})
+let flushTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 保存できた版（サーバーが返した更新日時）の控え（useItemDetailStore と同じ）。 */
-const savedVersions = createSavedVersions()
+function scheduleFlush() {
+  if (!import.meta.client) return
+  if (flushTimer) clearTimeout(flushTimer)
+  flushTimer = setTimeout(() => {
+    flushTimer = null
+    requestFlush()
+  }, FLUSH_DELAY_MS)
+}
 
 export function useDiaryStore() {
-  const { cache, set } = usePersistedRecordCache<DiaryDetailDto>('diary-detail-cache')
-  const statuses = useState<Record<string, SaveStatus>>('diary-save', () => ({}))
-  if (import.meta.client) statusStore = statuses
+  /** 日付ごとの日記。IndexedDB から読んだもの。 */
+  const diaries = useState<Record<string, LocalDiary>>('diary:local', () => ({}))
+  /** 一度でも IndexedDB から読んだ日付。 */
+  const loaded = useState<Record<string, boolean>>('diary:loaded', () => ({}))
+  /** 送れていない日記の、直近の失敗（鍵は日付）。 */
+  const errors = useState<Record<string, string>>('diary:errors', () => ({}))
+  /**
+   * その日に作業した Item。手元の作業記録（IndexedDB）から作る。
+   * サーバー描画のときは、応答に入っているものをそのまま使う。
+   */
+  const workedOn = useState<Record<string, ItemDto[]>>('diary:worked-on', () => ({}))
 
-  /** 画面が読む日記。取得が終わっていなくても、控えがあれば出せる。 */
-  function byDate(date: string): DiaryDetailDto | null {
-    return cache.value[date] ?? null
+  const itemStore = useItemStore()
+  const { reachable } = useOnline()
+
+  function byDate(date: string): LocalDiary | null {
+    return diaries.value[date] ?? null
   }
 
   /** その日の控えを持っているか。持っていれば、一覧より控えを優先する。 */
   function knows(date: string): boolean {
-    return date in cache.value
-  }
-
-  function statusOf(date: string): SaveStatus {
-    return statuses.value[date] ?? IDLE_STATUS
-  }
-
-  /**
-   * その日の本文は、サーバーから届いた内容より手元の方が新しいか。
-   *
-   * 判断は useItemDetailStore.localIsNewer と同じ。
-   *
-   * 1. まだ送れていない・送信中（`busy`）
-   * 2. 送ったが失敗した（`error`）。送れていない以上、手元にしか無い
-   * 3. 送れているが、届いた内容の更新日時がこちらの保存より古い
-   *    （＝保存より前に出した取得の応答が、保存の後で届いた）
-   */
-  function localIsNewer(date: string, serverUpdatedAt: string | null): boolean {
-    if (scheduler.busy(date)) return true
-    if (statusOf(date).state === 'error') return true
-    return savedVersions.isStale(date, serverUpdatedAt)
-  }
-
-  /**
-   * サーバーから取り直し、控えへ重ねる。画面は setup で1度だけ呼ぶ。
-   *
-   * **手元の方が新しい本文だけはローカルを残す**（`localIsNewer`）。
-   * 「この日にやったこと」はサーバーが正なので、書いている最中でも
-   * そのまま採る（useItemDetailStore.track と同じ規則）。
-   */
-  function track(date: Ref<string> | ComputedRef<string>) {
-    const { data, error } = useFetch<DiaryDetailDto>(
-      () => `/api/diaries/${date.value}`,
-    )
-
-    watch(
-      data,
-      (value) => {
-        if (!value) return
-        const key = date.value
-        if (!localIsNewer(key, value.updatedAt)) {
-          set(key, value)
-          return
-        }
-        const body = bodyOf(key)
-        set(key, {
-          ...value,
-          body,
-          exists: body.trim().length > 0,
-          // 本文は手元のものを残すので、更新日時も手元のものに合わせる
-          updatedAt: byDate(key)?.updatedAt ?? value.updatedAt,
-        })
-      },
-      { immediate: true },
-    )
-
-    /*
-     * 画面から出ていくときに、待っているものを送っておく。
-     *
-     * 遅延送信はストア（モジュール）に残るので、アプリの中で画面を移る
-     * だけなら取りこぼさない。裏へ回ったときも visibilitychange で送る。
-     *
-     * ただし**ページごと消える瞬間（タブを閉じる・再読み込み・別サイトへ）
-     * は間に合わないことがある**。送信そのものが打ち切られるため。ここを
-     * 確実にするには、送るものを IndexedDB へ置いて次回に持ち越す必要が
-     * あり、それは Section と日記をオフライン対応させる話になる
-     * （docs/12-offline.md 12.9 / docs/15-client-state.md）。
-     */
-    if (import.meta.client) {
-      const onLeaving = () => {
-        if (document.visibilityState === 'hidden') void scheduler.flushAll()
-      }
-      const onPageHide = () => void scheduler.flushAll()
-
-      onMounted(() => {
-        document.addEventListener('visibilitychange', onLeaving)
-        window.addEventListener('pagehide', onPageHide)
-      })
-      onBeforeUnmount(() => {
-        document.removeEventListener('visibilitychange', onLeaving)
-        window.removeEventListener('pagehide', onPageHide)
-      })
-    }
-
-    return { error }
+    return Boolean(loaded.value[date])
   }
 
   function bodyOf(date: string): string {
     return byDate(date)?.body ?? ''
+  }
+
+  /**
+   * 手元にある日記をまとめて読み込む（カレンダー用）。
+   *
+   * 一覧そのものはサーバーから取るが、オフラインでは返ってこない。
+   * 手元にある日だけでも抜粋を出せるようにする。
+   */
+  async function loadAll(): Promise<void> {
+    if (!import.meta.client) return
+    const nextDiaries = { ...diaries.value }
+    const nextLoaded = { ...loaded.value }
+    for (const diary of await allDiaries()) {
+      nextDiaries[diary.date] = diary
+      nextLoaded[diary.date] = true
+    }
+    diaries.value = nextDiaries
+    loaded.value = nextLoaded
+  }
+
+  /** IndexedDB から読み直す。ローカルへ書いたあとは必ずこれを呼ぶ。 */
+  async function reload(date: string): Promise<void> {
+    if (!import.meta.client) return
+    const local = await getDiary(date)
+    diaries.value = {
+      ...diaries.value,
+      [date]: local ?? { date, body: '', updatedAt: null, syncState: 'synced' },
+    }
+    loaded.value = { ...loaded.value, [date]: true }
+    await refreshErrors()
+  }
+
+  /** 手元へ読み込んである日を、まとめて読み直す（送信が通ったあとなど）。 */
+  async function reloadLoaded(): Promise<void> {
+    for (const date of Object.keys(loaded.value)) await reload(date)
+  }
+
+  async function refreshErrors(): Promise<void> {
+    const next: Record<string, string> = {}
+    for (const operation of await listOperations()) {
+      if (!operation.givenUp || operation.kind !== 'diary_save') continue
+      const payload = operation.payload as DiarySavePayload
+      next[payload.date] = operation.lastError ?? '送れていません'
+    }
+    errors.value = next
+  }
+
+  /**
+   * サーバーから取り直し、ローカルへ重ねる。画面は setup で1度だけ呼ぶ。
+   *
+   * 取れなくても画面は成り立つ（IndexedDB にある分を出す）。
+   */
+  function track(date: Ref<string> | ComputedRef<string>) {
+    const error = useState<string | null>('diary:fetch-error', () => null)
+
+    /*
+     * サーバー描画。IndexedDB が無いので、取った内容をそのまま状態へ入れる
+     * （useState は payload でブラウザへ渡るので、最初の描画に本文が載る）。
+     */
+    if (import.meta.server) {
+      const { data } = useFetch<DiaryDetailDto>(() => `/api/diaries/${date.value}`)
+      watch(
+        data,
+        (value) => {
+          if (!value) return
+          diaries.value = {
+            ...diaries.value,
+            [date.value]: {
+              date: date.value,
+              body: value.body,
+              updatedAt: value.updatedAt,
+              syncState: 'synced',
+            },
+          }
+          loaded.value = { ...loaded.value, [date.value]: true }
+          workedOn.value = { ...workedOn.value, [date.value]: value.items }
+        },
+        { immediate: true },
+      )
+      return { error }
+    }
+
+    async function fetchOne(target: string): Promise<void> {
+      await reload(target)
+
+      try {
+        const detail = await $fetch<DiaryDetailDto>(`/api/diaries/${target}`)
+        await mergeServerDiary(
+          target,
+          { body: detail.body, updatedAt: detail.updatedAt },
+          detail.fetchedAt ?? null,
+        )
+        await reload(target)
+        error.value = null
+        reachable.value = true
+      } catch (e) {
+        error.value = '最新の内容を取得できませんでした'
+        if (isNetworkError(e)) reachable.value = false
+      }
+    }
+
+    watch(date, (value) => void fetchOne(value), { immediate: true })
+
+    // 画面から出ていくときに、待っているものを送っておく（書いたもの自体は
+    // IndexedDB と列に残るので、送れなくても失われない）
+    const onLeaving = () => {
+      if (document.visibilityState === 'hidden') requestFlush()
+    }
+    const onPageHide = () => requestFlush()
+
+    onMounted(() => {
+      document.addEventListener('visibilitychange', onLeaving)
+      window.addEventListener('pagehide', onPageHide)
+    })
+    onBeforeUnmount(() => {
+      document.removeEventListener('visibilitychange', onLeaving)
+      window.removeEventListener('pagehide', onPageHide)
+    })
+
+    return { error }
+  }
+
+  function statusOf(date: string): SaveStatus {
+    const error = errors.value[date]
+    if (error) return { state: 'error', error }
+
+    const local = byDate(date)
+    if (local && local.syncState !== 'synced') return { state: 'pending', error: null }
+
+    return IDLE_STATUS
   }
 
   /**
@@ -150,33 +218,51 @@ export function useDiaryStore() {
     }
   }
 
-  /** 本文を書き換える。控えへ即座に反映し、送信は遅らせて裏で行う。 */
-  function editBody(date: string, value: string) {
-    const current = byDate(date)
-    set(date, {
-      date,
-      body: value,
-      // 空にすればサーバー側では消える。書けば、その時点で「ある」扱い
-      exists: value.trim().length > 0,
-      updatedAt: current?.updatedAt ?? null,
-      items: current?.items ?? [],
-    })
+  /**
+   * 本文を書き換える。手元の状態はその場で進め、IndexedDB と列は追いかけで
+   * 更新する（読み直すと、書き込みが終わるまで1つ前の内容へ戻って見える）。
+   */
+  async function editBody(date: string, value: string): Promise<void> {
+    const local = byDate(date)
+    diaries.value = {
+      ...diaries.value,
+      [date]: {
+        date,
+        body: value,
+        updatedAt: local?.updatedAt ?? null,
+        syncState: 'pending_save',
+      },
+    }
 
-    // 応答の本文は控えへ当てない。送った時点の本文しか載っておらず、往復中に
-    // 書き足された分を戻してしまう。控えには既に最新が入っている。
-    // 更新日時だけは受け取り、これより古い取得の応答を退ける材料にする
-    scheduler.schedule(date, async () => {
-      const saved = await $fetch<DiaryDto>(`/api/diaries/${date}`, {
-        method: 'PUT',
-        body: { body: value },
-      })
-      savedVersions.mark(date, saved.updatedAt)
-    })
+    await saveDiaryBody(date, value)
+    scheduleFlush()
   }
 
   /** 待たずに今すぐ送る。別の日へ移るときに呼ぶ。 */
-  function flush(date: string): Promise<void> {
-    return scheduler.flush(date)
+  function flush(): void {
+    requestFlush()
+  }
+
+  // --- この日にやったこと ---------------------------------------------------
+
+  async function loadWorkedOn(date: string): Promise<void> {
+    if (!import.meta.client) return
+    const ids = new Set(
+      (await sectionsOnDate(date))
+        .filter((section) => section.syncState !== 'pending_delete')
+        .map((section) => section.itemId),
+    )
+
+    const found = itemStore.items.value
+      .filter((item) => ids.has(item.id) && item.syncState !== 'pending_delete')
+      // サーバー（server/utils/diaries.ts）と同じく、更新の新しい順
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+
+    workedOn.value = { ...workedOn.value, [date]: found }
+  }
+
+  function workedOnOf(date: string): ItemDto[] {
+    return workedOn.value[date] ?? []
   }
 
   return {
@@ -187,7 +273,11 @@ export function useDiaryStore() {
     statusOf,
     editBody,
     flush,
-    flushAll: () => scheduler.flushAll(),
+    loadAll,
+    loadWorkedOn,
+    workedOnOf,
+    reload,
+    reloadLoaded,
     track,
   }
 }

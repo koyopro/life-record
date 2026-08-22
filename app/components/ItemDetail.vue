@@ -42,7 +42,6 @@ const id = computed(() => props.itemId)
 const listOrigin = useListOrigin()
 
 const store = useItemStore()
-const { online } = useOnline()
 const { colorOf } = useTags()
 
 const detailStore = useItemDetailStore()
@@ -57,46 +56,25 @@ const today = useToday()
 // （Suspense で一覧ごと再描画されてしまうため）。
 const { error: detailError } = detailStore.track(id)
 
-/**
- * 本文・作業記録（Section）は Item のメタデータと違い IndexedDB に無いため、
- * 読むのはストアの控えだけにする。サーバーから取った内容も、書いた内容も
- * そこへ入るので、書いてから別の Item へ切り替えて戻っても編集前の本文は
- * 出ない（docs/15-client-state.md）。
- */
-const cachedDetail = computed(() => detailStore.byId(id.value))
-
 /** ローカル（IndexedDB）にある Item。オフラインでもこちらは読める。 */
 const cached = computed(() => store.byId(id.value))
 
 /**
  * 画面に出す内容。
  *
- * メタデータはローカルを正とする（未送信の変更もここに入っている）。
- * 作業記録（Section）はサーバーにしか無いので、取れているときだけ出す
- * （docs/12-offline.md 12.9）。
+ * メタデータも作業記録（Section）もローカル（IndexedDB）を正とする。
+ * 未送信の変更もそこに入っているので、オフラインでも同じ画面が出せる
+ * （docs/12-offline.md）。
  */
 const item = computed<ItemDetailDto | null>(() => {
   const local = cached.value
-  const fetched = cachedDetail.value
+  if (!local) return null
 
-  if (!fetched) {
-    if (!local) return null
-    return { ...local, sections: [], primarySectionId: null }
-  }
-  if (!local) return fetched
-
+  const list = detailStore.sectionsOf(id.value)
   return {
-    ...fetched,
-    title: local.title,
-    status: local.status,
-    priority: local.priority,
-    url: local.url,
-    dueAt: local.dueAt,
-    dueHasTime: local.dueHasTime,
-    tags: local.tags,
-    recurrenceRule: local.recurrenceRule,
-    recurrenceBasis: local.recurrenceBasis,
-    updatedAt: local.updatedAt,
+    ...local,
+    sections: list,
+    primarySectionId: pickPrimarySection(list)?.id ?? null,
   }
 })
 
@@ -105,49 +83,6 @@ const error = computed(() => (item.value ? null : detailError.value))
 
 /** まだサーバーへ送れていない変更を抱えているか。 */
 const unsynced = computed(() => Boolean(cached.value && cached.value.syncState !== 'synced'))
-
-/**
- * 本文と作業記録（Section）を扱えるか。
- *
- * Section はサーバーにしか置いていない。取れていないのに編集させると、
- * 書いたものが行き先を失うので、そのときは出さない（docs/12-offline.md 12.9）。
- */
-const hasDetail = computed(() => Boolean(cachedDetail.value))
-
-/**
- * 詳細が取れていないことを知らせるか。
- *
- * 取得の最中にも知らせると、たいていはすぐ届くので一瞬だけ出て消え、
- * その分だけ画面がずれる。オフラインだと分かっているときは即座に、
- * オンラインのつもりなのに返ってこないときは何秒か待ってから出す。
- */
-const DETAIL_SLOW_MS = 4000
-const detailSlow = ref(false)
-let slowTimer: ReturnType<typeof setTimeout> | null = null
-
-if (import.meta.client) {
-  watch(
-    [id, hasDetail],
-    () => {
-      if (slowTimer) clearTimeout(slowTimer)
-      detailSlow.value = false
-      // 届いたなら待つ必要はない。別の Item に切り替わったら数え直す
-      if (hasDetail.value) return
-      slowTimer = setTimeout(() => {
-        detailSlow.value = true
-      }, DETAIL_SLOW_MS)
-    },
-    { immediate: true },
-  )
-
-  onUnmounted(() => {
-    if (slowTimer) clearTimeout(slowTimer)
-  })
-}
-
-const showDetailNote = computed(
-  () => !hasDetail.value && (!online.value || detailSlow.value),
-)
 
 // --- タイトル（リアルタイム保存） --------------------------------------
 
@@ -205,6 +140,18 @@ function onTitleKeydown(event: KeyboardEvent) {
 const sections = computed<SectionDto[]>(() => item.value?.sections ?? [])
 
 /**
+ * 一覧カード用の本文の写し（`ItemDto.body`）を、読むだけで出すか。
+ *
+ * 作業記録は開いた Item の分だけ手元に持つ（docs/12-offline.md 12.9）。
+ * 一度も開いていない Item をオフラインで開くと記録が無いが、写しは全件ぶん
+ * 持っているので、それだけでも読めるようにする。写しが指すのは**最初の
+ * 記録**なので、当日の枠としては見せない。
+ */
+const showBodyCopy = computed(
+  () => sections.value.length === 0 && Boolean(item.value?.body),
+)
+
+/**
  * 既定で編集する枠に当たる Section。その日の記録がまだ無ければ null で、
  * 何か書かれた時点でストアが作る。
  */
@@ -233,18 +180,9 @@ const todayBody = computed({
   set: (value: string) => detailStore.editTodayBody(id.value, today.value, value),
 })
 
-const todaySave = computed(() => detailStore.todayStatus(id.value))
+const todaySave = computed(() => detailStore.todayStatus(id.value, today.value))
 
 const bodyEditor = ref<{ focus: () => void } | null>(null)
-
-/**
- * 作業記録の欄を出すか。
- *
- * Section が取れていない間も、ローカル（IndexedDB）の写しに本文があるなら
- * 読むだけは出す。ただし写しが指すのは**その Item の最初の記録**なので、
- * 当日の枠としてではなく、確定済みの見た目で出す（下の template）。
- */
-const showRecords = computed(() => hasDetail.value || Boolean(item.value?.body))
 
 /** 当日の枠へフォーカスする。一覧の `y` から呼ばれる。 */
 function focusBody() {
@@ -764,21 +702,6 @@ async function removeSection(section: SectionDto) {
       <p v-if="actionError" class="page__error" role="alert">{{ actionError }}</p>
       <p v-else-if="actionMessage" class="page__note" role="status">{{ actionMessage }}</p>
 
-      <!--
-        何ができて何ができないかを短く伝える。
-        取得の途中では出さない（出しては消えると画面がずれる）。
-      -->
-      <p v-if="showDetailNote" class="page__note">
-        <template v-if="online">
-          本文と作業記録を読み込めていません。
-        </template>
-        <template v-else>
-          オフラインです。
-          状態・期限・重要度・タグ・タイトルはこの端末に保存され、繋がったときに送ります。
-          本文と作業記録は繋がってから編集できます。
-        </template>
-      </p>
-
       <section class="meta">
         <div class="meta__row">
           <span class="meta__label">状態</span>
@@ -904,53 +827,50 @@ async function removeSection(section: SectionDto) {
         （docs/03-functional-spec.md 3.2）。過去の分は確定済みの見た目で、
         編集アイコンを押したときだけ書ける。
       -->
-      <section v-if="showRecords" class="log">
+      <section class="log">
         <h2 class="log__title">作業記録</h2>
 
         <!--
-          まだ Section を取れていない。書ける枠を出すと、書いたものの行き先が
-          無い（docs/12-offline.md 12.9）。写しにある本文だけを読むだけで出す。
-          写しが指すのは最初の記録なので、当日の枠のようには見せない。
+          作業記録は IndexedDB にも置いてあるので、オフラインでも読めて書ける
+          （docs/12-offline.md）。まだ送れていない分は SaveDot が示す。
         -->
         <ScrapboxEditor
-          v-if="!hasDetail"
+          v-if="showBodyCopy"
           view
           :model-value="item.body ?? ''"
           aria-label="本文"
         />
 
-        <template v-else>
-          <ItemSectionRecord
-            v-for="(section, index) in pastSections"
-            :key="section.id"
-            :item-id="id"
-            :section="section"
-            :can-move-up="canMove(index, -1)"
-            :can-move-down="canMove(index, 1)"
-            @change-date="(date) => changeSectionDate(section, date)"
-            @move="(delta) => moveSection(index, delta)"
-            @remove="removeSection(section)"
-          />
+        <ItemSectionRecord
+          v-for="(section, index) in pastSections"
+          :key="section.id"
+          :item-id="id"
+          :section="section"
+          :can-move-up="canMove(index, -1)"
+          :can-move-down="canMove(index, 1)"
+          @change-date="(date) => changeSectionDate(section, date)"
+          @move="(delta) => moveSection(index, delta)"
+          @remove="removeSection(section)"
+        />
 
-          <article class="today">
-            <header class="today__head">
-              <span class="today__date">{{ formatAppDate(today) }}</span>
-              <span class="today__badge">今日</span>
-              <!-- 作業記録と日記は日付だけで結び付く（docs/02-data-model.md 2.8） -->
-              <NuxtLink class="today__diary" :to="`/diary/${today}`">日記</NuxtLink>
-              <SaveDot class="today__save" :state="todaySave.state" />
-            </header>
-            <ScrapboxEditor
-              ref="bodyEditor"
-              v-model="todayBody"
-              placeholder="今日やったこと"
-              aria-label="今日の作業記録"
-            />
-            <p v-if="todaySave.error" class="page__error" role="alert">
-              {{ todaySave.error }}
-            </p>
-          </article>
-        </template>
+        <article class="today">
+          <header class="today__head">
+            <span class="today__date">{{ formatAppDate(today) }}</span>
+            <span class="today__badge">今日</span>
+            <!-- 作業記録と日記は日付だけで結び付く（docs/02-data-model.md 2.8） -->
+            <NuxtLink class="today__diary" :to="`/diary/${today}`">日記</NuxtLink>
+            <SaveDot class="today__save" :state="todaySave.state" />
+          </header>
+          <ScrapboxEditor
+            ref="bodyEditor"
+            v-model="todayBody"
+            placeholder="今日やったこと"
+            aria-label="今日の作業記録"
+          />
+          <p v-if="todaySave.error" class="page__error" role="alert">
+            {{ todaySave.error }}
+          </p>
+        </article>
       </section>
 
       <section v-if="pastOccurrences.length" class="series">
@@ -977,7 +897,6 @@ async function removeSection(section: SectionDto) {
 
       <div class="page__actions">
         <button
-          v-if="hasDetail"
           type="button"
           class="page__add"
           :disabled="addingSection"
