@@ -1836,6 +1836,11 @@ defineExpose({
 
 .editor :deep(.sb-image--large) {
   width: 100%;
+  /* `[[画像URL]]` は「横幅いっぱいで出す」記法なので、高さの頭打ち
+     （.sb-image の max-height）は外す。幅を決めたまま高さだけ縮めると、
+     縦横比が変わって潰れて見えるため。縦長の画像は 300px を超えて伸びる */
+  height: auto;
+  max-height: none;
 }
 
 /*
