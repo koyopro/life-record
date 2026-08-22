@@ -8,6 +8,9 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
+    "tauri": "node scripts/tauri.mjs",
+    "tauri:dev": "node scripts/tauri.mjs dev",
+    "tauri:build": "node scripts/tauri.mjs build",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.1.0",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/pg": "^8.23.0",
     "@vite-pwa/nuxt": "^1.1.1",
     "@vue/test-utils": "^2.4.11",

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "WebView にはネイティブの権限を渡さない。外部 URL を開くのは Rust 側（src/main.rs の on_navigation）だけで、画面から任意の URL をネイティブ API へ流し込む経路は作らない。",
+  "windows": ["main"],
+  "permissions": []
+}
