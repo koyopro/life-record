@@ -16,7 +16,7 @@ import {
 } from '~~/shared/types/item'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
-import { formatAppDate } from '~~/shared/utils/date'
+import { formatAppDate, isAppDate } from '~~/shared/utils/date'
 
 const props = defineProps<{
   itemId: string
@@ -554,29 +554,87 @@ function canMove(index: number, delta: -1 | 1): boolean {
 }
 
 /**
- * 今日の作業記録へ移る（`Shift` + `y` / 「今日の記録を追加」）。
- *
- * 当日の枠はいつでも出ているので、たいていはそこへフォーカスするだけで足りる。
- * すでに書き込まれているときだけ、同じ日の2件目を作る（同一日付に複数の記録を
- * 置けるのは docs/03-functional-spec.md 3.2 のとおり）。新しく作ったものが
- * 当日の枠になり、それまでの分は確定済みとして上へ回る。
+ * 追加する記録の日付。触るまでは当日に追従する
+ * （開いたまま日付をまたいでも、既定は「今日」のまま）。
  */
-async function addTodaySection() {
-  const current = todaySection.value
-  if (!current || !current.body.trim()) {
-    focusBody()
+const addDate = ref<string | null>(null)
+const addDateValue = computed(() => addDate.value ?? today.value)
+
+/** 過去の記録へフォーカスするための控え（作った直後に書き始められるように）。 */
+const recordRefs = new Map<string, { focus: () => void }>()
+
+function setRecordRef(sectionId: string, el: unknown) {
+  if (el) recordRefs.set(sectionId, el as { focus: () => void })
+  else recordRefs.delete(sectionId)
+}
+
+/**
+ * 作業記録を1件足す（日付は選べる）。
+ *
+ * 作業した日を後から書くことがあるため、当日以外の記録もここから作る
+ * （docs/03-functional-spec.md 3.2）。同じ日付の記録は何件あってもよい。
+ *
+ * ただし**その日の最後の記録がまだ空なら、新しくは作らずそこへ移る**。
+ * 押すたびに空の記録が増えると、読み返すときに邪魔になるため。
+ */
+async function addRecord(date: string = addDateValue.value) {
+  const sameDate = sections.value.filter((section) => section.date === date)
+  const last = sameDate[sameDate.length - 1]
+
+  if (last && !last.body.trim()) {
+    focusRecord(last)
     return
   }
 
   addingSection.value = true
   try {
-    await detailStore.addSection(id.value, today.value)
+    const created = await detailStore.addSection(id.value, date)
     emit('changed')
     await nextTick()
-    focusBody()
+    focusRecord(created)
   } finally {
     addingSection.value = false
   }
+}
+
+/** その記録へ移る。当日の枠だけは常に開いているので、そちらへ入る。 */
+function focusRecord(section: SectionDto) {
+  if (section.id === todaySection.value?.id) {
+    focusBody()
+    return
+  }
+  recordRefs.get(section.id)?.focus()
+}
+
+/** 今日の作業記録へ移る（一覧の `Shift` + `y`）。 */
+function addTodaySection() {
+  return addRecord(today.value)
+}
+
+/**
+ * 当日の枠の日付を直す。
+ *
+ * 押したときだけ入力欄に変える。日付は読み返すときにいちばん見る文字なので、
+ * 既定は曜日つきの読みやすい表示のままにしておく（過去の記録も同じ考え方で、
+ * 編集アイコンで開いている間だけ直せる。docs/03-functional-spec.md 3.2）。
+ */
+const todayDateEditing = ref(false)
+const todayDateInput = ref<HTMLInputElement | null>(null)
+
+async function startTodayDateEdit() {
+  if (!todaySection.value) return
+  todayDateEditing.value = true
+  await nextTick()
+  todayDateInput.value?.focus()
+}
+
+/** 日付を変えると、その記録は変えた先の日付の記録として上へ回る。 */
+function onTodayDateInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  const section = todaySection.value
+  todayDateEditing.value = false
+  if (!section || !isAppDate(value) || value === section.date) return
+  void changeSectionDate(section, value)
 }
 
 async function changeSectionDate(section: SectionDto, date: string) {
@@ -844,6 +902,7 @@ async function removeSection(section: SectionDto) {
         <ItemSectionRecord
           v-for="(section, index) in pastSections"
           :key="section.id"
+          :ref="(el) => setRecordRef(section.id, el)"
           :item-id="id"
           :section="section"
           :can-move-up="canMove(index, -1)"
@@ -855,7 +914,30 @@ async function removeSection(section: SectionDto) {
 
         <article class="today">
           <header class="today__head">
-            <span class="today__date">{{ formatAppDate(today) }}</span>
+            <!--
+              日付は後から直せる（docs/03-functional-spec.md 3.2）。押したときだけ
+              入力欄にする。まだ記録が無いうちは動かすものが無いので、文字のまま。
+            -->
+            <input
+              v-if="todaySection && todayDateEditing"
+              ref="todayDateInput"
+              class="today__date-input"
+              type="date"
+              :value="todaySection.date"
+              aria-label="今日の作業記録の日付"
+              @change="onTodayDateInput"
+              @blur="todayDateEditing = false"
+            />
+            <button
+              v-else-if="todaySection"
+              type="button"
+              class="today__date today__date--editable"
+              aria-label="今日の作業記録の日付を変える"
+              @click="startTodayDateEdit"
+            >
+              {{ formatAppDate(today) }}
+            </button>
+            <span v-else class="today__date">{{ formatAppDate(today) }}</span>
             <span class="today__badge">今日</span>
             <!-- 作業記録と日記は日付だけで結び付く（docs/02-data-model.md 2.8） -->
             <NuxtLink class="today__diary" :to="`/diary/${today}`">日記</NuxtLink>
@@ -871,6 +953,28 @@ async function removeSection(section: SectionDto) {
             {{ todaySave.error }}
           </p>
         </article>
+
+        <!--
+          記録を足す。日付を選べるので、当日以外の記録もここから作れる
+          （docs/03-functional-spec.md 3.2）。
+        -->
+        <div class="log__add">
+          <input
+            class="log__add-date"
+            type="date"
+            :value="addDateValue"
+            aria-label="追加する作業記録の日付"
+            @change="addDate = ($event.target as HTMLInputElement).value"
+          />
+          <button
+            type="button"
+            class="log__add-button"
+            :disabled="addingSection"
+            @click="addRecord()"
+          >
+            作業記録を追加
+          </button>
+        </div>
       </section>
 
       <section v-if="pastOccurrences.length" class="series">
@@ -896,14 +1000,6 @@ async function removeSection(section: SectionDto) {
       </section>
 
       <div class="page__actions">
-        <button
-          type="button"
-          class="page__add"
-          :disabled="addingSection"
-          @click="addTodaySection"
-        >
-          今日の作業記録を追加
-        </button>
         <button type="button" class="page__delete" @click="remove">
           このタスクを削除
         </button>
@@ -1280,6 +1376,32 @@ async function removeSection(section: SectionDto) {
   padding-left: 1rem;
 }
 
+/* 押すと日付を直せる。押せることは分かるが、文字の見た目は変えない */
+.today__date--editable {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.today__date--editable:hover,
+.today__date--editable:focus-visible {
+  border-color: var(--border);
+}
+
+.today__date-input {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  margin-left: 0.875rem;
+  padding: 0 0.25rem;
+}
+
 .today__badge {
   font-size: 0.6875rem;
   color: var(--accent);
@@ -1299,6 +1421,39 @@ async function removeSection(section: SectionDto) {
 
 .today__save {
   flex: 1;
+}
+
+.log__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.log__add-date {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
+}
+
+.log__add-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  min-height: 2.75rem;
+  padding: 0 0.875rem;
+}
+
+.log__add-button:disabled {
+  opacity: 0.5;
 }
 
 .log__title {
@@ -1367,19 +1522,6 @@ async function removeSection(section: SectionDto) {
   justify-content: space-between;
   gap: 0.5rem;
   padding-top: 0.5rem;
-}
-
-.page__add {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  min-height: 2.75rem;
-  padding: 0 0.875rem;
-}
-
-.page__add:disabled {
-  opacity: 0.5;
 }
 
 .page__delete {
