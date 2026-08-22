@@ -28,12 +28,15 @@ export default defineEventHandler(async (event): Promise<DiaryDto> => {
   const db = useDb()
   const body = payload.body
 
+  const now = new Date()
+
   if (!body.trim()) {
     await db.delete(diaries).where(eq(diaries.date, date))
-    return { date, body: '' }
+    // 行は消えるが、消したのがいつかは返す。手元とサーバーのどちらが新しいかを
+    // 判断する材料になる（docs/15-client-state.md 14.2）
+    return { date, body: '', updatedAt: now.toISOString() }
   }
 
-  const now = new Date()
   const [saved] = await db
     .insert(diaries)
     .values({ date, body })
@@ -47,5 +50,9 @@ export default defineEventHandler(async (event): Promise<DiaryDto> => {
     throw createError({ statusCode: 500, message: '保存に失敗しました' })
   }
 
-  return { date: saved.date, body: saved.body }
+  return {
+    date: saved.date,
+    body: saved.body,
+    updatedAt: saved.updatedAt.toISOString(),
+  }
 })

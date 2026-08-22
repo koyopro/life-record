@@ -8,6 +8,14 @@ export interface DiaryDto {
   /** YYYY-MM-DD。 */
   date: string
   body: string
+  /**
+   * サーバーが最後に書き換えた時刻（ISO 8601）。まだ書かれていない日は null。
+   *
+   * 取得と保存は別々に飛ぶため、**保存より前に出した取得の応答が保存の後で
+   * 届く**ことがある。届いた内容がこちらの保存を知っているかを判断できるよう、
+   * サーバーの時計で打った時刻を返す（docs/15-client-state.md 14.2）。
+   */
+  updatedAt: string | null
 }
 
 export interface DiaryDetailDto extends DiaryDto {

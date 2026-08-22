@@ -32,6 +32,8 @@ export default defineEventHandler(async (event): Promise<ItemDetailDto> => {
 
   return {
     ...toItemDto(item, primary?.body ?? null, tagNames.get(id) ?? []),
+    // 応答を作った時刻。手元の保存より前の応答かを、受け取る側が判断できるようにする
+    fetchedAt: new Date().toISOString(),
     sections: ordered.map(toSectionDto),
     primarySectionId: primary?.id ?? null,
   }

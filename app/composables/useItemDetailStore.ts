@@ -11,6 +11,8 @@ import {
   IDLE_STATUS,
   type SaveStatus,
 } from '~/utils/save-scheduler'
+import { createSavedVersions } from '~/utils/saved-versions'
+import { mergeSections } from '~/utils/section-merge'
 
 /**
  * Item の詳細（本文と作業記録＝Section）の置き場。
@@ -21,7 +23,9 @@ import {
  *
  * - サーバーから取った内容も、編集した内容も、同じ控えへ書く
  * - 編集はローカル（控え）へ即座に反映し、送信は裏で遅らせて行う
- * - まだ送れていない鍵には、サーバーの内容を当てない
+ * - まだ送れていない鍵・送れなかった鍵には、サーバーの内容を当てない
+ * - 送れた鍵でも、こちらの保存より古い内容（＝保存より前に出した取得の
+ *   応答）は当てない
  *
  * こうすると、編集してから画面を切り替えて戻っても編集前の内容は出ない。
  * 画面ごとに `useFetch` の結果と控えの2つを見ていた頃は、どちらか片方だけが
@@ -43,6 +47,9 @@ const scheduler = createSaveScheduler({
     statusStore.value = { ...statusStore.value, [key]: status }
   },
 })
+
+/** 保存できた版（サーバーが返した更新日時）の控え。遅延送信と同じくモジュールに置く。 */
+const savedVersions = createSavedVersions()
 
 /**
  * 当日の枠（＝画面が既定で編集している作業記録）の保存に使う鍵。
@@ -79,12 +86,31 @@ export function useItemDetailStore() {
   }
 
   /**
+   * その鍵の本文は、サーバーから届いた内容より手元の方が新しいか。
+   *
+   * 次の3つのどれかに当たれば、手元を残す。
+   *
+   * 1. まだ送れていない・送信中（`busy`）
+   * 2. 送ったが失敗した（`error`）。送れていない以上、手元にしか無い
+   * 3. 送れているが、届いた内容の更新日時がこちらの保存より古い
+   *    （＝保存より前に出した取得の応答が、保存の後で届いた）
+   *
+   * 3 が要るのは、送り終わった瞬間に 1 の守りが外れるため。取得と保存は
+   * 別々に飛ぶので、行き違いは待ち時間の長い回線ほど起きやすい。
+   */
+  function localIsNewer(key: string, serverUpdatedAt: string | null): boolean {
+    if (scheduler.busy(key)) return true
+    if (statusOf(key).state === 'error') return true
+    return savedVersions.isStale(key, serverUpdatedAt)
+  }
+
+  /**
    * サーバーから届いた詳細を、控えへ重ねる形にする。
    *
-   * **まだ送れていない本文だけはローカルを残す。**それ以外（日付・並び順・
-   * 作業記録の増減・メタデータ）はサーバーが正なので、そのまま採る。
-   * 丸ごと捨てると、書いている最中に「この日にやったこと」のような
-   * 触っていない部分まで古いままになる。
+   * **手元の方が新しい本文だけはローカルを残す**（`localIsNewer`）。
+   * それ以外（日付・並び順・作業記録の増減・メタデータ）はサーバーが正なので、
+   * そのまま採る。丸ごと捨てると、書いている最中に「この日にやったこと」の
+   * ような触っていない部分まで古いままになる。
    *
    * 当日の枠はまだ Section が無いこともあるが、その分の打鍵は控えではなく
    * 下書き（`drafts`）に置いてあるので、ここで守る必要はない。
@@ -95,13 +121,22 @@ export function useItemDetailStore() {
 
     const todaySectionId = pickTodaySection(server.sections, toAppDate())?.id
 
-    const merged = server.sections.map((section) => {
-      const busy =
-        scheduler.busy(sectionKey(id, section.id)) ||
-        (section.id === todaySectionId && scheduler.busy(todayKey(id)))
-      if (!busy) return section
-      const mine = local.sections.find((s) => s.id === section.id)
-      return mine ? { ...section, body: mine.body } : section
+    const fetchedAt = server.fetchedAt
+
+    const merged = mergeSections(local.sections, server.sections, {
+      keepsLocalBody: (section) =>
+        localIsNewer(sectionKey(id, section.id), section.updatedAt) ||
+        (section.id === todaySectionId &&
+          localIsNewer(todayKey(id), section.updatedAt)),
+      /*
+       * その日の最初の打鍵で作った記録（sendTodayBody）は、作る前に出した
+       * 取得の応答には入っていない。応答をそのまま採ると、書いた本文ごと
+       * 空に戻って見えるため、応答を作った時刻より後の保存は残す。
+       * 応答に時刻が無ければ判断できないので、そのときは残さない。
+       */
+      savedAfterResponse: (section) =>
+        Boolean(fetchedAt) &&
+        savedVersions.isStale(sectionKey(id, section.id), fetchedAt ?? null),
     })
 
     return replaceSections(server, merged)
@@ -110,7 +145,7 @@ export function useItemDetailStore() {
   /**
    * サーバーから取り直し、控えへ重ねる。画面は setup で1度だけ呼ぶ。
    *
-   * 重ね方は mergeServer が持つ。まだ送れていない本文だけはローカルを残す
+   * 重ね方は mergeServer が持つ。手元の方が新しい本文だけはローカルを残す
    * （`mergeServerItems` が未送信の変更を上書きしないのと同じ規則）。
    */
   function track(id: Ref<string> | ComputedRef<string>) {
@@ -279,6 +314,8 @@ export function useItemDetailStore() {
         method: 'PATCH',
         body: { body: value },
       })
+      // 当日の枠は Section と鍵が別なので、両方に印を付ける
+      savedVersions.mark(todayKey(id), updated.updatedAt)
       applySavedSection(id, updated)
       if (updated.id === byId(id)?.primarySectionId) await syncBodyCopy(id)
       return
@@ -292,6 +329,8 @@ export function useItemDetailStore() {
       method: 'POST',
       body: { itemId: id, date: today, body: value },
     })
+    savedVersions.mark(todayKey(id), created.updatedAt)
+    savedVersions.mark(sectionKey(id, created.id), created.updatedAt)
     clearDraft(id)
     update(id, (current) =>
       replaceSections(current, [...current.sections, created]),
@@ -344,6 +383,9 @@ export function useItemDetailStore() {
    * 日付・並び順・updatedAt はサーバーが決めるので応答で確定させる。
    */
   function applySavedSection(id: string, updated: SectionDto) {
+    // ここまで届いた、という印。これより古い取得の応答は当てない
+    savedVersions.mark(sectionKey(id, updated.id), updated.updatedAt)
+
     update(id, (detail) =>
       replaceSections(
         detail,
@@ -443,6 +485,7 @@ export function useItemDetailStore() {
         ),
       async () => {
         await $fetch(`/api/sections/${sectionId}`, { method: 'DELETE' })
+        savedVersions.forget(sectionKey(id, sectionId))
       },
     )
 

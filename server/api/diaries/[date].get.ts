@@ -23,6 +23,7 @@ export default defineEventHandler(async (event): Promise<DiaryDetailDto> => {
     date,
     body: found?.body ?? '',
     exists: Boolean(found),
+    updatedAt: found?.updatedAt.toISOString() ?? null,
     items,
   }
 })

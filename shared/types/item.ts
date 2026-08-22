@@ -96,6 +96,17 @@ export interface SectionDto {
 }
 
 export interface ItemDetailDto extends ItemDto {
+  /**
+   * サーバーがこの応答を作った時刻（ISO 8601）。
+   *
+   * 取得と保存は別々に飛ぶため、**保存より前に出した取得の応答が保存の後で
+   * 届く**ことがある。届いた応答が、こちらの保存より前のものかを判断する
+   * ために持つ（docs/15-client-state.md 14.2）。
+   *
+   * 入れるのは詳細の取得（`GET /api/items/:id`）だけ。書き出しなど、
+   * 手元の控えと突き合わせない用途では持たない。
+   */
+  fetchedAt?: string
   /** 日付昇順、同一日付内は position 昇順（docs/03-functional-spec.md 3.1）。 */
   sections: SectionDto[]
   /**

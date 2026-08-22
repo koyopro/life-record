@@ -1,4 +1,4 @@
-import type { DiaryDetailDto, DiarySummaryDto } from '~~/shared/types/diary'
+import type { DiaryDetailDto, DiaryDto, DiarySummaryDto } from '~~/shared/types/diary'
 import { excerptOf } from '~~/shared/utils/diary'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
 import {
@@ -6,6 +6,7 @@ import {
   IDLE_STATUS,
   type SaveStatus,
 } from '~/utils/save-scheduler'
+import { createSavedVersions } from '~/utils/saved-versions'
 
 /**
  * 日記の置き場。
@@ -24,6 +25,9 @@ const scheduler = createSaveScheduler({
     statusStore.value = { ...statusStore.value, [key]: status }
   },
 })
+
+/** 保存できた版（サーバーが返した更新日時）の控え（useItemDetailStore と同じ）。 */
+const savedVersions = createSavedVersions()
 
 export function useDiaryStore() {
   const { cache, set } = usePersistedRecordCache<DiaryDetailDto>('diary-detail-cache')
@@ -45,11 +49,27 @@ export function useDiaryStore() {
   }
 
   /**
+   * その日の本文は、サーバーから届いた内容より手元の方が新しいか。
+   *
+   * 判断は useItemDetailStore.localIsNewer と同じ。
+   *
+   * 1. まだ送れていない・送信中（`busy`）
+   * 2. 送ったが失敗した（`error`）。送れていない以上、手元にしか無い
+   * 3. 送れているが、届いた内容の更新日時がこちらの保存より古い
+   *    （＝保存より前に出した取得の応答が、保存の後で届いた）
+   */
+  function localIsNewer(date: string, serverUpdatedAt: string | null): boolean {
+    if (scheduler.busy(date)) return true
+    if (statusOf(date).state === 'error') return true
+    return savedVersions.isStale(date, serverUpdatedAt)
+  }
+
+  /**
    * サーバーから取り直し、控えへ重ねる。画面は setup で1度だけ呼ぶ。
    *
-   * **まだ送れていない本文だけはローカルを残す。**「この日にやったこと」は
-   * サーバーが正なので、書いている最中でもそのまま採る
-   * （useItemDetailStore.track と同じ規則）。
+   * **手元の方が新しい本文だけはローカルを残す**（`localIsNewer`）。
+   * 「この日にやったこと」はサーバーが正なので、書いている最中でも
+   * そのまま採る（useItemDetailStore.track と同じ規則）。
    */
   function track(date: Ref<string> | ComputedRef<string>) {
     const { data, error } = useFetch<DiaryDetailDto>(
@@ -61,12 +81,18 @@ export function useDiaryStore() {
       (value) => {
         if (!value) return
         const key = date.value
-        if (!scheduler.busy(key)) {
+        if (!localIsNewer(key, value.updatedAt)) {
           set(key, value)
           return
         }
         const body = bodyOf(key)
-        set(key, { ...value, body, exists: body.trim().length > 0 })
+        set(key, {
+          ...value,
+          body,
+          exists: body.trim().length > 0,
+          // 本文は手元のものを残すので、更新日時も手元のものに合わせる
+          updatedAt: byDate(key)?.updatedAt ?? value.updatedAt,
+        })
       },
       { immediate: true },
     )
@@ -132,16 +158,19 @@ export function useDiaryStore() {
       body: value,
       // 空にすればサーバー側では消える。書けば、その時点で「ある」扱い
       exists: value.trim().length > 0,
+      updatedAt: current?.updatedAt ?? null,
       items: current?.items ?? [],
     })
 
-    // 応答は控えへ当てない。送った時点の本文しか載っておらず、往復中に
-    // 書き足された分を戻してしまう。控えには既に最新が入っている
+    // 応答の本文は控えへ当てない。送った時点の本文しか載っておらず、往復中に
+    // 書き足された分を戻してしまう。控えには既に最新が入っている。
+    // 更新日時だけは受け取り、これより古い取得の応答を退ける材料にする
     scheduler.schedule(date, async () => {
-      await $fetch(`/api/diaries/${date}`, {
+      const saved = await $fetch<DiaryDto>(`/api/diaries/${date}`, {
         method: 'PUT',
         body: { body: value },
       })
+      savedVersions.mark(date, saved.updatedAt)
     })
   }
 
