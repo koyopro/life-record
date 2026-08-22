@@ -61,9 +61,12 @@ export default defineNuxtConfig({
       /*
        * ホーム画面アイコンの長押しから出る項目（docs/14-app-shortcuts.md）。
        *
-       * アプリを開いて一覧の読み込みを待つ間を挟まずに書き始められるよう、
-       * 追加だけをする画面（/add）へ直接入れる。項目は増やさない。
-       * 増やすほど長押しの先から目当てを選ぶ手間が増え、速さが薄れる。
+       * 置くのは「開いてすぐ書き始めたい」ものだけにする。読むだけなら
+       * アイコンを普通に押せば済むので、長押しの先から選ぶ手間に見合わない。
+       *
+       * 日記は日付ごとに URL が違うが、manifest には日付を書けない
+       * （登録した日のまま固定される）。開いた時点の日付へ振り分ける
+       * /diary/today を行き先にする。
        */
       shortcuts: [
         {
@@ -71,6 +74,15 @@ export default defineNuxtConfig({
           short_name: '追加',
           description: '入力欄を開いた状態で起動する',
           url: '/add',
+          icons: [
+            { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          ],
+        },
+        {
+          name: '今日の日記を開く',
+          short_name: '日記',
+          description: '今日の日記を開いた状態で起動する',
+          url: '/diary/today',
           icons: [
             { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
           ],
