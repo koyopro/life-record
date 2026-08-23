@@ -227,8 +227,25 @@ async function activate(
   resize()
 }
 
+/** 本文の中のカーソル位置（行と、行頭を除いた中身での位置）。 */
+interface CaretPosition {
+  index: number
+  offset: number
+}
+
 /** 直前まで編集していた位置。フォーカスが外れたときに、その位置を覚えておく。 */
-let lastCaret: { index: number; offset: number } | null = null
+let lastCaret: CaretPosition | null = null
+
+/**
+ * いまのカーソル位置。編集中でなければ、外れる直前に控えた位置を使う
+ * （ドラッグやボタン操作でフォーカスが外れるため）。どちらも無ければ null。
+ */
+function caretNow(): CaretPosition | null {
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return lastCaret
+  return { index, offset: el.selectionStart ?? activeText.value.length }
+}
 
 /**
  * 上下キーで行をまたぐときに保つ横位置（行頭からの文字数）。
@@ -1220,46 +1237,64 @@ const filePicker = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
 
 /**
- * 画像を1行として、指定した位置に差し込む。
+ * 画像を**カーソルのあった位置**へ、1行として差し込む。
  *
  * 行の途中に混ぜると、書きかけの文が画像記法で割られてしまうため、
- * 常に1行として入れる。挿入位置を決めるのは呼び出し側（uploadAll）。
+ * 常に1行として入れる。そのうえで**カーソルの位置で行を割り**、その間へ
+ * 置く。空行にカーソルがあればその行がそのまま画像になり、書きかけの行なら
+ * カーソルより後ろは画像の下へ回る。
+ *
+ * 行頭（字下げ・引用）は貼り付けや改行と同じ規則で引き継ぐ
+ * （`continuationPrefix`）。位置が分からなければ末尾に足す。
+ *
+ * 次の画像を入れる位置（差し込んだ行の次）を返す。複数枚を順に並べるため。
  */
-function insertImageAt(path: string, at: number) {
+function insertImageAt(path: string, at: CaretPosition | null): CaretPosition {
   const lines = [...rawLines.value]
+  const image = `[${path}]`
 
-  // 空の本文に足すときは、先頭の空行をそのまま使う
-  const replaceEmpty = lines.length === 1 && lines[0] === ''
-  if (replaceEmpty) lines.splice(0, 1, `[${path}]`)
-  else lines.splice(at, 0, `[${path}]`)
+  if (!at || at.index < 0 || at.index >= lines.length) {
+    lines.push(image)
+    commit(lines)
+    return { index: lines.length, offset: 0 }
+  }
 
+  const line = lineAt(lines, at.index)
+  const offset = Math.min(Math.max(at.offset, 0), line.content.length)
+  const before = line.content.slice(0, offset)
+  const after = line.content.slice(offset)
+  const prefix = continuationPrefix(line)
+
+  const replacement = [
+    ...(before ? [line.prefix + before] : []),
+    prefix + image,
+    ...(after ? [prefix + after] : []),
+  ]
+  lines.splice(at.index, 1, ...replacement)
   commit(lines)
+
+  // 差し込んだ画像の行（before があれば1つ下）の、さらに次
+  return { index: at.index + (before ? 1 : 0) + 1, offset: 0 }
 }
 
 /**
- * まとめてアップロードし、カーソル位置（の次の行）へ順に差し込む。
+ * まとめてアップロードし、順に差し込む。
  *
- * ボタン操作やドラッグ開始でフォーカスが外れていても、外れる直前の
- * カーソル位置（lastCaret）へ一度戻ってから差し込む（insertItemLink と
- * 同じ理由）。一度も編集していなければ末尾に足す。
+ * **位置は呼ばれた時点で決める。**アップロードは何秒かかかるので、その間に
+ * カーソルが動いても（別の行を触る・フォーカスが外れる）、貼った・落とした
+ * ときの位置へ入るようにする。ボタン操作やドラッグでフォーカスが外れている
+ * ときは、外れる直前に控えた位置（`lastCaret`）を使う。
  *
- * 挿入位置は最初に1回だけ決め、複数枚のときはそこから1行ずつ進める。
- * 画像を入れるたびに位置を数え直すと、フォーカスが外れて末尾扱いになり
- * 2枚目以降の順序が入れ替わる。
+ * 複数枚のときは、1枚目を入れた次の行から順に並べる。
  */
-async function uploadAll(files: File[]) {
-  if (activeIndex.value === null && lastCaret) {
-    await activate(lastCaret.index, lastCaret.offset)
-  }
+async function uploadAll(files: File[], at: CaretPosition | null = caretNow()) {
   lastCaret = null
 
-  let at = activeIndex.value === null ? rawLines.value.length : activeIndex.value + 1
-
+  let position = at
   for (const file of files) {
     const path = await images.upload(file)
     if (!path) continue
-    insertImageAt(path, at)
-    at += 1
+    position = insertImageAt(path, position)
   }
 
   deactivate()
