@@ -1409,16 +1409,21 @@ const dragging = ref(false)
  * 行頭（字下げ・引用）は貼り付けや改行と同じ規則で引き継ぐ
  * （`continuationPrefix`）。位置が分からなければ末尾に足す。
  *
- * 次の画像を入れる位置（差し込んだ行の次）を返す。複数枚を順に並べるため。
+ * 差し込んだ後の行と、次の画像を入れる位置（差し込んだ行の次）を返す。
+ * 複数枚を順に並べるためと、差し込んだ直後に続きを編集するため。行は
+ * `model` が親を往復して戻るまで古いままなので、呼び出し側へ渡す。
  */
-function insertImageAt(path: string, at: CaretPosition | null): CaretPosition {
+function insertImageAt(
+  path: string,
+  at: CaretPosition | null,
+): { lines: string[]; at: CaretPosition } {
   const lines = [...rawLines.value]
   const image = `[${path}]`
 
   if (!at || at.index < 0 || at.index >= lines.length) {
     lines.push(image)
     commit(lines)
-    return { index: lines.length, offset: 0 }
+    return { lines, at: { index: lines.length, offset: 0 } }
   }
 
   const line = lineAt(lines, at.index)
@@ -1436,7 +1441,7 @@ function insertImageAt(path: string, at: CaretPosition | null): CaretPosition {
   commit(lines)
 
   // 差し込んだ画像の行（before があれば1つ下）の、さらに次
-  return { index: at.index + (before ? 1 : 0) + 1, offset: 0 }
+  return { lines, at: { index: at.index + (before ? 1 : 0) + 1, offset: 0 } }
 }
 
 /**
@@ -1448,18 +1453,48 @@ function insertImageAt(path: string, at: CaretPosition | null): CaretPosition {
  * ときは、外れる直前に控えた位置（`lastCaret`）を使う。
  *
  * 複数枚のときは、1枚目を入れた次の行から順に並べる。
+ *
+ * 差し込んだ後は**編集を続けられるようにする**。落とす・貼るのは書いている
+ * 途中の操作なので、画像が入るたびに編集から降ろされると、続きを書くのに
+ * もう一度行を選び直すことになる。カーソルは画像の次（カーソルより後ろが
+ * あればその文字の頭）へ置く。
  */
 async function uploadAll(files: File[], at: CaretPosition | null = caretNow()) {
   lastCaret = null
 
   let position = at
+  let lines = rawLines.value
   for (const file of files) {
     const path = await images.upload(file)
     if (!path) continue
-    position = insertImageAt(path, position)
+    const inserted = insertImageAt(path, position)
+    lines = inserted.lines
+    position = inserted.at
   }
 
-  deactivate()
+  // 位置が分からないまま入れた（末尾に足した）ときは、戻る場所が無いので降りる
+  if (!at || !position) {
+    deactivate()
+    return
+  }
+
+  await resumeEditing(position, lines)
+}
+
+/**
+ * 画像を差し込んだ後の位置から編集を続ける。
+ *
+ * 画像が末尾に入って続きの行が無いときは、書き続けられるよう空行を足して
+ * そこへ移る。画像の行そのものへ戻すと、記法（`[URL]`）が生のまま出てきて、
+ * そのまま打つと画像の行に文字が混ざる。
+ */
+async function resumeEditing(at: CaretPosition, lines: string[]) {
+  let next = lines
+  if (at.index >= next.length) {
+    next = [...next, '']
+    commit(next)
+  }
+  await activate(at.index, at.offset, next)
 }
 
 // --- 他のタスクへのリンク（ドラッグ＆ドロップ） ---------------------------
