@@ -1010,6 +1010,31 @@ function closestLine(node: Node | null): { el: Element; index: number } | null {
  * 1行内の部分選択（例: コードの中身の一部だけ選ぶ）は、余白を含まないため
  * ブラウザの既定のコピーのままでよい。行全体を選んでいるときだけ差し替える。
  */
+/** 選んでいる行の、記法込みの生テキスト。選んでいなければ null。 */
+function selectedLinesText(): string | null {
+  const range = selectedLineRange()
+  if (!range) return null
+  const start = Math.min(range.anchor, range.focus)
+  const end = Math.max(range.anchor, range.focus)
+  return rawLines.value.slice(start, end + 1).join('\n')
+}
+
+/**
+ * 行を選んでいる間の切り取り（`Cmd`/`Ctrl`+`X`）。
+ *
+ * コピーと同じ生テキストを渡してから、選んだ行を消す。選択があるときの
+ * 切り取りは「選んだものを持っていって消す」が当たり前の動きなので、
+ * 行の選択でも同じにする。
+ */
+function onCut(event: ClipboardEvent) {
+  const text = selectedLinesText()
+  if (text === null) return
+
+  event.clipboardData?.setData('text/plain', text)
+  event.preventDefault()
+  removeSelectedLines()
+}
+
 function onCopy(event: ClipboardEvent) {
   const selection = window.getSelection()
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
@@ -1418,9 +1443,34 @@ function onPaste(event: ClipboardEvent) {
   if (locked.value) return
 
   const files = images.imagesFrom(event.clipboardData)
-  if (files.length === 0) return
+  if (files.length > 0) {
+    event.preventDefault()
+    void uploadAll(files)
+    return
+  }
+
+  /*
+   * 行を選んでいる間の貼り付け（`Cmd`/`Ctrl`+`V`）。選んだ行を、貼り付けた
+   * 内容で置き換える。1行を編集している間は入力欄が受け取るので、ここは
+   * 行を選んでいるときだけ。
+   */
+  const range = selectedLineRange()
+  const text = event.clipboardData?.getData('text/plain')
+  if (!range || !text) return
+
   event.preventDefault()
-  void uploadAll(files)
+  const start = Math.min(range.anchor, range.focus)
+  const end = Math.max(range.anchor, range.focus)
+  const pasted = text.replace(/\r\n?/g, '\n').split('\n')
+
+  const lines = [...rawLines.value]
+  lines.splice(start, end - start + 1, ...pasted)
+
+  shiftSelectAnchor = null
+  window.getSelection()?.removeAllRanges()
+
+  commit(lines)
+  void activate(start + pasted.length - 1, 'end', lines)
 }
 
 function onPick(event: Event) {
@@ -1447,6 +1497,7 @@ defineExpose({
     @drop="onDrop"
     @paste="onPaste"
     @copy="onCopy"
+    @cut="onCut"
     @keydown="onContainerKeydown"
   >
     <button
