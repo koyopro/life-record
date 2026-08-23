@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
-import { dropPrefixUnit, indentOf, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import {
+  continuationPrefix,
+  dropPrefixUnit,
+  indentOf,
+  linesFromInput,
+  parseScrapbox,
+} from '~~/shared/utils/scrapbox/parse'
 import type { Line } from '~~/shared/utils/scrapbox/types'
 import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
@@ -282,9 +288,10 @@ function onInput(event?: Event) {
   const prefix = activePrefix.value
 
   // 貼り付けで改行が入ることがあるので、その場合は行を分ける
+  // （2行目以降にも行頭を引き継ぐ。linesFromInput を参照）
   if (activeText.value.includes('\n')) {
     closeEmojiPicker()
-    const inserted = `${prefix}${activeText.value}`.split('\n')
+    const inserted = linesFromInput(activeText.value, activeLine.value)
     lines.splice(index, 1, ...inserted)
     commit(lines)
     void activate(index + inserted.length - 1, 'end', lines)
@@ -728,19 +735,10 @@ function onEnter(event: KeyboardEvent) {
   const before = activeText.value.slice(0, caret)
   const after = activeText.value.slice(caret)
 
-  // Scrapbox と同じく、改行したら前の行の字下げを引き継ぐ。
-  // 引用の `>` も引き継ぐ（複数行の引用は各行に `>` を書く記法のため）。
-  // `code:` だけは、続きの行がもう1つのコードブロックにならないよう落とす。
   const prefix = activePrefix.value
-  const strippedPrefix = prefix.replace(/code:$/, '')
-  // `code:` 行の直後は、本文と同じ基準の字下げ（+1）から始める。
-  // そうしないと、空のまま Enter や Delete を押しただけでコードブロックを
-  // 抜けてしまう（parse.ts の空行判定を参照）
-  const nextPrefix =
-    activeLine.value?.type === 'codeHeader' ? `${strippedPrefix} ` : strippedPrefix
-
   const lines = [...rawLines.value]
-  lines.splice(index, 1, prefix + before, nextPrefix + after)
+  // 改行したら前の行の行頭を引き継ぐ（貼り付けと同じ規則）
+  lines.splice(index, 1, prefix + before, continuationPrefix(activeLine.value) + after)
   commit(lines)
   void activate(index + 1, 'start', lines)
 }

@@ -145,6 +145,36 @@ function split(raw: string, at: number): { raw: string; prefix: string; content:
 }
 
 /**
+ * 続きの行へ引き継ぐ行頭。
+ *
+ * Scrapbox と同じく字下げを引き継ぐ。引用の `>` も引き継ぐ（複数行の引用は
+ * 各行に `>` を書く記法のため）。`code:` だけは、続きの行がもう1つの
+ * コードブロックにならないよう落とし、代わりに中身と同じ基準の字下げ（+1）に
+ * する。そうしないと、空のまま `Enter` や `Delete` を押しただけで
+ * コードブロックを抜けてしまう（空行の判定を参照）。
+ */
+export function continuationPrefix(line: Line | null): string {
+  const stripped = (line?.prefix ?? '').replace(/code:$/, '')
+  return line?.type === 'codeHeader' ? `${stripped} ` : stripped
+}
+
+/**
+ * 入力欄の値を行へ分ける。複数行を貼り付けたときに使う。
+ *
+ * 1行目は編集していた行頭のまま、**2行目以降には続きの行頭を付ける**。
+ * 付けないと、コードブロックや引用の中に貼ったときに1行目だけがその中に残り、
+ * 続きは外へこぼれ出てしまう（行頭の字下げが所属を決めているため）。
+ *
+ * 貼り付けた文字列そのものの字下げは、行頭の後ろにそのまま残る
+ * （コードの中の段付けを保つ）。
+ */
+export function linesFromInput(text: string, line: Line | null): string[] {
+  const [first = '', ...rest] = text.split('\n')
+  const next = continuationPrefix(line)
+  return [(line?.prefix ?? '') + first, ...rest.map((value) => next + value)]
+}
+
+/**
  * 行頭を1段ぶん外す。
  *
  * 行頭は表示では余白なので、その先頭で `Backspace` を押したときに
