@@ -1085,12 +1085,19 @@ async function selectAllLines() {
  * 複数行選択したまま `Tab` を押すと、選んだ行すべての字下げを1段
  * まとめて増減する（Scrapbox と同じ）。
  */
-function indentSelectedLines(delta: 1 | -1) {
+/** いま選んでいる行の範囲。選んでいなければ null。 */
+function selectedLineRange(): { anchor: number; focus: number } | null {
   const anchor = shiftSelectAnchor
-  if (anchor === null) return
-
+  if (anchor === null) return null
   const current = window.getSelection()
-  const focus = closestLine(current?.focusNode ?? null)?.index ?? anchor
+  return { anchor, focus: closestLine(current?.focusNode ?? null)?.index ?? anchor }
+}
+
+function indentSelectedLines(delta: 1 | -1) {
+  const range = selectedLineRange()
+  if (!range) return
+
+  const { anchor, focus } = range
   const start = Math.min(anchor, focus)
   const end = Math.max(anchor, focus)
 
@@ -1106,6 +1113,32 @@ function indentSelectedLines(delta: 1 | -1) {
 
   // 行の中身は変わっても番号は変わらないので、同じ範囲で選択し直す
   void applyLineSelection(anchor, focus)
+}
+
+/**
+ * 選んだ行をまとめて消す（複数行選択中の `Delete` / `Backspace`）。
+ *
+ * 選択があるときの `Delete` は「選んだものを消す」が当たり前の動きなので、
+ * 行の選択でも同じにする。消したあとは、その場所（消した行が末尾なら
+ * その手前）の編集に戻る。続けて書けるようにするため。
+ */
+function removeSelectedLines() {
+  const range = selectedLineRange()
+  if (!range) return
+
+  const start = Math.min(range.anchor, range.focus)
+  const end = Math.max(range.anchor, range.focus)
+
+  const lines = [...rawLines.value]
+  lines.splice(start, end - start + 1)
+  // 本文が空になっても、書ける行は1つ残す
+  if (lines.length === 0) lines.push('')
+
+  shiftSelectAnchor = null
+  window.getSelection()?.removeAllRanges()
+
+  commit(lines)
+  void activate(Math.min(start, lines.length - 1), 'start', lines)
 }
 
 /**
@@ -1141,6 +1174,17 @@ function onContainerKeydown(event: KeyboardEvent) {
   if (shiftSelectAnchor !== null && event.key === 'Tab') {
     event.preventDefault()
     indentSelectedLines(event.shiftKey ? -1 : 1)
+    return
+  }
+
+  if (
+    shiftSelectAnchor !== null &&
+    (event.key === 'Delete' || event.key === 'Backspace')
+  ) {
+    event.preventDefault()
+    // 一覧側の削除（Delete = タスクを消す）まで届かないよう、ここで止める
+    event.stopPropagation()
+    removeSelectedLines()
     return
   }
 
