@@ -446,8 +446,20 @@ Scrapbox に合わせて2種類を用意する。**段落**は、その行と、
 `.delete` が Backspace の別名になっているなど、名前と実際のキーが
 一致しない箇所があり、取り違えると事故になるため。
 
-日本語入力の変換中は `Enter` を横取りしない。変換の確定が行の分割として
-扱われてしまうため、`compositionstart` / `compositionend` で判定する。
+日本語入力の変換中は、キーを横取りしない（変換の確定が行の分割として
+扱われてしまうため）。判定は `compositionstart` / `compositionend` の印だけでは
+足りない。**Safari は変換を確定した `Enter` の前に `compositionend` を投げる**
+ので、確定の `Enter` が届く時点で印は下りている（macOS アプリの WebView も
+Safari と同じ）。そこで、次のどれかに当てはまるキーを IME のものとして見送る。
+
+- `compositionstart` から `compositionend` までの間である
+- `event.isComposing` が true（Chrome / Firefox の確定はこちら）
+- `event.keyCode` が 229（Safari の確定はこちら）
+
+判定は `onKeydown` の入口で一度だけ行い、個々の処理（改行・字下げ・行の移動）
+では見ない。新しいキー操作を足したときに、そこだけ変換中の判定が抜ける、
+ということが起きないようにするため。タスクの追加欄（ItemComposer）と
+タイトルの入力欄も同じ規則で判定する。
 
 ### 入力欄は1つを使い回す
 

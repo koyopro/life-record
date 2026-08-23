@@ -522,6 +522,23 @@ function selectEmoji(entry: PickerEntry) {
 const composing = ref(false)
 
 /**
+ * IME（日本語入力）が処理したキーか。
+ *
+ * `compositionstart` から `compositionend` までの印（`composing`）だけでは
+ * 足りない。**Safari は変換を確定した Enter の前に `compositionend` を投げる**
+ * ため、確定の Enter が届く時点で印は下りている。macOS アプリの WebView も
+ * 同じなので、そのままだと確定のたびに行が分かれてしまう。
+ *
+ * - Chrome / Firefox … 確定の keydown は `isComposing` が true
+ * - Safari            … `isComposing` は false になる。代わりに keyCode が 229
+ *
+ * 判定は ItemComposer / ItemDetail のタイトルと同じ（3か所で同じ規則にする）。
+ */
+function isImeKey(event: KeyboardEvent): boolean {
+  return composing.value || event.isComposing || event.keyCode === 229
+}
+
+/**
  * キー操作の入り口。
  *
  * Vue のキー修飾子は使わない。`.delete` が Backspace の別名になっている等、
@@ -529,6 +546,10 @@ const composing = ref(false)
  * `event.key` を直接見る。
  */
 function onKeydown(event: KeyboardEvent) {
+  // 変換中のキーはすべて IME のもの。確定の Enter を改行にしないよう、
+  // ここで一度に見送る（個々の処理では見ない）
+  if (isImeKey(event)) return
+
   // 上下キー以外で動いたら、上下移動で保っていた横位置は忘れる
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') desiredColumn = null
 
@@ -632,7 +653,6 @@ function onKeydown(event: KeyboardEvent) {
  * `onInput`（`maybeAutoCloseBracket`）側で見てから決める。
  */
 function onOpenBracket(event: KeyboardEvent) {
-  if (composing.value) return
   const el = input.value
   if (activeIndex.value === null || !el) return
 
@@ -763,7 +783,6 @@ function onForwardDelete(event: KeyboardEvent) {
 }
 
 function onEnter(event: KeyboardEvent) {
-  if (composing.value) return
   event.preventDefault()
 
   const index = activeIndex.value
@@ -835,9 +854,6 @@ function isOnLastRow(el: HTMLTextAreaElement): boolean {
 }
 
 function onArrow(event: KeyboardEvent, delta: -1 | 1) {
-  // IME の変換候補を上下で選んでいる間は、行をまたぐ移動として奪わない
-  if (composing.value) return
-
   const index = activeIndex.value
   const el = input.value
   if (index === null || !el) return
@@ -878,7 +894,6 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
  * 選択があるときは何もしない。入力欄の既定（選択を解いて端へ寄せる）に任せる。
  */
 function onHorizontalArrow(event: KeyboardEvent, delta: -1 | 1) {
-  if (composing.value) return
   // 修飾キー付きは、単語単位の移動や選択など別の意味を持つ
   if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return
 
@@ -910,7 +925,7 @@ function onHorizontalArrow(event: KeyboardEvent, delta: -1 | 1) {
  */
 function moveLine(event: KeyboardEvent, delta: -1 | 1) {
   const index = activeIndex.value
-  if (index === null || composing.value) return
+  if (index === null) return
 
   const lines = [...rawLines.value]
   const target = index + delta
@@ -933,7 +948,7 @@ function moveLine(event: KeyboardEvent, delta: -1 | 1) {
  */
 function moveBlock(event: KeyboardEvent, delta: -1 | 1) {
   const index = activeIndex.value
-  if (index === null || composing.value) return
+  if (index === null) return
 
   const lines = [...rawLines.value]
   const all = parseScrapbox(lines.join('\n'))
@@ -1022,7 +1037,6 @@ function previousSiblingStart(all: Line[], index: number): number {
 
 /** 字下げを1段変える。Scrapbox では字下げが箇条書きの階層になる。 */
 function onTab(event: KeyboardEvent) {
-  if (composing.value) return
   const index = activeIndex.value
   if (index === null) return
   event.preventDefault()
