@@ -44,7 +44,6 @@ async function add(text: string) {
       ref="listView"
       status="all"
       due-until-today
-      open-only
       default-sort="priorityDueDesc"
       storage-key="sort:today"
       show-sort

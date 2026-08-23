@@ -29,8 +29,6 @@ interface Options {
   untagged?: MaybeRefOrGetter<boolean>
   /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
   dueUntilToday?: MaybeRefOrGetter<boolean>
-  /** 未完了のものだけに絞るか。 */
-  openOnly?: MaybeRefOrGetter<boolean>
   /** ソート軸を localStorage に覚えるためのキー。画面ごとに分ける。 */
   sortStorageKey: string
   defaultSort?: SortKey
@@ -53,7 +51,6 @@ interface Options {
 export function useItemList(options: Options) {
   const status = computed(() => toValue(options.status))
   const completed = computed(() => toValue(options.completed ?? false))
-  const openOnly = computed(() => toValue(options.openOnly ?? false))
   const tag = computed(() => toValue(options.tag ?? undefined))
   const untagged = computed(() => toValue(options.untagged ?? false))
   const dueUntilToday = computed(() => toValue(options.dueUntilToday ?? false))
@@ -113,8 +110,11 @@ export function useItemList(options: Options) {
         if (completedAt < startOfAppDay() || completedAt > endOfAppDay()) return false
       }
     } else {
+      // 未完了側に完了したものは出さない。「未完了 / 完了」は裏表で、
+      // 見ている側に反対のものが混じると切り替えの意味が無くなる
+      // （docs/08-todo-management.md 8.4）。
+      if (item.status === 'closed') return false
       if (status.value !== 'all' && item.status !== status.value) return false
-      if (openOnly.value && item.status === 'closed') return false
       if (dueUntilToday.value) {
         if (!item.dueAt) return false
         if (new Date(item.dueAt) > endOfAppDay()) return false

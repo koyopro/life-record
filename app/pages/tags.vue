@@ -20,12 +20,12 @@ const { tags, pending, colorOf, setColor, rename } = useTags()
 useHead({ title: 'タグ' })
 
 /**
- * そのタグのタスク一覧へのリンク。完了済みは除く（`open=true`）。
+ * そのタグのタスク一覧へのリンク。行き先は未完了側なので完了済みは並ばない。
  *
  * 件数も同じく未完了のものだけを数えているので、押した先に並ぶ数と一致する。
  */
 function to(name: string) {
-  return { path: '/', query: { open: 'true', tag: name } }
+  return { path: '/', query: { tag: name } }
 }
 
 /** 色を選んでいるタグの id。同時に開くのは1つだけ。 */

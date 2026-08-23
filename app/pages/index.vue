@@ -12,12 +12,6 @@ definePageMeta({ wide: true })
 
 const route = useRoute()
 
-/**
- * 未完了のものだけに絞るか。`g` `s`（タグを選ぶダイアログ）からの
- * 行き先で使う。タグの絞り込みに完了済みが混ざると見づらいため。
- */
-const openOnly = computed(() => route.query.open === 'true')
-
 /** タグの絞り込み。一覧コンポーネント側も同じ query から持つ。 */
 const tag = computed<string | undefined>(() => {
   const value = route.query.tag
@@ -85,7 +79,6 @@ async function add(text: string) {
       storage-key="sort:items"
       show-sort
       :show-tag-filter="false"
-      :open-only="openOnly"
       bar-target="#items-list-bar"
       empty-message="該当するタスクはありません。"
     />

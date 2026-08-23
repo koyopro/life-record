@@ -67,10 +67,7 @@ const tagSwitcherOpen = ref(false)
 
 function goToTag(name: string) {
   tagSwitcherOpen.value = false
-  void navigateTo({
-    path: '/',
-    query: { open: 'true', tag: name },
-  })
+  void navigateTo({ path: '/', query: { tag: name } })
 }
 
 /**

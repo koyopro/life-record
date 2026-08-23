@@ -31,8 +31,6 @@ const props = withDefaults(
     barTarget?: string
     /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
     dueUntilToday?: boolean
-    /** 未完了のものだけに絞るか。 */
-    openOnly?: boolean
     /** 既定のソート軸。 */
     defaultSort?: SortKey
     emptyMessage: string
@@ -73,7 +71,6 @@ const list = useItemList({
   tag: () => tag.value,
   untagged: () => untagged.value,
   dueUntilToday: () => Boolean(props.dueUntilToday),
-  openOnly: () => Boolean(props.openOnly),
   sortStorageKey: props.storageKey,
   defaultSort: props.defaultSort ?? 'priority',
 })
