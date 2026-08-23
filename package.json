@@ -14,7 +14,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "import:rtm": "node --env-file=.env --import tsx scripts/import-rtm.ts"
+    "import:rtm": "node --env-file=.env --import tsx scripts/import-rtm.ts",
+    "import:backup": "node --env-file=.env --import tsx scripts/import-backup.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1112.0",
