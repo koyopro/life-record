@@ -1,4 +1,8 @@
-import { objectKeyFor, presignView } from '~~/server/utils/s3'
+import {
+  objectKeyFor,
+  presignView,
+  viewUrlCacheSeconds,
+} from '~~/server/utils/s3'
 import { IMAGE_PATH_PATTERN } from '~~/shared/types/image'
 
 /**
@@ -19,8 +23,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '見つかりません' })
   }
 
-  // 期限つき URL を指すので、リダイレクト自体はキャッシュさせない
-  setResponseHeader(event, 'Cache-Control', 'private, no-store')
+  /*
+   * リダイレクト自体も、次に URL が変わるまではブラウザに持たせておく。
+   *
+   * 毎回ここまで訊きに来ると、そのたびに Function の応答を待つことになり、
+   * 一度読んだ画像でも表示が遅れる。行き先（署名付き URL）は窓の間ずっと
+   * 同じなので、その残り時間だけ持たせてよい（server/utils/s3.ts）。
+   */
+  setResponseHeader(
+    event,
+    'Cache-Control',
+    `private, max-age=${viewUrlCacheSeconds()}`,
+  )
 
   return await sendRedirect(event, await presignView(objectKeyFor(file)), 302)
 })
