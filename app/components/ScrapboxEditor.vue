@@ -553,6 +553,10 @@ function onKeydown(event: KeyboardEvent) {
       return onArrow(event, -1)
     case 'ArrowDown':
       return onArrow(event, 1)
+    case 'ArrowLeft':
+      return onHorizontalArrow(event, -1)
+    case 'ArrowRight':
+      return onHorizontalArrow(event, 1)
     case 'Tab':
       return onTab(event)
     case 'Escape':
@@ -844,6 +848,40 @@ function onArrow(event: KeyboardEvent, delta: -1 | 1) {
   event.preventDefault()
   // 次の行が短ければ、setSelectionRange が末尾へ丸めてくれる
   void activate(next, desiredColumn)
+}
+
+/**
+ * 行頭・行末で左右キーを押したら、前後の行へ移る（`←` / `→`）。
+ *
+ * 1行ずつ別の入力欄なので、放っておくと行の端で止まってしまう。本文全体で
+ * ひとつながりの文章に見えている以上、端に来たら隣の行へ続けて動けるのが
+ * 自然（上下キーが行をまたぐのと同じ）。
+ *
+ * 選択があるときは何もしない。入力欄の既定（選択を解いて端へ寄せる）に任せる。
+ */
+function onHorizontalArrow(event: KeyboardEvent, delta: -1 | 1) {
+  if (composing.value) return
+  // 修飾キー付きは、単語単位の移動や選択など別の意味を持つ
+  if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return
+
+  const index = activeIndex.value
+  const el = input.value
+  if (index === null || !el) return
+
+  const start = el.selectionStart ?? 0
+  const end = el.selectionEnd ?? start
+  if (start !== end) return
+
+  // 行の端に来ているときだけ、行をまたぐ
+  if (delta === -1 && start !== 0) return
+  if (delta === 1 && end !== el.value.length) return
+
+  const next = index + delta
+  if (next < 0 || next >= rawLines.value.length) return
+
+  event.preventDefault()
+  // 前の行へは末尾から、次の行へは先頭から入る（文字の並びどおりに動く）
+  void activate(next, delta === -1 ? 'end' : 'start')
 }
 
 /**
