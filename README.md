@@ -14,6 +14,7 @@
 | DB | PostgreSQL（本番: Neon / 開発: Docker） |
 | ORM | Drizzle ORM |
 | ホスティング | Vercel |
+| macOS アプリ | Tauri v2（Web 版をそのまま包むだけ） |
 | 画像ストレージ | Amazon S3（開発: MinIO / Docker） |
 
 ## 開発環境のセットアップ
@@ -47,6 +48,8 @@ http://localhost:3000 で開く。
 | `npm run dev` | 開発サーバー |
 | `npm run build` | 本番ビルド |
 | `npm run preview` | ビルド結果のプレビュー |
+| `npm run tauri:dev` | macOS アプリ（Tauri）として開発サーバーを開く |
+| `npm run tauri:build` | macOS アプリ（`.app` / `.dmg`）をビルド |
 | `npm test` | テスト（vitest） |
 | `npm run db:generate` | スキーマ定義からマイグレーションSQLを生成 |
 | `npm run db:migrate` | マイグレーションを適用 |
@@ -74,8 +77,26 @@ server/               Nitro server routes（API）
 shared/               画面と API で共有する型・処理
 tests/                テスト（vitest）
 drizzle/              生成されたマイグレーションSQL
+src-tauri/            macOS アプリの入れ物（Tauri / docs/16-macos-app.md）
 docs/                 仕様書
 ```
+
+## macOS アプリ
+
+Tauri v2 で、Web 版と同じ Life Record を macOS のアプリとして開ける。
+画面と機能は Web 版そのままで、Tauri はネイティブの入れ物に徹する
+（`app/` 以下には何も足していない）。
+
+```bash
+# 手元の dev サーバーを Tauri のウィンドウで開く
+npm run tauri:dev
+
+# 配布する .app / .dmg（デプロイ先を指す）
+LIFE_RECORD_APP_URL="https://<デプロイ先>" npm run tauri:build
+```
+
+外部サイトへのリンクは WebView の中には出さず、macOS で設定されている
+既定のブラウザで開く。仕組みは [docs/16-macos-app.md](docs/16-macos-app.md)。
 
 ## オフライン
 

@@ -1,0 +1,23 @@
+[package]
+name = "life-record"
+version = "0.1.0"
+description = "Life Record を macOS アプリとして開くための入れ物"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# 既定のブラウザ・メールソフトへ URL を渡す（Tauri v2 が推奨する仕組み）
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+url = "2"
+
+[profile.release]
+# 個人用の配布物なので、起動の速さより .app の小ささを取る
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
