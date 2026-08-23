@@ -1,89 +1,110 @@
 import { describe, expect, it } from 'vitest'
-import { groupWorkedOn } from '~/utils/diary-worked-on'
-import type { ItemDto, ItemStatus } from '~~/shared/types/item'
+import { groupWorkedOn, type WorkedOnRecord } from '~/utils/diary-worked-on'
+import { headOf } from '~~/shared/utils/diary'
+import type { ItemDto } from '~~/shared/types/item'
 
 /**
- * 日記の「この日にやったこと」を、完了したものとそれ以外に分ける
- * （app/pages/diary/[date].vue が表示に使う）。
+ * 日記の「この日にやったこと」の出し方
+ * （docs/03-functional-spec.md 3.3。app/pages/diary/[date].vue が表示に使う）。
  */
 
-function fakeItem(overrides: Partial<ItemDto> & { id: string }): ItemDto {
-  const status: ItemStatus = overrides.status ?? 'closed'
+function record(
+  overrides: Partial<ItemDto> & { id: string },
+  body = '',
+): WorkedOnRecord {
   return {
-    title: 'タイトル',
-    status,
-    priority: null,
-    url: null,
-    dueAt: null,
-    dueHasTime: false,
-    body: null,
-    tags: [],
-    recurrenceRule: null,
-    recurrenceBasis: null,
-    seriesId: null,
-    completedAt: null,
-    createdAt: '2026-08-18T00:00:00.000Z',
-    updatedAt: '2026-08-18T00:00:00.000Z',
-    ...overrides,
+    item: {
+      title: 'タイトル',
+      status: 'backlog',
+      priority: null,
+      url: null,
+      dueAt: null,
+      dueHasTime: false,
+      body: null,
+      tags: [],
+      recurrenceRule: null,
+      recurrenceBasis: null,
+      seriesId: null,
+      completedAt: null,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      updatedAt: '2026-08-18T00:00:00.000Z',
+      ...overrides,
+    },
+    body,
   }
 }
 
 describe('groupWorkedOn', () => {
-  it('その日に完了した Item は「完了した」グループに入る', () => {
-    const item = fakeItem({
-      id: 'item-1',
-      status: 'closed',
-      completedAt: '2026-08-18T10:00:00.000+09:00',
+  it('タグごとにまとめる', () => {
+    const work = record({ id: 'item-1', tags: ['仕事'] })
+    const life = record({ id: 'item-2', tags: ['暮らし'] })
+
+    expect(groupWorkedOn([work, life])).toEqual([
+      { tag: '仕事', records: [work] },
+      { tag: '暮らし', records: [life] },
+    ])
+  })
+
+  it('タグが複数付いた Item は、そのすべてのグループに出す', () => {
+    const both = record({ id: 'item-1', tags: ['仕事', '学び'] })
+
+    expect(groupWorkedOn([both])).toEqual([
+      { tag: '仕事', records: [both] },
+      { tag: '学び', records: [both] },
+    ])
+  })
+
+  it('タグの付いていない Item は最後のグループにまとめる', () => {
+    const tagged = record({ id: 'item-1', tags: ['仕事'] })
+    const bare = record({ id: 'item-2' })
+
+    expect(groupWorkedOn([bare, tagged])).toEqual([
+      { tag: '仕事', records: [tagged] },
+      { tag: null, records: [bare] },
+    ])
+  })
+
+  it('グループの中は渡された順（更新の新しい順）のまま', () => {
+    const first = record({ id: 'item-1', tags: ['仕事'] })
+    const second = record({ id: 'item-2', tags: ['仕事'] })
+
+    expect(groupWorkedOn([first, second])[0]?.records).toEqual([first, second])
+  })
+
+  it('何も無ければグループも無い', () => {
+    expect(groupWorkedOn([])).toEqual([])
+  })
+})
+
+describe('headOf', () => {
+  it('冒頭の行だけを返す', () => {
+    const body = ['1行目', '2行目', '3行目', '4行目', '5行目', '6行目'].join('\n')
+
+    expect(headOf(body)).toEqual({
+      text: ['1行目', '2行目', '3行目', '4行目', '5行目'].join('\n'),
+      truncated: true,
     })
-
-    const groups = groupWorkedOn([item], '2026-08-18')
-
-    expect(groups).toEqual([
-      { title: 'この日に完了したTODO', items: [item] },
-    ])
   })
 
-  it('完了していない Item は「作業した」グループに入る', () => {
-    const item = fakeItem({ id: 'item-1', status: 'in_progress', completedAt: null })
-
-    const groups = groupWorkedOn([item], '2026-08-18')
-
-    expect(groups).toEqual([
-      { title: 'この日に作業したTODO', items: [item] },
-    ])
+  it('行数に収まっていれば、続きは無い', () => {
+    expect(headOf('1行目\n2行目')).toEqual({ text: '1行目\n2行目', truncated: false })
   })
 
-  it('別の日に完了した Item は「作業した」グループに入る', () => {
-    const item = fakeItem({
-      id: 'item-1',
-      status: 'closed',
-      completedAt: '2026-08-17T23:59:00.000+09:00',
-    })
-
-    const groups = groupWorkedOn([item], '2026-08-18')
-
-    expect(groups).toEqual([
-      { title: 'この日に作業したTODO', items: [item] },
-    ])
+  it('記法はそのまま残す（表示側で解釈する）', () => {
+    expect(headOf('[* 見出し]\n[https://example.com]').text).toBe(
+      '[* 見出し]\n[https://example.com]',
+    )
   })
 
-  it('完了とそれ以外が混ざるときは両方のグループを返す', () => {
-    const completed = fakeItem({
-      id: 'item-1',
-      status: 'closed',
-      completedAt: '2026-08-18T10:00:00.000+09:00',
-    })
-    const inProgress = fakeItem({ id: 'item-2', status: 'in_progress', completedAt: null })
-
-    const groups = groupWorkedOn([completed, inProgress], '2026-08-18')
-
-    expect(groups).toEqual([
-      { title: 'この日に完了したTODO', items: [completed] },
-      { title: 'この日に作業したTODO', items: [inProgress] },
-    ])
+  it('末尾の空行は落とす', () => {
+    expect(headOf('1行目\n\n\n')).toEqual({ text: '1行目', truncated: false })
   })
 
-  it('該当する Item が無いグループは返さない', () => {
-    expect(groupWorkedOn([], '2026-08-18')).toEqual([])
+  it('空行だけが続いていても、続きがあるとは言わない', () => {
+    expect(headOf(['1', '2', '3', '4', '5', '', ' '].join('\n')).truncated).toBe(false)
+  })
+
+  it('行数は指定できる', () => {
+    expect(headOf('1\n2\n3', 2)).toEqual({ text: '1\n2', truncated: true })
   })
 })

@@ -61,3 +61,11 @@ export interface DiarySummaryDto {
 
 /** 一覧の抜粋に使う長さ。 */
 export const DIARY_EXCERPT_LENGTH = 140
+
+/**
+ * 日記の「この日にやったこと」に出す作業記録の行数。
+ *
+ * 全文を並べると日記そのものより長くなるので、冒頭だけを出して
+ * 続きは Item 詳細で読む（docs/03-functional-spec.md 3.3）。
+ */
+export const WORKED_ON_HEAD_LINES = 5

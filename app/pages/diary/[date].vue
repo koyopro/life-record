@@ -2,7 +2,8 @@
 import type { ItemDto } from '~~/shared/types/item'
 import type { Shortcut } from '~/composables/useShortcuts'
 import { formatAppDate, isAppDate, shiftAppDate } from '~~/shared/utils/date'
-import { groupWorkedOn } from '~/utils/diary-worked-on'
+import { groupWorkedOn, UNTAGGED_TITLE } from '~/utils/diary-worked-on'
+import { headOf } from '~~/shared/utils/diary'
 import { startItemLinkDrag } from '~/utils/item-drag'
 
 /**
@@ -122,10 +123,23 @@ if (import.meta.client) {
 }
 
 /**
- * 「この日にやったこと」を、完了したものと作業記録があるだけのものに分ける
- * （両方当てはまるものは完了した方に入れる）。
+ * 「この日にやったこと」をタグごとにまとめ、作業記録の冒頭を添える
+ * （docs/03-functional-spec.md 3.3）。
+ *
+ * 出す形は描くたびに作り直さず、ここでまとめて整える。
  */
-const workedOnGroups = computed(() => groupWorkedOn(workedOn.value, date.value))
+const workedOnGroups = computed(() =>
+  groupWorkedOn(workedOn.value).map((group) => ({
+    tag: group.tag,
+    title: group.tag ?? UNTAGGED_TITLE,
+    records: group.records.map((record) => ({
+      item: record.item,
+      head: headOf(record.body),
+      // グループの見出しに出ているタグは、行にも並べない
+      tags: record.item.tags.filter((tag) => tag !== group.tag),
+    })),
+  })),
+)
 
 /**
  * 「この日にやったこと」から本文へドラッグしたら、開かずにリンクを差し込めるようにする。
@@ -197,27 +211,39 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 
       <!--
         その日に作業した Item。Section の日付から導出し（docs/02-data-model.md 2.8）、
-        完了したものとそれ以外に分けて出す（app/utils/diary-worked-on.ts）。
+        タグごとにまとめて出す（app/utils/diary-worked-on.ts）。
       -->
       <section
         v-for="group in workedOnGroups"
         :key="group.title"
         class="worked"
       >
-        <h2 class="worked__title">{{ group.title }}</h2>
+        <h2 class="worked__title">
+          <span
+            v-if="group.tag"
+            class="worked__tag"
+            :style="{
+              '--tag-color': tagColorVar(colorOf(group.tag)),
+              '--tag-text': tagTextColorVar(colorOf(group.tag)),
+            }"
+          >
+            {{ group.tag }}
+          </span>
+          <span v-else>{{ group.title }}</span>
+        </h2>
         <ul class="worked__list">
-          <li v-for="item in group.items" :key="item.id">
+          <li v-for="record in group.records" :key="record.item.id" class="worked__entry">
             <NuxtLink
               class="worked__item"
-              :to="`/items/${item.id}`"
+              :to="`/items/${record.item.id}`"
               draggable="true"
-              :aria-label="`「${item.title}」を本文へドラッグすると、リンクを挿入できます`"
-              @dragstart="onWorkedOnDragStart(item, $event)"
+              :aria-label="`「${record.item.title}」を本文へドラッグすると、リンクを挿入できます`"
+              @dragstart="onWorkedOnDragStart(record.item, $event)"
             >
-              <span class="worked__name">{{ item.title }}</span>
-              <span v-if="item.tags.length" class="worked__tags">
+              <span class="worked__name">{{ record.item.title }}</span>
+              <span v-if="record.tags.length" class="worked__tags">
                 <span
-                  v-for="tag in item.tags"
+                  v-for="tag in record.tags"
                   :key="tag"
                   class="worked__tag"
                   :style="{
@@ -229,6 +255,16 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
                 </span>
               </span>
             </NuxtLink>
+
+            <!-- その日の作業記録の冒頭だけ。続きは Item 詳細で読む -->
+            <div v-if="record.head.text" class="worked__body">
+              <ScrapboxEditor
+                view
+                :model-value="record.head.text"
+                :aria-label="`「${record.item.title}」の作業記録`"
+              />
+              <p v-if="record.head.truncated" class="worked__more">…</p>
+            </div>
           </li>
         </ul>
       </section>
@@ -337,6 +373,9 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 
 .worked__title {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   font-size: 0.8125rem;
   color: var(--text-muted);
   font-weight: 600;
@@ -347,7 +386,29 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   margin: 0;
   padding: 0;
   display: grid;
+  gap: 0.5rem;
+}
+
+.worked__entry {
+  display: grid;
   gap: 0.25rem;
+  min-width: 0;
+}
+
+/* 作業記録は本文より控えめに。日記そのものを読む邪魔にならないようにする */
+.worked__body {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.worked__more {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1;
 }
 
 .worked__item {

@@ -1,5 +1,6 @@
-import type { DiaryDetailDto, DiarySummaryDto } from '~~/shared/types/diary'
+import type { DiaryDetailDto, DiarySectionDto, DiarySummaryDto } from '~~/shared/types/diary'
 import type { ItemDto } from '~~/shared/types/item'
+import type { WorkedOnRecord } from '~/utils/diary-worked-on'
 import { excerptOf } from '~~/shared/utils/diary'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
 import { IDLE_STATUS, type SaveStatus } from '~/utils/save-scheduler'
@@ -42,6 +43,39 @@ function scheduleFlush() {
   }, FLUSH_DELAY_MS)
 }
 
+/**
+ * その日の作業記録を Item ごとにまとめる。
+ *
+ * 同じ日に複数の記録がある Item（別の端末で書かれた分など。
+ * docs/03-functional-spec.md 3.2）は、続けてつなぐ。
+ */
+function bodiesByItem(
+  sections: { itemId: string; body: string }[],
+): Map<string, string> {
+  const bodies = new Map<string, string[]>()
+  for (const section of sections) {
+    const list = bodies.get(section.itemId) ?? []
+    list.push(section.body)
+    bodies.set(section.itemId, list)
+  }
+
+  return new Map(
+    [...bodies.entries()].map(([itemId, list]) => [
+      itemId,
+      list.map((body) => body.trim()).filter(Boolean).join('\n'),
+    ]),
+  )
+}
+
+/** サーバーの応答（Item と作業記録）から、画面に出す形を作る。 */
+function toRecords(
+  items: ItemDto[],
+  sections: DiarySectionDto[],
+): WorkedOnRecord[] {
+  const bodies = bodiesByItem(sections)
+  return items.map((item) => ({ item, body: bodies.get(item.id) ?? '' }))
+}
+
 export function useDiaryStore() {
   /** 日付ごとの日記。IndexedDB から読んだもの。 */
   const diaries = useState<Record<string, LocalDiary>>('diary:local', () => ({}))
@@ -50,10 +84,13 @@ export function useDiaryStore() {
   /** 送れていない日記の、直近の失敗（鍵は日付）。 */
   const errors = useState<Record<string, string>>('diary:errors', () => ({}))
   /**
-   * その日に作業した Item。手元の作業記録（IndexedDB）から作る。
-   * サーバー描画のときは、応答に入っているものをそのまま使う。
+   * その日にやったこと（Item と、その日の作業記録の本文）。
+   * 手元の作業記録（IndexedDB）から作る。サーバー描画のときは応答から作る。
    */
-  const workedOn = useState<Record<string, ItemDto[]>>('diary:worked-on', () => ({}))
+  const workedOn = useState<Record<string, WorkedOnRecord[]>>(
+    'diary:worked-on',
+    () => ({}),
+  )
 
   const itemStore = useItemStore()
   const { reachable } = useOnline()
@@ -147,7 +184,10 @@ export function useDiaryStore() {
             },
           }
           loaded.value = { ...loaded.value, [date.value]: true }
-          workedOn.value = { ...workedOn.value, [date.value]: value.items }
+          workedOn.value = {
+            ...workedOn.value,
+            [date.value]: toRecords(value.items, value.sections),
+          }
         },
         { immediate: true },
       )
@@ -270,21 +310,23 @@ export function useDiaryStore() {
 
   async function loadWorkedOn(date: string): Promise<void> {
     if (!import.meta.client) return
-    const ids = new Set(
-      (await sectionsOnDate(date))
-        .filter((section) => section.syncState !== 'pending_delete')
-        .map((section) => section.itemId),
+
+    const bodies = bodiesByItem(
+      (await sectionsOnDate(date)).filter(
+        (section) => section.syncState !== 'pending_delete',
+      ),
     )
 
     const found = itemStore.items.value
-      .filter((item) => ids.has(item.id) && item.syncState !== 'pending_delete')
+      .filter((item) => bodies.has(item.id) && item.syncState !== 'pending_delete')
       // サーバー（server/utils/diaries.ts）と同じく、更新の新しい順
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+      .map((item) => ({ item: item as ItemDto, body: bodies.get(item.id) ?? '' }))
 
     workedOn.value = { ...workedOn.value, [date]: found }
   }
 
-  function workedOnOf(date: string): ItemDto[] {
+  function workedOnOf(date: string): WorkedOnRecord[] {
     return workedOn.value[date] ?? []
   }
 
