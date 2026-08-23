@@ -2,9 +2,15 @@
  * Remember The Milk のエクスポート JSON から、期限付きタスクを Item として取り込む。
  *
  * 使い方:
- *   npx tsx scripts/import-rtm.ts <export.json> [--dry-run]
+ *   npx tsx scripts/import-rtm.ts <export.json> [--dry-run] [--prune-trashed]
+ *
+ * `--prune-trashed` を付けると、**前に取り込んでしまったゴミ箱のタスク**を
+ * DB から消す。Item の id は RTM の id から決まる（itemIdFor）ので、
+ * この import で入れたものだけを狙って消せる。
  *
  * 変換方針（docs/02-data-model.md に対応させる）:
+ * - **ゴミ箱のタスクは取り込まない。**RTM の書き出しにはゴミ箱の分も含まれる
+ *   ため、消したはずのタスクが並んでしまう（isTrashed）。
  * - 期限（date_due）を持ち、かつ未完了（date_completed なし）のタスクのみを対象にする。
  *   完了済みのものは import しない。
  * - 対象は常に未完了のため、status は未着手（backlog）にする。
@@ -131,6 +137,33 @@ function uuidv5(namespace: string, name: string): string {
 const itemIdFor = (taskId: string) => uuidv5(NAMESPACE, `task:${taskId}`)
 const sectionIdFor = (noteId: string) => uuidv5(NAMESPACE, `note:${noteId}`)
 
+/**
+ * ゴミ箱に入っているタスクを見分ける鍵。
+ *
+ * RTM の書き出しには**ゴミ箱のタスクも含まれる**。削除した時刻（または印）を
+ * 持つものがそれだが、鍵の名前は書き出しによって揺れるため、それらしい名前を
+ * まとめて見る。実際に見つかった鍵は取り込み時に出す（想定と違う名前だった
+ * ときに気づけるように）。
+ */
+const TRASH_KEYS = [
+  'date_deleted',
+  'date_trashed',
+  'deleted',
+  'trashed',
+  'is_deleted',
+] as const
+
+/** ゴミ箱と判断した鍵。ゴミ箱でなければ null。 */
+function trashKeyOf(task: RtmTask): string | null {
+  for (const key of TRASH_KEYS) {
+    const value = (task as unknown as Record<string, unknown>)[key]
+    if (value === true) return key
+    if (typeof value === 'number' && value > 0) return key
+    if (typeof value === 'string' && value.trim()) return key
+  }
+  return null
+}
+
 /** RTM は "P1"（高）〜"P3"（低）、優先度なしはキー自体が省略される。 */
 function parsePriority(value: string | undefined): 1 | 2 | 3 | null {
   const match = /^P([1-3])$/.exec(value ?? '')
@@ -246,12 +279,50 @@ async function applyTagColors(
   return applied
 }
 
+/**
+ * 前に取り込んでしまったゴミ箱のタスクを消す（`--prune-trashed`）。
+ *
+ * Item の id は RTM の id から決まるので、この import で入れたものだけを
+ * 狙って消せる。作業記録（Section）とタグの結び付きは外部キーで一緒に消える。
+ */
+async function pruneTrashed(
+  trashedIds: string[],
+  dryRun: boolean,
+): Promise<void> {
+  if (trashedIds.length === 0) return
+
+  const db = useDb()
+  const found = await db
+    .select({ id: items.id, title: items.title })
+    .from(items)
+    .where(inArray(items.id, trashedIds))
+
+  if (found.length === 0) {
+    console.log('  取り込み済みのゴミ箱タスクはありませんでした。')
+    return
+  }
+
+  console.log(`  取り込み済みのゴミ箱タスク: ${found.length}件`)
+  for (const row of found) console.log(`    - ${row.title}`)
+
+  if (dryRun) {
+    console.log('  --dry-run のため、削除は行いません。')
+    return
+  }
+
+  await db.delete(items).where(inArray(items.id, found.map((row) => row.id)))
+  console.log(`  ${found.length}件を削除しました。`)
+}
+
 async function main() {
   const args = process.argv.slice(2)
   const dryRun = args.includes('--dry-run')
+  const prune = args.includes('--prune-trashed')
   const filePath = args.find((arg) => !arg.startsWith('--'))
   if (!filePath) {
-    console.error('使い方: npx tsx scripts/import-rtm.ts <export.json> [--dry-run]')
+    console.error(
+      '使い方: npx tsx scripts/import-rtm.ts <export.json> [--dry-run] [--prune-trashed]',
+    )
     process.exitCode = 1
     return
   }
@@ -259,10 +330,29 @@ async function main() {
   const raw = readFileSync(resolve(filePath), 'utf8')
   const data = JSON.parse(raw) as RtmExport
 
+  // ゴミ箱のタスクは取り込まない（消したはずのものが並んでしまうため）
+  const trashed = data.tasks.filter((task) => trashKeyOf(task) !== null)
+  const trashKeys = [...new Set(trashed.map((task) => trashKeyOf(task)!))]
+
   const dueTasks = data.tasks.filter(
-    (task) => task.date_due != null && task.date_completed == null,
+    (task) =>
+      trashKeyOf(task) === null &&
+      task.date_due != null &&
+      task.date_completed == null,
   )
+
   console.log(`タスク総数: ${data.tasks.length}件 / 期限付き・未完了: ${dueTasks.length}件`)
+  console.log(
+    `  ゴミ箱として除外: ${trashed.length}件` +
+      (trashKeys.length > 0 ? `（鍵: ${trashKeys.join(', ')}）` : ''),
+  )
+
+  if (prune) {
+    await pruneTrashed(
+      trashed.map((task) => itemIdFor(task.id)),
+      dryRun,
+    )
+  }
 
   const notesBySeriesId = new Map<string, RtmNote[]>()
   for (const note of data.notes) {

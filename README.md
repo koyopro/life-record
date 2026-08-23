@@ -51,6 +51,12 @@ http://localhost:3000 で開く。
 | `npm run db:generate` | スキーマ定義からマイグレーションSQLを生成 |
 | `npm run db:migrate` | マイグレーションを適用 |
 | `npm run db:studio` | Drizzle Studio でDBを閲覧 |
+| `npm run import:rtm` | Remember The Milk の書き出し（JSON）から取り込む |
+| `npm run import:backup` | `/api/export` の JSON から取り込み直す（docs/05-operations.md 5.4） |
+
+取り込みはどちらも `-- <ファイル>` で渡し、`--dry-run` を付ければ DB に書かずに
+中身だけ確かめられる。RTM の書き出しには**ゴミ箱のタスクも含まれる**ので、
+取り込みでは除く（前に取り込んでしまった分は `--prune-trashed` で消せる）。
 
 ## ディレクトリ構成
 
