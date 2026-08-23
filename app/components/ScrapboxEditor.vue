@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
 import {
+  codeBodyOf,
   continuationPrefix,
   dropPrefixUnit,
   indentOf,
@@ -11,6 +12,7 @@ import type { Line } from '~~/shared/utils/scrapbox/types'
 import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
+import { writeToClipboard } from '~/utils/clipboard'
 import { linePoint } from '~/utils/line-selection'
 
 /**
@@ -1021,6 +1023,29 @@ function onTab(event: KeyboardEvent) {
   replaceActivePrefix(` ${prefix}`)
 }
 
+// --- コードブロックのコピー ---------------------------------------------
+
+/** 「コピーしました」を出しているコードブロック（見出しの行番号）。 */
+const copiedCode = ref<number | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+/** コードブロックの中身をクリップボードへ。押したことが分かるよう、少しの間だけ知らせる。 */
+async function copyCode(index: number) {
+  const text = codeBodyOf(parsed.value, index)
+  if (!(await writeToClipboard(text))) return
+
+  copiedCode.value = index
+  if (copiedTimer) clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => {
+    copiedCode.value = null
+    copiedTimer = null
+  }, 1500)
+}
+
+onBeforeUnmount(() => {
+  if (copiedTimer) clearTimeout(copiedTimer)
+})
+
 /** 表示側のリンクを押したときは編集に切り替えない。 */
 function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
@@ -1623,8 +1648,24 @@ defineExpose({
         :style="{ order: index, '--sb-indent': line.indent }"
         :data-line-index="index"
         @click="onLineClick($event, index)"
-        v-html="renderLine(line, { icons: iconMap })"
-      />
+      >
+        <span v-html="renderLine(line, { icons: iconMap })" />
+
+        <!--
+          コードブロックの中身をまとめてコピーする。読むだけの見た目の
+          ときに要るもの（書いている最中は入力欄が出ている）なので、
+          見出しの行に置く。
+        -->
+        <button
+          v-if="line.type === 'codeHeader'"
+          type="button"
+          class="editor__copy-code"
+          :aria-label="`${line.content || 'コードブロック'} の中身をコピー`"
+          @click.stop="copyCode(index)"
+        >
+          {{ copiedCode === index ? 'コピーしました' : 'コピー' }}
+        </button>
+      </div>
     </template>
 
     <!--
@@ -1917,6 +1958,34 @@ defineExpose({
  */
 .editor :deep(.sb-line--code-header.sb-line--indented)::before {
   left: -0.75rem;
+}
+
+/*
+ * コードブロックのコピー。見出しの右端に、控えめに置く。
+ * 触れるものだと分かる程度にはっきりさせつつ、読む邪魔をしない。
+ */
+.editor__copy-code {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.375rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.6;
+  padding: 0 0.375rem;
+  cursor: pointer;
+}
+
+.editor__copy-code:hover {
+  color: var(--text);
+}
+
+.editor :deep(.sb-line--code-header) {
+  position: relative;
+  /* コピーのボタンと重ならないだけの余白を、見出しの右に取る */
+  padding-right: 5rem;
 }
 
 .editor :deep(.sb-code__name) {

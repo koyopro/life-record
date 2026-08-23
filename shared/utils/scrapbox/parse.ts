@@ -145,6 +145,23 @@ function split(raw: string, at: number): { raw: string; prefix: string; content:
 }
 
 /**
+ * コードブロックの中身を、`code:` の行から取り出す。
+ *
+ * 行頭（ブロックの基準までの字下げ）は行の中身に入っていないので、そのまま
+ * 繋ぐだけでよい（「行頭（prefix）と中身（content）」）。箇条書きの中に
+ * 埋め込んだブロックでも、貼り付け先に余計な字下げが付かない。中身より
+ * 深い字下げは中身の一部なので、そのまま残る。
+ */
+export function codeBodyOf(lines: Line[], index: number): string {
+  const body: string[] = []
+  for (let i = index + 1; i < lines.length; i++) {
+    if (lines[i]!.type !== 'codeBody') break
+    body.push(lines[i]!.content)
+  }
+  return body.join('\n')
+}
+
+/**
  * 続きの行へ引き継ぐ行頭。
  *
  * Scrapbox と同じく字下げを引き継ぐ。引用の `>` も引き継ぐ（複数行の引用は
