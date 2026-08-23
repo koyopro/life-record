@@ -71,3 +71,41 @@ export function closestLineIn(
   const index = Number(el.getAttribute('data-line-index'))
   return Number.isNaN(index) ? null : { el, index }
 }
+
+/**
+ * 行をまたぐ選択の、端の置き方。
+ *
+ * `Shift`+矢印で選び始めたときのカーソル位置で決まる（ScrapboxEditor）。
+ *
+ * - `start` … 行頭から伸ばす。`Shift`+`↓` を1回押すと「いまの行頭から次の行の
+ *   行頭まで」になり、選ばれるのは**いまの行**だけ
+ * - `end`   … 行末から伸ばす。1回押すと「いまの行末から次の行の行末まで」で、
+ *   選ばれるのは**次の行**だけ
+ * - `line`  … 行まるごと。全選択（`Cmd`+`A`）と、マウスでなぞった選択
+ */
+export type LineEdge = 'start' | 'end' | 'line'
+
+/**
+ * 端点の行番号から、実際に選ばれている行の範囲を出す。
+ *
+ * 行頭で終わる選択にはその行が入らず、行末から始まる選択には最初の行が
+ * 入らない。ここを間違えると、見えている範囲と、コピー・切り取り・削除が
+ * 食い違う（1行余分に消える）。
+ *
+ * 前後関係ではなく選んだ向き（`anchor` → `focus`）のまま返す。何も選んで
+ * いない（端点が同じ行の同じ位置）ときは null。
+ */
+export function lineRangeFor(
+  anchor: number,
+  focus: number,
+  edge: LineEdge,
+): { anchor: number; focus: number } | null {
+  if (edge === 'line') return { anchor, focus }
+  if (anchor === focus) return null
+
+  const forward = anchor < focus
+  if (edge === 'start') {
+    return forward ? { anchor, focus: focus - 1 } : { anchor: anchor - 1, focus }
+  }
+  return forward ? { anchor: anchor + 1, focus } : { anchor, focus: focus + 1 }
+}

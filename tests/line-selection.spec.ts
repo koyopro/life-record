@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { closestLineIn, lineElementAt, linePoint } from '~/utils/line-selection'
+import {
+  closestLineIn,
+  lineElementAt,
+  linePoint,
+  lineRangeFor,
+} from '~/utils/line-selection'
 import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 import { renderLine } from '~~/shared/utils/scrapbox/render'
 
@@ -104,5 +109,48 @@ describe('本文が複数あるときの行の探索', () => {
 
     body.remove()
     record.remove()
+  })
+})
+
+/**
+ * 行をまたぐ選択の範囲（docs/11-scrapbox-notation.md 11.6 キー操作）。
+ *
+ * 端をどこに置いたかで、その行が範囲に入るかどうかが変わる。見えている
+ * 範囲と、コピー・切り取り・削除の範囲がずれないようにするため。
+ */
+describe('行をまたぐ選択の範囲', () => {
+  it('行頭から下へ伸ばすと、最後の行（行頭で終わる行）は入らない', () => {
+    // 2行目の行頭で Shift+↓ を1回 → 2行目だけが選ばれる
+    expect(lineRangeFor(1, 2, 'start')).toEqual({ anchor: 1, focus: 1 })
+  })
+
+  it('行末から下へ伸ばすと、最初の行（行末から始まる行）は入らない', () => {
+    // 2行目の行末で Shift+↓ を1回 → 3行目だけが選ばれる
+    expect(lineRangeFor(1, 2, 'end')).toEqual({ anchor: 2, focus: 2 })
+  })
+
+  it('行頭から上へ伸ばすと、起点の行は入らない', () => {
+    // 2行目の行頭で Shift+↑ を1回 → 1行目だけが選ばれる
+    expect(lineRangeFor(1, 0, 'start')).toEqual({ anchor: 0, focus: 0 })
+  })
+
+  it('行末から上へ伸ばすと、伸ばした先の行は入らない', () => {
+    // 2行目の行末で Shift+↑ を1回 → 2行目だけが選ばれる
+    expect(lineRangeFor(1, 0, 'end')).toEqual({ anchor: 1, focus: 1 })
+  })
+
+  it('伸ばす前（端点が同じ行）は、何も選んでいない', () => {
+    expect(lineRangeFor(1, 1, 'start')).toBeNull()
+    expect(lineRangeFor(1, 1, 'end')).toBeNull()
+  })
+
+  it('行まるごと（全選択・マウス）は、両端の行がそのまま入る', () => {
+    expect(lineRangeFor(0, 2, 'line')).toEqual({ anchor: 0, focus: 2 })
+    expect(lineRangeFor(1, 1, 'line')).toEqual({ anchor: 1, focus: 1 })
+  })
+
+  it('選んだ向き（anchor → focus）はそのまま返す', () => {
+    // 上へ伸ばした選択は、選び直し（字下げのあと）でも同じ向きで作れる
+    expect(lineRangeFor(3, 1, 'start')).toEqual({ anchor: 2, focus: 1 })
   })
 })

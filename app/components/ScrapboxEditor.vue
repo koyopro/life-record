@@ -13,7 +13,13 @@ import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import { writeToClipboard } from '~/utils/clipboard'
-import { closestLineIn, lineElementAt, linePoint } from '~/utils/line-selection'
+import {
+  closestLineIn,
+  lineElementAt,
+  linePoint,
+  lineRangeFor,
+  type LineEdge,
+} from '~/utils/line-selection'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -224,7 +230,7 @@ async function activate(
   if (locked.value) return
 
   // 1行だけの編集に戻るので、複数行選択の状態は捨てる
-  shiftSelectAnchor = null
+  lineSelection = null
 
   const target = Math.min(Math.max(index, 0), lines.length - 1)
   const line = lineAt(lines, target)
@@ -276,14 +282,18 @@ function caretNow(): CaretPosition | null {
 let desiredColumn: number | null = null
 
 /**
- * `Shift`+矢印で複数行選択をしている間の起点行。していなければ null。
+ * `Shift`+矢印などで行を選んでいる間の範囲。選んでいなければ null。
  *
  * 1行編集用の textarea を複数行にまたがって選択することはできないため、
  * 複数行を選ぶ間は編集を抜けて（`deactivate`）表示側の行を
- * `Selection`/`Range` で直接選択する。この行番号は、選択を続けて
- * 伸び縮みさせるときの固定端として使う。
+ * `Selection`/`Range` で直接選択する。
+ *
+ * `anchor` は固定端、`focus` は伸び縮みさせる端の行。`edge` は行のどこを
+ * 端点にするかで、**選び始めたときのカーソル位置**で決まる（`LineEdge`）。
+ * 行頭にカーソルがあるときの `Shift`+`↓` が「いまの行頭から次の行の行頭まで」
+ * になるのは、これを `start` にしているため。
  */
-let shiftSelectAnchor: number | null = null
+let lineSelection: { anchor: number; focus: number; edge: LineEdge } | null = null
 
 function captureCaret() {
   const index = activeIndex.value
@@ -1077,6 +1087,17 @@ onBeforeUnmount(() => {
 })
 
 /** 表示側のリンクを押したときは編集に切り替えない。 */
+/**
+ * マウスでなぞり始めたら、キーボードで作った行の選択は捨てる。
+ *
+ * `Shift`+矢印の選択には「行頭・行末のどちらから伸ばしたか」（`edge`）が
+ * 付いていて、コピーや削除の範囲はそれを見て決まる。なぞり直した選択に
+ * 前の `edge` を当てると、見えている範囲と1行ずれる。
+ */
+function onContainerMousedown() {
+  lineSelection = null
+}
+
 function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
   if (target?.closest('a')) return
@@ -1143,15 +1164,17 @@ function onCut(event: ClipboardEvent) {
  * （`Selection.setBaseAndExtent` を使うと、上へ伸ばす選択も表現できる）。
  * こう組み立てておくと、コピーは既存の `onCopy` がそのまま拾える。
  */
-async function applyLineSelection(anchor: number, focus: number) {
+async function applyLineSelection(anchor: number, focus: number, edge: LineEdge) {
   await nextTick()
   const anchorEl = lineElementAt(editorRoot.value, anchor)
   const focusEl = lineElementAt(editorRoot.value, focus)
 
   if (anchorEl && focusEl) {
     const forward = anchor <= focus
-    const from = linePoint(anchorEl, forward ? 'start' : 'end')
-    const to = linePoint(focusEl, forward ? 'end' : 'start')
+    // 行まるごとのときだけ、伸ばす向きに合わせて端を選ぶ（行頭 → 行末）。
+    // 行頭・行末から伸ばす選択は、両端とも同じ側に置く
+    const from = linePoint(anchorEl, edge === 'line' ? (forward ? 'start' : 'end') : edge)
+    const to = linePoint(focusEl, edge === 'line' ? (forward ? 'end' : 'start') : edge)
     window.getSelection()?.setBaseAndExtent(from.node, from.offset, to.node, to.offset)
   }
 
@@ -1163,31 +1186,53 @@ async function applyLineSelection(anchor: number, focus: number) {
 }
 
 /**
- * 複数行選択を1行分だけ伸ばす/縮める。
+ * 選択を始めるときの、端の置き方。
  *
- * `shiftSelectAnchor`（固定端）はそのままに、もう一方の端だけ動かす。
+ * **カーソルのある場所をそのまま端にする。**行頭にいるなら行頭から、行末に
+ * いるなら行末から伸ばす。こうすると、行頭で `Shift`+`↓` を押したときに
+ * 「いまの行頭から次の行の行頭まで」（＝いまの行だけ）になり、行末で押せば
+ * 「いまの行末から次の行の行末まで」（＝次の行だけ）になる。ふつうの
+ * テキスト入力欄と同じ動きで、1回押すごとに1行ずつ増える。
+ *
+ * 行の途中（折り返しのある行で、上端・下端の行にいるとき）は、どちらの端も
+ * 選べないので伸ばす向きに合わせる。下へなら行末、上へなら行頭から伸ばす。
+ */
+function edgeForCaret(el: HTMLTextAreaElement, delta: -1 | 1): LineEdge {
+  const start = el.selectionStart ?? 0
+  const end = el.selectionEnd ?? start
+  if (start === 0 && end === 0) return 'start'
+  if (start === el.value.length && end === el.value.length) return 'end'
+  return delta === 1 ? 'end' : 'start'
+}
+
+/**
+ * 行の選択を1行分だけ伸ばす/縮める。
+ *
+ * 固定端（`anchor`）と端の置き方（`edge`）はそのままに、`focus` だけ動かす。
  * まだ1行を編集中なら、ここで抜けて表示側の選択に持ち替える。
  */
 async function extendLineSelection(delta: -1 | 1) {
-  const anchor = shiftSelectAnchor
-  if (anchor === null) return
+  const selection = lineSelection
+  if (!selection) return
 
   if (activeIndex.value !== null) deactivate()
 
-  const current = window.getSelection()
-  const currentFocus = current ? closestLine(current.focusNode)?.index : undefined
-  const base = currentFocus ?? anchor
-  const focus = Math.min(Math.max(base + delta, 0), rawLines.value.length - 1)
+  const focus = Math.min(
+    Math.max(selection.focus + delta, 0),
+    rawLines.value.length - 1,
+  )
+  lineSelection = { ...selection, focus }
 
-  await applyLineSelection(anchor, focus)
+  await applyLineSelection(selection.anchor, focus, selection.edge)
 }
 
 /** `Cmd`/`Ctrl`+`A` で本文全体を選択する。 */
 async function selectAllLines() {
   if (rawLines.value.length === 0) return
   if (activeIndex.value !== null) deactivate()
-  shiftSelectAnchor = 0
-  await applyLineSelection(0, rawLines.value.length - 1)
+  const last = rawLines.value.length - 1
+  lineSelection = { anchor: 0, focus: last, edge: 'line' }
+  await applyLineSelection(0, last, 'line')
 }
 
 /**
@@ -1225,7 +1270,9 @@ function selectedLineRange(): { anchor: number; focus: number } | null {
     return null
   }
 
-  return { anchor: anchor.index, focus: focus.index }
+  // 端をどこに置いたかで、その行が範囲に入るかどうかが変わる。
+  // マウスでなぞった選択は行まるごととして扱う（`line`）
+  return lineRangeFor(anchor.index, focus.index, lineSelection?.edge ?? 'line')
 }
 
 /**
@@ -1251,7 +1298,9 @@ function indentSelectedLines(delta: 1 | -1) {
   commit(lines)
 
   // 行の中身は変わっても番号は変わらないので、同じ範囲で選択し直す
-  void applyLineSelection(anchor, focus)
+  const current = lineSelection
+  if (current) void applyLineSelection(current.anchor, current.focus, current.edge)
+  else void applyLineSelection(anchor, focus, 'line')
 }
 
 /**
@@ -1273,7 +1322,7 @@ function removeSelectedLines() {
   // 本文が空になっても、書ける行は1つ残す
   if (lines.length === 0) lines.push('')
 
-  shiftSelectAnchor = null
+  lineSelection = null
   window.getSelection()?.removeAllRanges()
 
   commit(lines)
@@ -1310,24 +1359,21 @@ function onContainerKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (shiftSelectAnchor !== null && event.key === 'Tab') {
+  if (lineSelection && event.key === 'Tab') {
     event.preventDefault()
     indentSelectedLines(event.shiftKey ? -1 : 1)
     return
   }
 
-  if (
-    shiftSelectAnchor !== null &&
-    (event.key === 'Delete' || event.key === 'Backspace')
-  ) {
+  if (lineSelection && (event.key === 'Delete' || event.key === 'Backspace')) {
     event.preventDefault()
     removeSelectedLines()
     return
   }
 
-  if (shiftSelectAnchor !== null && event.key === 'Escape') {
+  if (lineSelection && event.key === 'Escape') {
     event.preventDefault()
-    shiftSelectAnchor = null
+    lineSelection = null
     window.getSelection()?.removeAllRanges()
     return
   }
@@ -1340,13 +1386,15 @@ function onContainerKeydown(event: KeyboardEvent) {
    * 複数行選択中に Shift なしで矢印キーを押したときは、選択をやめて
    * その行の編集に戻る（カーソル位置だけが変わる、という見た目の期待に合わせる）。
    */
-  if (shiftSelectAnchor !== null && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+  if (lineSelection && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
     event.preventDefault()
-    const current = window.getSelection()
-    const focus = closestLine(current?.focusNode ?? null)?.index ?? shiftSelectAnchor
-    shiftSelectAnchor = null
-    current?.removeAllRanges()
-    const toStart = event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+    const { focus, edge } = lineSelection
+    lineSelection = null
+    window.getSelection()?.removeAllRanges()
+    // 行頭・行末から伸ばしていたなら、カーソルはその端にある。
+    // 行まるごとのときだけ、押した向きで決める
+    const toStart =
+      edge === 'line' ? event.key === 'ArrowUp' || event.key === 'ArrowLeft' : edge === 'start'
     void activate(focus, toStart ? 'start' : 'end')
     return
   }
@@ -1355,8 +1403,8 @@ function onContainerKeydown(event: KeyboardEvent) {
 
   const delta: -1 | 1 = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1
 
-  // すでに複数行選択が始まっていれば、そのまま伸ばす/縮める
-  if (shiftSelectAnchor !== null) {
+  // すでに行の選択が始まっていれば、そのまま伸ばす/縮める
+  if (lineSelection) {
     event.preventDefault()
     void extendLineSelection(delta)
     return
@@ -1379,7 +1427,7 @@ function onContainerKeydown(event: KeyboardEvent) {
   if (!atBoundary) return
 
   event.preventDefault()
-  shiftSelectAnchor = index
+  lineSelection = { anchor: index, focus: index, edge: edgeForCaret(el, delta) }
   void extendLineSelection(delta)
 }
 
@@ -1608,7 +1656,7 @@ function onPaste(event: ClipboardEvent) {
   const lines = [...rawLines.value]
   lines.splice(start, end - start + 1, ...pasted)
 
-  shiftSelectAnchor = null
+  lineSelection = null
   window.getSelection()?.removeAllRanges()
 
   commit(lines)
@@ -1642,6 +1690,7 @@ defineExpose({
     @copy="onCopy"
     @cut="onCut"
     @keydown="onContainerKeydown"
+    @mousedown="onContainerMousedown"
   >
     <button
       v-if="isEmpty && activeIndex === null && !locked"
