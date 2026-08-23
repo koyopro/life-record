@@ -27,10 +27,14 @@ export const UNTAGGED_TITLE = 'タグなし'
 /**
  * タグごとにまとめる。
  *
+ * **作業メモの無い Item は出さない。**日記に並べたいのは「何をしたか」で、
+ * 記録の枠だけがあって中身の無いものは読み返す手がかりにならないため。
+ *
  * **複数のタグが付いた Item は、そのすべてのグループに出す。**「このタグで
  * 何をしたか」を見るのが目的なので、片方のタグからだけ見えないと取りこぼす。
  *
- * グループはタグ名順に並べ、タグの付いていないものは最後に置く。
+ * **タグの付いていないものが先頭**で、その後ろにタグ名順のグループを並べる。
+ * タグを付けていない作業は分類の手がかりが無く、下に置くと埋もれるため。
  * 各グループの中は、渡された順（更新の新しい順）のまま。
  */
 export function groupWorkedOn(records: WorkedOnRecord[]): WorkedOnGroup[] {
@@ -38,6 +42,8 @@ export function groupWorkedOn(records: WorkedOnRecord[]): WorkedOnGroup[] {
   const untagged: WorkedOnRecord[] = []
 
   for (const record of records) {
+    if (!record.body.trim()) continue
+
     if (record.item.tags.length === 0) {
       untagged.push(record)
       continue
@@ -49,11 +55,9 @@ export function groupWorkedOn(records: WorkedOnRecord[]): WorkedOnGroup[] {
     }
   }
 
-  const groups: WorkedOnGroup[] = [...byTag.entries()]
+  const tagged: WorkedOnGroup[] = [...byTag.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([tag, group]) => ({ tag, records: group }))
 
-  if (untagged.length > 0) groups.push({ tag: null, records: untagged })
-
-  return groups
+  return untagged.length > 0 ? [{ tag: null, records: untagged }, ...tagged] : tagged
 }

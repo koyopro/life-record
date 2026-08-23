@@ -10,7 +10,7 @@ import type { ItemDto } from '~~/shared/types/item'
 
 function record(
   overrides: Partial<ItemDto> & { id: string },
-  body = '',
+  body = '作業メモ',
 ): WorkedOnRecord {
   return {
     item: {
@@ -54,13 +54,13 @@ describe('groupWorkedOn', () => {
     ])
   })
 
-  it('タグの付いていない Item は最後のグループにまとめる', () => {
+  it('タグの付いていない Item は、先頭のグループにまとめる', () => {
     const tagged = record({ id: 'item-1', tags: ['仕事'] })
     const bare = record({ id: 'item-2' })
 
-    expect(groupWorkedOn([bare, tagged])).toEqual([
-      { tag: '仕事', records: [tagged] },
+    expect(groupWorkedOn([tagged, bare])).toEqual([
       { tag: null, records: [bare] },
+      { tag: '仕事', records: [tagged] },
     ])
   })
 
@@ -69,6 +69,20 @@ describe('groupWorkedOn', () => {
     const second = record({ id: 'item-2', tags: ['仕事'] })
 
     expect(groupWorkedOn([first, second])[0]?.records).toEqual([first, second])
+  })
+
+  it('作業メモの無い Item は出さない', () => {
+    const written = record({ id: 'item-1', tags: ['仕事'] })
+    const blank = record({ id: 'item-2', tags: ['仕事'] }, '')
+    const spaces = record({ id: 'item-3', tags: ['仕事'] }, ' \n ')
+
+    expect(groupWorkedOn([written, blank, spaces])).toEqual([
+      { tag: '仕事', records: [written] },
+    ])
+  })
+
+  it('作業メモがある Item がいなければ、そのグループごと出さない', () => {
+    expect(groupWorkedOn([record({ id: 'item-1', tags: ['仕事'] }, '')])).toEqual([])
   })
 
   it('何も無ければグループも無い', () => {
