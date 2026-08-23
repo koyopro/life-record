@@ -13,7 +13,7 @@ import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import { writeToClipboard } from '~/utils/clipboard'
-import { linePoint } from '~/utils/line-selection'
+import { closestLineIn, lineElementAt, linePoint } from '~/utils/line-selection'
 
 /**
  * Scrapbox 記法の本文エディタ（docs/11-scrapbox-notation.md 11.6）。
@@ -83,6 +83,22 @@ const input = ref<HTMLTextAreaElement | null>(null)
 
 /** 複数行選択の範囲を描く土台。`Cmd`/`Ctrl`+`A` や `Shift`+矢印の続きを拾うため、フォーカスを持たせる。 */
 const editorRoot = ref<HTMLDivElement | null>(null)
+
+/*
+ * 画面側のショートカットを止める印（app/composables/useShortcuts.ts）。
+ *
+ * 行をまたいで選んでいる間は、1行用の入力欄を離れてこの囲み自身が
+ * フォーカスを持つ。印が無いと「入力していない」と見なされ、`Delete` で
+ * タスクが消える・`c` で完了になる、といったことが起きる。属性名を
+ * 直に書かず定数から作り、見る側と付ける側がずれないようにする。
+ *
+ * 読むだけのとき（`view` / `readonly`）は付けない。行の編集に入れないので
+ * ここでキーを受けることが無く、押さえてしまうと**読んでいるだけなのに
+ * 画面のショートカットが効かない**（クリックでフォーカスは入るため）。
+ */
+const keyboardSurface = computed(() =>
+  locked.value ? {} : { [KEYBOARD_SURFACE_ATTR]: '' },
+)
 
 const isEmpty = computed(() => !model.value.trim())
 
@@ -1053,33 +1069,41 @@ function onLineClick(event: MouseEvent, index: number) {
   void activate(index)
 }
 
-/** 選択の起点・終点から、それが属する行の要素と行番号を探す。 */
+/**
+ * 選択の起点・終点から、それが属する行の要素と行番号を探す。
+ *
+ * 見るのは**この本文の中だけ**。1つの画面に本文が複数ある
+ * （タスク詳細の本文と作業記録）ため、囲みで区切らないと隣の本文の行を
+ * 自分のものとして扱ってしまう。
+ */
 function closestLine(node: Node | null): { el: Element; index: number } | null {
-  const el = (node instanceof Element ? node : node?.parentElement)?.closest('[data-line-index]')
-  if (!el) return null
-  const index = Number(el.getAttribute('data-line-index'))
-  return Number.isNaN(index) ? null : { el, index }
+  return closestLineIn(editorRoot.value, node)
 }
 
 /**
- * 複数行にまたがる選択をコピーしたときは、Scrapbox と同じく記法込みの
- * 生テキストを渡す。
+ * 選んでいる行の、記法込みの生テキスト。選んでいなければ null。
  *
- * 表示側は行頭（字下げ・`>` ・`code:`）を文字ではなく余白として見せている
- * ため、素直にコピーするとその部分が抜け落ちる。選択がまたぐ行の範囲だけ
- * DOM から判定し、中身はブラウザの選択文字列ではなく model の生テキスト
- * （`rawLines`）から組み立て直す。
- *
- * 1行内の部分選択（例: コードの中身の一部だけ選ぶ）は、余白を含まないため
- * ブラウザの既定のコピーのままでよい。行全体を選んでいるときだけ差し替える。
+ * 複数行にまたがる選択を持ち出すときは、Scrapbox と同じく記法込みの
+ * 生テキストを渡す。表示側は行頭（字下げ・`>` ・`code:`）を文字ではなく
+ * 余白として見せているため、素直に写すとその部分が抜け落ちる。またぐ行の
+ * 範囲だけ DOM から判定し（`selectedLineRange`）、中身はブラウザの選択文字列
+ * ではなく model の生テキスト（`rawLines`）から組み立て直す。
  */
-/** 選んでいる行の、記法込みの生テキスト。選んでいなければ null。 */
 function selectedLinesText(): string | null {
   const range = selectedLineRange()
   if (!range) return null
   const start = Math.min(range.anchor, range.focus)
   const end = Math.max(range.anchor, range.focus)
   return rawLines.value.slice(start, end + 1).join('\n')
+}
+
+/** 行を選んでいる間のコピー（`Cmd`/`Ctrl`+`C`）。 */
+function onCopy(event: ClipboardEvent) {
+  const text = selectedLinesText()
+  if (text === null) return
+
+  event.clipboardData?.setData('text/plain', text)
+  event.preventDefault()
 }
 
 /**
@@ -1098,23 +1122,6 @@ function onCut(event: ClipboardEvent) {
   removeSelectedLines()
 }
 
-function onCopy(event: ClipboardEvent) {
-  const selection = window.getSelection()
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
-
-  const anchor = closestLine(selection.anchorNode)
-  const focus = closestLine(selection.focusNode)
-  if (!anchor || !focus) return
-
-  const start = Math.min(anchor.index, focus.index)
-  const end = Math.max(anchor.index, focus.index)
-  if (start === end && selection.toString().trim() !== anchor.el.textContent?.trim()) return
-
-  const text = rawLines.value.slice(start, end + 1).join('\n')
-  event.clipboardData?.setData('text/plain', text)
-  event.preventDefault()
-}
-
 /**
  * `anchor` 行から `focus` 行までを、ブラウザの選択として実際に選ぶ。
  *
@@ -1124,8 +1131,8 @@ function onCopy(event: ClipboardEvent) {
  */
 async function applyLineSelection(anchor: number, focus: number) {
   await nextTick()
-  const anchorEl = document.querySelector(`[data-line-index="${anchor}"]`)
-  const focusEl = document.querySelector(`[data-line-index="${focus}"]`)
+  const anchorEl = lineElementAt(editorRoot.value, anchor)
+  const focusEl = lineElementAt(editorRoot.value, focus)
 
   if (anchorEl && focusEl) {
     const forward = anchor <= focus
@@ -1170,17 +1177,47 @@ async function selectAllLines() {
 }
 
 /**
+ * いま行として選ばれている範囲。選んでいなければ null。
+ *
+ * **コピー・切り取り・貼り付け・削除・字下げは、すべてここを通す。**
+ * どれか1つだけ別の条件で範囲を決めていると、「コピーはできるのに
+ * 切り取りだけ効かない」という食い違いが起きるため。
+ *
+ * 自分のものだと言える選択だけを返す:
+ *
+ * - 1行を編集している間の選択は入力欄（textarea）のもの。行の選択ではない
+ * - 端が**この本文の外**にある選択は別の本文のもの（1つの画面に本文が
+ *   複数ある: タスク詳細の本文と、日付ごとの作業記録）
+ * - 1行の中の部分選択（コードの一部だけ選ぶなど）は、行をまたがないので
+ *   ブラウザの既定の動きに任せる
+ *
+ * 前後関係ではなく選んだ向き（`anchor` → `focus`）のまま返す。選び直すとき
+ * （字下げのあとなど）に、上へ伸ばした選択をそのまま作り直せるようにする。
+ */
+function selectedLineRange(): { anchor: number; focus: number } | null {
+  if (activeIndex.value !== null) return null
+
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
+
+  const anchor = closestLine(selection.anchorNode)
+  const focus = closestLine(selection.focusNode)
+  if (!anchor || !focus) return null
+
+  if (
+    anchor.index === focus.index &&
+    selection.toString().trim() !== anchor.el.textContent?.trim()
+  ) {
+    return null
+  }
+
+  return { anchor: anchor.index, focus: focus.index }
+}
+
+/**
  * 複数行選択したまま `Tab` を押すと、選んだ行すべての字下げを1段
  * まとめて増減する（Scrapbox と同じ）。
  */
-/** いま選んでいる行の範囲。選んでいなければ null。 */
-function selectedLineRange(): { anchor: number; focus: number } | null {
-  const anchor = shiftSelectAnchor
-  if (anchor === null) return null
-  const current = window.getSelection()
-  return { anchor, focus: closestLine(current?.focusNode ?? null)?.index ?? anchor }
-}
-
 function indentSelectedLines(delta: 1 | -1) {
   const range = selectedLineRange()
   if (!range) return
@@ -1270,8 +1307,6 @@ function onContainerKeydown(event: KeyboardEvent) {
     (event.key === 'Delete' || event.key === 'Backspace')
   ) {
     event.preventDefault()
-    // 一覧側の削除（Delete = タスクを消す）まで届かないよう、ここで止める
-    event.stopPropagation()
     removeSelectedLines()
     return
   }
@@ -1290,14 +1325,9 @@ function onContainerKeydown(event: KeyboardEvent) {
   /*
    * 複数行選択中に Shift なしで矢印キーを押したときは、選択をやめて
    * その行の編集に戻る（カーソル位置だけが変わる、という見た目の期待に合わせる）。
-   *
-   * ここで止めないと、textarea が無くなっている間はどの行にもフォーカスが
-   * 無いため、イベントが外側（一覧の j/k 移動など、window に登録された
-   * ショートカット）まで漏れて、隣の Item へ移ってしまう。
    */
   if (shiftSelectAnchor !== null && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
     event.preventDefault()
-    event.stopPropagation()
     const current = window.getSelection()
     const focus = closestLine(current?.focusNode ?? null)?.index ?? shiftSelectAnchor
     shiftSelectAnchor = null
@@ -1555,6 +1585,7 @@ defineExpose({
     :class="{ 'editor--dragging': dragging, 'editor--view': view }"
     :aria-label="props.ariaLabel"
     tabindex="-1"
+    v-bind="keyboardSurface"
     @dragover="onDragOver"
     @dragleave="dragging = false"
     @drop="onDrop"

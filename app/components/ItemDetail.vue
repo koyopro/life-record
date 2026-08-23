@@ -475,7 +475,7 @@ useShortcuts(
             meta: true,
             label: 'タイトルと本文をコピー',
             group: 'その他',
-            yieldToBrowser: () => document.getSelection()?.isCollapsed === false,
+            yieldToBrowser: hasTextSelection,
             run: () => copy(),
           },
         ],

@@ -41,3 +41,33 @@ export function linePoint(el: Element, edge: 'start' | 'end'): LinePoint {
   if (text) return { node: text, offset: edge === 'start' ? 0 : text.length }
   return { node: el, offset: edge === 'start' ? 0 : el.childNodes.length }
 }
+
+/**
+ * 囲みの中から、その行番号の要素を探す。
+ *
+ * **必ず自分の囲みの中だけを見る。** 1つの画面に本文が複数ある
+ * （タスク詳細の本文と、日付ごとの作業記録）ため、`document` から探すと
+ * 同じ行番号を持つ**別の本文**の行が先に見つかる。作業記録で行を選んだ
+ * つもりが、上にある本文の行が選ばれてしまい、コピーも切り取りも
+ * 貼り付けも効かない、という形で表に出る。
+ */
+export function lineElementAt(root: ParentNode | null, index: number): Element | null {
+  return root?.querySelector(`[data-line-index="${index}"]`) ?? null
+}
+
+/**
+ * 選択の端（`node`）が属する行の要素と行番号。
+ *
+ * `root` の外にある行（別の本文）は自分のものではないので null を返す。
+ */
+export function closestLineIn(
+  root: Element | null,
+  node: Node | null,
+): { el: Element; index: number } | null {
+  const el = (node instanceof Element ? node : node?.parentElement)?.closest(
+    '[data-line-index]',
+  )
+  if (!el || !root || !root.contains(el)) return null
+  const index = Number(el.getAttribute('data-line-index'))
+  return Number.isNaN(index) ? null : { el, index }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linePoint } from '~/utils/line-selection'
+import { closestLineIn, lineElementAt, linePoint } from '~/utils/line-selection'
 import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 import { renderLine } from '~~/shared/utils/scrapbox/render'
 
@@ -57,5 +57,52 @@ describe('行をまたぐ選択の端点', () => {
     expect(selection.rangeCount).toBe(1)
 
     container.remove()
+  })
+})
+
+/**
+ * 行の探索は、**その本文の中だけ**を見る。
+ *
+ * 1つの画面に本文が複数ある（タスク詳細の本文と、日付ごとの作業記録）。
+ * `document` から探すと同じ行番号を持つ別の本文の行が先に見つかり、
+ * 作業記録で選んだつもりの行がタスク本文の行になってしまう。
+ * その結果、作業記録ではコピー・切り取り・貼り付け・削除が効かなくなる。
+ */
+describe('本文が複数あるときの行の探索', () => {
+  function editorWith(lines: string[]): HTMLElement {
+    const root = document.createElement('div')
+    lines.forEach((raw, index) => {
+      const el = lineElement(raw)
+      el.setAttribute('data-line-index', String(index))
+      root.append(el)
+    })
+    return root
+  }
+
+  it('自分の囲みの中にある行を返す（先に並ぶ別の本文ではない）', () => {
+    const page = document.createElement('div')
+    const body = editorWith(['本文の1行目', '本文の2行目'])
+    const record = editorWith(['作業記録の1行目', '作業記録の2行目'])
+    page.append(body, record)
+    document.body.append(page)
+
+    expect(lineElementAt(record, 1)?.textContent).toBe('作業記録の2行目')
+    expect(lineElementAt(body, 1)?.textContent).toBe('本文の2行目')
+
+    page.remove()
+  })
+
+  it('選択の端が別の本文にあるときは、自分のものとして扱わない', () => {
+    const body = editorWith(['本文の1行目'])
+    const record = editorWith(['作業記録の1行目'])
+    document.body.append(body, record)
+
+    const inRecord = record.children[0]!
+    expect(closestLineIn(record, inRecord)).toEqual({ el: inRecord, index: 0 })
+    expect(closestLineIn(body, inRecord)).toBeNull()
+    expect(closestLineIn(null, inRecord)).toBeNull()
+
+    body.remove()
+    record.remove()
   })
 })

@@ -178,6 +178,23 @@ RTM に倣い、絶対日付ではなく相対表現を優先する。
 - 入力欄にフォーカスがある間はショートカットを無効化する
 - 破壊的操作は `u`（Undo）で取り消せるようにする
 
+### 自前でキー操作を持つ場所には手を出さない
+
+ショートカットは window で打鍵を拾うため、**どこにフォーカスがあるときは
+手を出さないか**を1か所で決めておく（`app/utils/keyboard-surface.ts` の
+`isTypingTarget`）。入力欄（input / textarea / select）と、
+`data-keyboard-surface` を付けた囲みの中がそれにあたる。
+
+印を使うのは、**入力欄の外でキーを受ける場所**があるため。本文編集
+（[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.6）は行をまたいで
+選んでいる間、1行用の入力欄を離れて囲み自身がフォーカスを持つ。ここを
+「入力していない」と見なすと、本文を編集しているつもりで `c` を押すとタスクが
+完了になり、`Delete` でタスクごと消える。
+
+個々のハンドラで `stopPropagation` を積む形にはしない。**あとから足した
+ショートカットも自動的に避けてくれる**ようにしておかないと、割り当てを
+増やすたびに同じ取りこぼしが出るため。
+
 ### 割り当て
 
 RTM の[キーボードショートカット](https://www.rememberthemilk.com/help/?ctx=basics.basics.keyboard)に合わせる。
@@ -220,7 +237,8 @@ RTM の[キーボードショートカット](https://www.rememberthemilk.com/he
 
 `⌘` + `C`（コピー）は RTM に無い操作。小文字の `c` は完了に使っているため、
 標準のコピーと同じ打鍵に置く（Windows / Linux では `Ctrl` + `C`）。
-**文字を選んでいる間はブラウザに譲る**（`useShortcuts` の `yieldToBrowser`）。
+**文字を選んでいる間はブラウザに譲る**（`useShortcuts` の `yieldToBrowser` と
+`hasTextSelection`）。
 選択を写したいときにタスクが写ると、選び直しからやり直しになるため。
 写す内容は追加の入力と同じ形にする。
 

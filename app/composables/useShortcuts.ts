@@ -1,3 +1,5 @@
+import { isTypingTarget } from '~/utils/keyboard-surface'
+
 export interface Shortcut {
   /** 反応するキー。`KeyboardEvent.key` の値で書く。 */
   keys: string[]
@@ -43,17 +45,6 @@ const PREFIX_TIMEOUT = 1500
 
 /** 単独では操作にならないキー。待ち状態を壊さないよう素通りさせる。 */
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta'])
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  const tag = target.tagName
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    tag === 'SELECT' ||
-    target.isContentEditable
-  )
-}
 
 /*
  * 登録は画面ごとに分かれていても、打鍵の解釈は1つでなければならない。
