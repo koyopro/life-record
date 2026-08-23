@@ -19,6 +19,10 @@ import { ITEM_STATUSES } from '../../shared/types/item'
 import { TAG_COLORS, TAG_NAME_MAX_LENGTH } from '../../shared/types/tag'
 import { RECURRENCE_BASES } from '../../shared/types/recurrence'
 import { ICON_NAME_MAX_LENGTH } from '../../shared/types/icon'
+import {
+  SETTING_KEY_MAX_LENGTH,
+  SETTING_VALUE_MAX_LENGTH,
+} from '../../shared/types/setting'
 
 /**
  * データモデルの定義は docs/02-data-model.md を正とする。
@@ -184,6 +188,36 @@ export const icons = pgTable(
     check(
       'icons_name_length',
       sql`length(${t.name}) <= ${sql.raw(String(ICON_NAME_MAX_LENGTH))}`,
+    ),
+  ],
+)
+
+/**
+ * 画面の設定（docs/15-client-state.md 14.7）。
+ *
+ * 一覧の並び・グループ順のように「どう見せるか」だけを持つ。ブラウザごとの
+ * localStorage に閉じていると、端末を変えるたびに見え方が変わってしまうため、
+ * 正本はここに置く。中身の意味はクライアントが決めるので、鍵と値の文字列だけを
+ * 預かる（項目が増えてもテーブルは変えない）。
+ */
+export const settings = pgTable(
+  'settings',
+  {
+    key: text('key').primaryKey(),
+    value: text('value').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check('settings_key_not_blank', sql`length(btrim(${t.key})) > 0`),
+    check(
+      'settings_key_length',
+      sql`length(${t.key}) <= ${sql.raw(String(SETTING_KEY_MAX_LENGTH))}`,
+    ),
+    check(
+      'settings_value_length',
+      sql`length(${t.value}) <= ${sql.raw(String(SETTING_VALUE_MAX_LENGTH))}`,
     ),
   ],
 )

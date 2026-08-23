@@ -76,7 +76,7 @@ async function add(text: string) {
     <ItemListView
       ref="listView"
       status="all"
-      storage-key="sort:items"
+      screen="items"
       show-sort
       :show-tag-filter="false"
       bar-target="#items-list-bar"

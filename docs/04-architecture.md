@@ -164,6 +164,8 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | GET | `/api/diaries` | Diary 一覧 |
 | GET | `/api/days/:date/items` | 指定日に作業した Item 一覧（Section 経由） |
 | POST | `/api/uploads` | S3 への署名付きアップロードURLを発行 |
+| GET | `/api/settings` | 画面の設定（一覧の並び・グループ順）をまとめて取得 |
+| PUT | `/api/settings` | 画面の設定の保存。送った鍵だけを上書きする（docs/15-client-state.md 14.7） |
 | GET | `/api/search` | 横断検索（後期マイルストーン） |
 
 クイックメモ専用のエンドポイントは設けない。クイックメモも SmartAdd も

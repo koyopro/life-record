@@ -18,6 +18,8 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   }
 
   watchBrowserOnline()
+  // 画面の設定（並び・グループ順）も、送れなかった分を繋がり直しで送る
+  watchSettingsRetry()
   const sync = useSync()
 
   // 起動を待たせない。読み終わった時点で描き変わる

@@ -2,7 +2,6 @@ import type { UndoEntry } from '~/composables/useUndo'
 import type { LocalItem } from '~/utils/offline/local-database'
 import {
   isGroupKey,
-  isSortKey,
   STATUS_LABELS,
   type GroupKey,
   type ItemDto,
@@ -10,7 +9,9 @@ import {
   type ItemStatus,
   type Priority,
   type SortKey,
+  toSortKey,
 } from '~~/shared/types/item'
+import { groupSettingKey, sortSettingKey } from '~~/shared/types/setting'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { writeToClipboard } from '~/utils/clipboard'
 import { composeItemCopyText } from '~/utils/item-copy'
@@ -29,8 +30,11 @@ interface Options {
   untagged?: MaybeRefOrGetter<boolean>
   /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
   dueUntilToday?: MaybeRefOrGetter<boolean>
-  /** ソート軸を localStorage に覚えるためのキー。画面ごとに分ける。 */
-  sortStorageKey: string
+  /**
+   * どの一覧か（`items` / `today`）。並び・グループ順は画面ごとに覚えるので、
+   * その鍵に使う（`sortSettingKey`）。
+   */
+  screen: string
   defaultSort?: SortKey
 }
 
@@ -54,7 +58,7 @@ export function useItemList(options: Options) {
   const tag = computed(() => toValue(options.tag ?? undefined))
   const untagged = computed(() => toValue(options.untagged ?? false))
   const dueUntilToday = computed(() => toValue(options.dueUntilToday ?? false))
-  const sort = ref<SortKey>(options.defaultSort ?? 'priority')
+  const sort = ref<SortKey>(options.defaultSort ?? 'priorityDueDesc')
   const groupBy = ref<GroupKey>('none')
 
   const store = useItemStore()
@@ -471,24 +475,26 @@ export function useItemList(options: Options) {
   //
   // グループ順は並びより上位の区切り（RTM の Group by）。同じ画面を
   // また開いたときも同じ見え方になるよう、並びと同じく覚えておく。
+  //
+  // 覚える先はサーバー（docs/15-client-state.md 14.7）。ブラウザに閉じて
+  // いると、PC と iPhone、あるいはブラウザを変えるたびに見え方が変わる。
 
-  const groupByStorageKey = `${options.sortStorageKey}:group`
+  const settings = useSettings()
+  const sortKey = sortSettingKey(options.screen)
+  const groupKey = groupSettingKey(options.screen)
 
-  onMounted(() => {
-    const storedSort = localStorage.getItem(options.sortStorageKey)
-    if (isSortKey(storedSort)) sort.value = storedSort
-
-    const storedGroup = localStorage.getItem(groupByStorageKey)
-    if (isGroupKey(storedGroup)) groupBy.value = storedGroup
+  // 無くした軸（タイトル順など）を覚えていることもあるので、読み替えて拾う
+  settings.track(sortKey, (value) => {
+    const key = toSortKey(value)
+    if (key) sort.value = key
   })
 
-  watch(sort, (value) => {
-    if (import.meta.client) localStorage.setItem(options.sortStorageKey, value)
+  settings.track(groupKey, (value) => {
+    if (isGroupKey(value)) groupBy.value = value
   })
 
-  watch(groupBy, (value) => {
-    if (import.meta.client) localStorage.setItem(groupByStorageKey, value)
-  })
+  watch(sort, (value) => settings.set(sortKey, value))
+  watch(groupBy, (value) => settings.set(groupKey, value))
 
   return {
     items,

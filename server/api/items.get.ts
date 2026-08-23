@@ -80,7 +80,7 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
     )
   }
 
-  const sort: SortKey = isSortKey(query.sort) ? query.sort : 'priority'
+  const sort: SortKey = isSortKey(query.sort) ? query.sort : 'priorityDueDesc'
 
   const rows = await db
     .select()

@@ -73,24 +73,29 @@ RTM に倣い、**1件を1行にまとめた密度の高い一覧**にする。1
 ```sql
 ORDER BY
   priority ASC NULLS LAST,
-  due_at   ASC NULLS LAST,
+  due_at   DESC NULLS LAST,
   created_at ASC
 ```
 
-重要度が高いものが上、同じ重要度の中では期限が近いものが上。
-重要度なし・期限なしはそれぞれ末尾に送る。`created_at` は同値時の順序を安定させるため。
+重要度が高いものが上、同じ重要度の中では**期限の新しいもの**が上（期限切れが下に
+沈み、これから来るものが上に来る）。重要度なし・期限なしはそれぞれ末尾に送る。
+`created_at` は同値時の順序を安定させるため。
+
+期限は降順でも**期限なしは末尾**にする（`DESC NULLS LAST`）。PostgreSQL の
+`DESC` は既定で NULLS FIRST だが、それだと期限を決めていないものが先頭に固まり、
+期限で並べた意味が無くなる。
 
 ### 切り替え可能なソート軸
 
 | 軸 | 順序 |
 |---|---|
-| 重要度順（既定） | `priority` → `due_at` 昇順 → `created_at` |
-| 重要度順（期限は新しい順） | `priority` → `due_at` **降順** → `created_at` |
-| 期限日順 | `due_at` → `priority` → `created_at` |
-| 追加日順 | `created_at` 降順 |
-| タイトル順 | `title` |
+| 重要度順（既定） | `priority` → `due_at` **降順** → `created_at` |
+| 期限日降順 | `due_at` 降順 → `priority` → `created_at` |
+| 期限日昇順 | `due_at` 昇順 → `priority` → `created_at` |
+| 追加日降順 | `created_at` 降順 |
 
-ソート軸は画面ごとに localStorage で記憶する。
+ソート軸は画面ごとに覚える。覚え方は[15-client-state.md](15-client-state.md) 14.7
+（サーバーに置き、ブラウザを変えても保つ）。
 
 ### グループ順
 
@@ -103,7 +108,7 @@ ORDER BY
 | 重要度 | 重要度: 高 → 重要度: 中 → 重要度: 低 → 重要度なし |
 | ステータス | 未着手 → 対応中 → 完了 |
 
-中身が無いグループは出さない。ソート軸と同じく画面ごとに localStorage で記憶する。
+中身が無いグループは出さない。ソート軸と同じく画面ごとに覚える。
 キーボードのカーソル（`j` / `k`）は見出しをまたいだ1本の並びとして動く。
 
 ---

@@ -45,7 +45,7 @@ async function add(text: string) {
       status="all"
       due-until-today
       default-sort="priorityDueDesc"
-      storage-key="sort:today"
+      screen="today"
       show-sort
       :show-tag-filter="false"
       bar-target="#today-list-bar"

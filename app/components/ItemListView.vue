@@ -17,7 +17,8 @@ import { normalizeTagName } from '~~/shared/types/tag'
 const props = withDefaults(
   defineProps<{
     status: ItemStatus | 'all'
-    storageKey: string
+    /** どの一覧か（`items` / `today`）。並び・グループ順を覚える鍵に使う。 */
+    screen: string
     /** 並べ替えを操作させるか。 */
     showSort?: boolean
     /** タグの絞り込みバーを出すか。 */
@@ -71,8 +72,8 @@ const list = useItemList({
   tag: () => tag.value,
   untagged: () => untagged.value,
   dueUntilToday: () => Boolean(props.dueUntilToday),
-  sortStorageKey: props.storageKey,
-  defaultSort: props.defaultSort ?? 'priority',
+  screen: props.screen,
+  defaultSort: props.defaultSort ?? 'priorityDueDesc',
 })
 
 /**

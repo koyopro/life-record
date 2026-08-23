@@ -27,23 +27,36 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   3: '低',
 }
 
-/** ソート軸（docs/08-todo-management.md 8.2）。 */
+/**
+ * ソート軸（docs/08-todo-management.md 8.2）。
+ *
+ * 名前は以前のものを引き継いでいる（`due` は期限日の**昇順**）。
+ * 覚えてある値（設定・localStorage）をそのまま読めるようにするため。
+ */
 export const SORT_KEYS = [
-  'priority',
   'priorityDueDesc',
+  'dueDesc',
   'due',
   'created',
-  'title',
 ] as const
 export type SortKey = (typeof SORT_KEYS)[number]
 
 export const SORT_LABELS: Record<SortKey, string> = {
-  priority: '重要度順',
-  // 「今日」リストの既定。期限が近い（新しい）ものから並べる
-  priorityDueDesc: '重要度順（期限は新しい順）',
-  due: '期限日順',
-  created: '追加日順',
-  title: 'タイトル順',
+  // 同じ重要度の中では、期限の新しいものが上（期限切れは下に沈む）
+  priorityDueDesc: '重要度順',
+  dueDesc: '期限日降順',
+  due: '期限日昇順',
+  created: '追加日降順',
+}
+
+/**
+ * 無くした軸の読み替え。覚えてある値が古い名前のこともあるため。
+ *
+ * 「重要度順（期限が近い順）」は、いまの「重要度順」へ寄せる。
+ * ここに無いもの（タイトル順）は、その画面の既定に戻す。
+ */
+const REPLACED_SORT_KEYS: Record<string, SortKey> = {
+  priority: 'priorityDueDesc',
 }
 
 /**
@@ -137,6 +150,16 @@ export function isItemStatus(value: unknown): value is ItemStatus {
 
 export function isSortKey(value: unknown): value is SortKey {
   return SORT_KEYS.includes(value as SortKey)
+}
+
+/**
+ * 覚えてある値からソート軸を読み取る。分からなければ null
+ * （呼び出し側がその画面の既定を使う）。
+ */
+export function toSortKey(value: unknown): SortKey | null {
+  if (isSortKey(value)) return value
+  if (typeof value !== 'string') return null
+  return REPLACED_SORT_KEYS[value] ?? null
 }
 
 export function isGroupKey(value: unknown): value is GroupKey {

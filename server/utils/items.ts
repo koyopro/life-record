@@ -17,19 +17,19 @@ import type {
 export function orderByFor(sort: SortKey): SQL[] {
   const priorityAsc = sql`${items.priority} ASC NULLS LAST`
   const dueAsc = sql`${items.dueAt} ASC NULLS LAST`
+  // 降順でも期限なしは末尾に送る（既定の NULLS FIRST では先頭に固まる）
+  const dueDesc = sql`${items.dueAt} DESC NULLS LAST`
 
   switch (sort) {
-    case 'priority':
-      return [priorityAsc, dueAsc, asc(items.createdAt)]
     case 'priorityDueDesc':
-      // 「今日」リスト用。期限切れが下、今日が上に来る
-      return [priorityAsc, desc(items.dueAt), asc(items.createdAt)]
+      // 期限切れが下、今日が上に来る
+      return [priorityAsc, dueDesc, asc(items.createdAt)]
+    case 'dueDesc':
+      return [dueDesc, priorityAsc, asc(items.createdAt)]
     case 'due':
       return [dueAsc, priorityAsc, asc(items.createdAt)]
     case 'created':
       return [desc(items.createdAt)]
-    case 'title':
-      return [asc(items.title), asc(items.createdAt)]
   }
 }
 

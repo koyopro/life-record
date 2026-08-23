@@ -41,6 +41,11 @@ Diary.date
 
 これにより、ある日の Diary から「その日に作業した TODO」を導出できる。
 
+記録そのものではないが、**Setting**（画面の設定）も同じデータベースに置く。
+一覧の並び・グループ順のような「どう見せるか」を鍵と値で持つだけで、どの
+エンティティとも関連を持たない。ブラウザを変えても見え方を保つために置いて
+いる（DDL は 2.11、扱いは [15-client-state.md](15-client-state.md) 14.7）。
+
 ---
 
 ## 2.3 Item
@@ -490,6 +495,16 @@ CREATE TABLE diaries (
   body       TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 画面の設定（一覧の並び・グループ順）。値の意味はクライアントが決める
+CREATE TABLE settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT settings_key_not_blank CHECK (length(btrim(key)) > 0),
+  CONSTRAINT settings_key_length CHECK (length(key) <= 100),
+  CONSTRAINT settings_value_length CHECK (length(value) <= 500)
 );
 ```
 

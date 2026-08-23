@@ -23,16 +23,14 @@ type Compare = (a: ItemDto, b: ItemDto) => number
 
 function comparatorFor(sort: SortKey): Compare {
   switch (sort) {
-    case 'priority':
-      return chain(byPriority, byDueAsc, byCreatedAsc)
     case 'priorityDueDesc':
       return chain(byPriority, byDueDesc, byCreatedAsc)
+    case 'dueDesc':
+      return chain(byDueDesc, byPriority, byCreatedAsc)
     case 'due':
       return chain(byDueAsc, byPriority, byCreatedAsc)
     case 'created':
       return byCreatedDesc
-    case 'title':
-      return chain(byTitle, byCreatedAsc)
   }
 }
 
@@ -64,31 +62,25 @@ function nullsLast<T>(
   return compare(a, b)
 }
 
-/** 値なしを先頭に置く（PostgreSQL の `DESC` は既定で NULLS FIRST）。 */
-function nullsFirst<T>(
-  a: T | null,
-  b: T | null,
-  compare: (a: T, b: T) => number,
-): number {
-  if (a === null) return b === null ? 0 : -1
-  if (b === null) return 1
-  return compare(a, b)
-}
-
 /** 重要度。小さいほど高く、重要度なしは末尾。 */
 const byPriority: Compare = (a, b) =>
   nullsLast(a.priority, b.priority, (x, y) => x - y)
 
 const byDueAsc: Compare = (a, b) => nullsLast(a.dueAt, b.dueAt, compareText)
 
+/**
+ * 期限の新しい順。**期限なしは末尾**にする（`DESC NULLS LAST`）。
+ *
+ * PostgreSQL の `DESC` は既定で NULLS FIRST だが、それだと期限を決めて
+ * いないものが先頭に固まり、期限で並べた意味が無くなる。昇順と揃えて、
+ * どちらでも期限なしは下に置く。
+ */
 const byDueDesc: Compare = (a, b) =>
-  nullsFirst(a.dueAt, b.dueAt, (x, y) => compareText(y, x))
+  nullsLast(a.dueAt, b.dueAt, (x, y) => compareText(y, x))
 
 const byCreatedAsc: Compare = (a, b) => compareText(a.createdAt, b.createdAt)
 
 const byCreatedDesc: Compare = (a, b) => compareText(b.createdAt, a.createdAt)
-
-const byTitle: Compare = (a, b) => compareText(a.title, b.title)
 
 /**
  * グループ順（docs/08-todo-management.md 8.2、RTM の Group by）。
