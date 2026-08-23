@@ -27,16 +27,29 @@ const OS_SCHEMES: [&str; 5] = ["mailto", "tel", "sms", "facetime", "facetime-aud
 /// WebView が自分のために使うスキーム。素通しする。
 const IN_APP_SCHEMES: [&str; 3] = ["tauri", "asset", "about"];
 
+/// 認証のために経由する host。別 origin だがアプリの中で開く。
+///
+/// デプロイ先を Vercel の Deployment Protection で守っているため、最初の
+/// 移動は `https://vercel.com/sso-api?…` へリダイレクトされる
+/// （docs/16-macos-app.md 16.1）。ここをブラウザへ渡すと認証 Cookie が
+/// ブラウザ側に付いてしまい、WebView は何度起動しても白いままになる。
+/// 認証をアプリの中で終わらせるために、この host だけ例外として通す。
+const AUTH_HOSTS: [&str; 1] = ["vercel.com"];
+
 /// `target` をどこで開くか。`app` は Life Record 自身の URL。
 pub fn route(app: &Url, target: &Url) -> Route {
     let scheme = target.scheme();
 
     if scheme == "http" || scheme == "https" {
-        return if same_origin(app, target) {
-            Route::InApp
-        } else {
-            Route::Os
-        };
+        if same_origin(app, target) {
+            return Route::InApp;
+        }
+        // 認証の経由先だけは別 origin でも中で開く。盗み見られると認証が
+        // そのまま通るので、https で来たものに限る
+        if scheme == "https" && is_auth_host(target) {
+            return Route::InApp;
+        }
+        return Route::Os;
     }
 
     if OS_SCHEMES.contains(&scheme) {
@@ -58,6 +71,15 @@ fn same_origin(a: &Url, b: &Url) -> bool {
     a.scheme() == b.scheme()
         && a.host_str() == b.host_str()
         && a.port_or_known_default() == b.port_or_known_default()
+}
+
+/// 認証のために通す host か。
+///
+/// 完全一致でみる。副ドメイン（`foo.vercel.com`）まで許すと、Vercel に
+/// 置かれた他人のサイトまでアプリの中で開けてしまう。
+fn is_auth_host(url: &Url) -> bool {
+    url.host_str()
+        .is_some_and(|host| AUTH_HOSTS.contains(&host))
 }
 
 #[cfg(test)]
@@ -114,6 +136,30 @@ mod tests {
         let other = Url::parse("http://localhost:5173/").unwrap();
         assert_eq!(route(&dev, &inside), Route::InApp);
         assert_eq!(route(&dev, &other), Route::Os);
+    }
+
+    /// Vercel の認証はアプリの中で通す（別 origin だが例外）
+    #[test]
+    fn auth_host_opens_in_app() {
+        assert_eq!(
+            route_str("https://vercel.com/sso-api?url=https%3A%2F%2Fexample.com%2F&nonce=abc"),
+            Route::InApp
+        );
+        assert_eq!(
+            route_str("https://vercel.com/login?next=%2Fsso-api"),
+            Route::InApp
+        );
+    }
+
+    /// 認証の例外は vercel.com そのものだけ
+    #[test]
+    fn auth_host_exception_is_narrow() {
+        // 副ドメインは含めない。他人のデプロイ先まで中で開いてしまう
+        assert_eq!(route_str("https://other-app.vercel.com/"), Route::Os);
+        // ホスト名の後ろに足しただけの紛らわしいもの
+        assert_eq!(route_str("https://vercel.com.evil.test/"), Route::Os);
+        // http では通さない
+        assert_eq!(route_str("http://vercel.com/sso-api"), Route::Os);
     }
 
     /// メールと電話は OS へ渡す

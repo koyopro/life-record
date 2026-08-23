@@ -37,6 +37,12 @@ LIFE_RECORD_APP_URL="https://<デプロイ先>" npm run tauri:build
 （[07-open-questions.md](07-open-questions.md) Q3）、アプリからも最初に
 Vercel の認証画面が出る。認証は Cookie に残るので、通るのは初回だけ。
 
+この認証は `https://vercel.com/sso-api?…` へのリダイレクトで始まる。
+別 origin なので、16.2 の判定をそのまま当てるとブラウザへ出てしまい、
+Cookie がブラウザ側に付いて WebView は白いままになる。認証をアプリの中で
+終わらせるため、`vercel.com` だけは例外として中で開く
+（`url_rules.rs` の `AUTH_HOSTS`）。
+
 ## 16.2 外部 URL は既定のブラウザで開く
 
 WebView の中に外部サイトが出ないようにする。開く先は macOS のユーザー設定に
@@ -45,6 +51,7 @@ WebView の中に外部サイトが出ないようにする。開く先は macOS
 | URL | 開く場所 |
 |---|---|
 | Life Record 自身（同一 origin） | Tauri のウィンドウの中 |
+| `https://vercel.com/…`（認証の経由先。16.1） | Tauri のウィンドウの中 |
 | `http:` / `https:` の別 origin | macOS の既定のブラウザ |
 | `mailto:` `tel:` `sms:` `facetime:` | macOS の既定のアプリ |
 | それ以外（`file:` や独自スキーム） | 開かない |
