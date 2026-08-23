@@ -2097,7 +2097,6 @@ defineExpose({
      幅・高さのどちらも指定しないことで、img 本来の縦横比を保ったまま
      縮む（全体が見える。切り取りはしない） */
   max-height: 300px;
-  border-radius: 8px;
 }
 
 .editor :deep(.sb-image--large) {
