@@ -1,5 +1,5 @@
 /**
- * Tauri CLI の起動口（docs/16-macos-app.md 16.5）。
+ * Tauri CLI の起動口（docs/16-macos-app.md 16.6）。
  *
  * Tauri のウィンドウに出すのは Nuxt アプリそのもの。Nitro の API が要るので
  * 書き出した静的ファイルは同梱できず、行き先の URL を指すだけにしている。

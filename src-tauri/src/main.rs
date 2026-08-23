@@ -4,12 +4,16 @@
 
 mod url_rules;
 
+use tauri::menu::{Menu, MenuItem, MenuItemKind, Submenu};
 use tauri::utils::config::FrontendDist;
-use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use url_rules::{route, Route};
+
+/// 「再読み込み」のメニュー項目。押されたかを id で見分ける。
+const RELOAD_MENU_ID: &str = "reload";
 
 fn main() {
     tauri::Builder::default()
@@ -48,10 +52,48 @@ fn main() {
                 .initialization_script(include_str!("open-external.js"))
                 .build()?;
 
+            app.set_menu(build_menu(app.handle())?)?;
+
+            let window = app.get_webview_window("main");
+            app.on_menu_event(move |_app, event| {
+                if event.id() == RELOAD_MENU_ID {
+                    if let Some(window) = &window {
+                        if let Err(error) = window.reload() {
+                            eprintln!("再読み込みできなかった: {error}");
+                        }
+                    }
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("Tauri アプリの起動に失敗した");
+}
+
+/// 「View > 再読み込み」（⌘R）を足したメニュー。
+///
+/// WebView にはブラウザのような再読み込みの導線が無く、Tauri の既定の
+/// メニュー（`Menu::default`）にも入っていない。表示しているのは動いている
+/// Nuxt そのものなので、読み込みに失敗したときに開き直せる入り口を1つ置く。
+///
+/// 既定のメニューを組み直さず、そこにある「View」へ足すだけにする。
+/// 見当たらなければ（macOS 以外）自分で作る。
+fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let menu = Menu::default(app)?;
+    let reload = MenuItem::with_id(app, RELOAD_MENU_ID, "再読み込み", true, Some("CmdOrCtrl+R"))?;
+
+    for item in menu.items()? {
+        if let MenuItemKind::Submenu(submenu) = item {
+            if submenu.text()? == "View" {
+                submenu.prepend(&reload)?;
+                return Ok(menu);
+            }
+        }
+    }
+
+    menu.append(&Submenu::with_items(app, "View", true, &[&reload])?)?;
+    Ok(menu)
 }
 
 /// 表示する Life Record の URL。
