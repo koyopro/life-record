@@ -8,6 +8,14 @@ const props = defineProps<{
   selected?: boolean
   /** まだサーバーへ送れていない変更を抱えているか（docs/12-offline.md 12.8）。 */
   pending?: boolean
+  /**
+   * 状態（完了かどうか）を見た目に出さないか。
+   *
+   * 「すべて」を出すスマートリスト（docs/08-todo-management.md 8.6）で使う。
+   * 完了・未完了を分けずに並べる見方なので、完了したものだけ取り消し線で
+   * 別扱いにすると、その条件に当てはまるもの全部を眺める邪魔になる。
+   */
+  ignoreStatus?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +28,10 @@ const emit = defineEmits<{
 }>()
 
 const due = computed(() => formatDue(props.item))
-const done = computed(() => props.item.status === 'closed')
+const closed = computed(() => props.item.status === 'closed')
+
+/** 完了したものとして**見せる**か。状態を見ない一覧では出さない。 */
+const done = computed(() => !props.ignoreStatus && closed.value)
 
 const { colorOf } = useTags()
 
@@ -82,7 +93,8 @@ function onTouchMove(event: TouchEvent) {
 
 function onTouchEnd() {
   cancelLongPress()
-  if (dragging.value && dragX.value >= SWIPE_THRESHOLD && !done.value) {
+  // 見た目に出していなくても、済んでいるものをもう一度完了にはしない
+  if (dragging.value && dragX.value >= SWIPE_THRESHOLD && !closed.value) {
     emit('complete')
   }
   dragging.value = false

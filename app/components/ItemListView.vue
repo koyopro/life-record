@@ -5,11 +5,13 @@ import {
   GROUP_LABELS,
   SORT_KEYS,
   SORT_LABELS,
+  type GroupKey,
   type ItemDto,
   type ItemStatus,
   type SortKey,
   isOpenableUrl,
 } from '~~/shared/types/item'
+import type { ListView } from '~~/shared/types/smart-list'
 import { groupItems } from '~/utils/item-order'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { normalizeTagName } from '~~/shared/types/tag'
@@ -17,8 +19,21 @@ import { normalizeTagName } from '~~/shared/types/tag'
 const props = withDefaults(
   defineProps<{
     status: ItemStatus | 'all'
-    /** どの一覧か（`items` / `today`）。並び・グループ順を覚える鍵に使う。 */
-    screen: string
+    /**
+     * どの一覧か（`items` / `today`）。並び・グループ順を覚える鍵に使う。
+     * スマートリストのように覚え先が別にあるときは渡さない。
+     */
+    screen?: string
+    /**
+     * 表示方法を固定する（スマートリスト）。渡すと「未完了 / 完了」の
+     * 切り替えは出さず、`all` なら状態を見ない見え方になる。
+     */
+    view?: ListView
+    /** 絞り込むタグを固定する（スマートリスト）。URL のタグより優先する。 */
+    fixedTag?: string | null
+    /** 並び・グループ順を外から与える（スマートリスト）。 */
+    sort?: SortKey
+    group?: GroupKey
     /** 並べ替えを操作させるか。 */
     showSort?: boolean
     /** タグの絞り込みバーを出すか。 */
@@ -39,6 +54,12 @@ const props = withDefaults(
   { showTagFilter: true },
 )
 
+const emit = defineEmits<{
+  /** 並び・グループ順を選び直した（外から与えているときだけ出す）。 */
+  'update:sort': [value: SortKey]
+  'update:group': [value: GroupKey]
+}>()
+
 const route = useRoute()
 const router = useRouter()
 
@@ -50,6 +71,7 @@ const router = useRouter()
 const { tags: allTags } = useTags()
 
 const tag = computed<string | undefined>(() => {
+  if (props.fixedTag !== undefined) return props.fixedTag ?? undefined
   const value = route.query.tag
   if (typeof value !== 'string') return undefined
   return normalizeTagName(value) ?? undefined
@@ -64,16 +86,28 @@ const untagged = computed(() => route.query.untagged === 'true')
 //
 // 両側とも useItemList があらかじめ取っておくので、切り替えは待たされない。
 
-const completed = computed(() => route.query.completed === 'true')
+const view = computed<ListView>(
+  () => props.view ?? (route.query.completed === 'true' ? 'completed' : 'open'),
+)
+
+/** 完了側を見ているか。操作の向き（完了にする / 戻す）を決めるのに使う。 */
+const completed = computed(() => view.value === 'completed')
+
+/** 「未完了 / 完了」を切り替えられるか。固定されていれば切り替えない。 */
+const switchable = computed(() => props.view === undefined)
 
 const list = useItemList({
   status: () => props.status,
-  completed: () => completed.value,
+  view: () => view.value,
   tag: () => tag.value,
   untagged: () => untagged.value,
   dueUntilToday: () => Boolean(props.dueUntilToday),
   screen: props.screen,
   defaultSort: props.defaultSort ?? 'priorityDueDesc',
+  sort: props.sort === undefined ? undefined : () => props.sort!,
+  groupBy: props.group === undefined ? undefined : () => props.group!,
+  onSortChange: (value) => emit('update:sort', value),
+  onGroupChange: (value) => emit('update:group', value),
 })
 
 /**
@@ -266,9 +300,9 @@ function toggleUntagged() {
   })
 }
 
-/** 未完了 / 完了 を切り替える（`h`）。 */
+/** 未完了 / 完了 を切り替える（`h`）。固定されているリストでは何もしない。 */
 function showCompleted(value: boolean) {
-  if (value === completed.value) return
+  if (!switchable.value || value === completed.value) return
   setFilter({ completed: value ? 'true' : undefined })
 }
 
@@ -301,12 +335,16 @@ const shortcuts = computed<Shortcut[]>(() => [
       if (target) open(target)
     },
   },
-  {
-    keys: ['h'],
-    label: '完了 / 未完了を切り替え',
-    group: '移動',
-    run: () => showCompleted(!completed.value),
-  },
+  ...(switchable.value
+    ? [
+        {
+          keys: ['h'],
+          label: '完了 / 未完了を切り替え',
+          group: '移動',
+          run: () => showCompleted(!completed.value),
+        } satisfies Shortcut,
+      ]
+    : []),
   {
     keys: ['i'],
     label: 'タスクを選択',
@@ -657,7 +695,7 @@ defineExpose({
       <Teleport :disabled="!barTarget" :to="barTarget || 'body'">
         <div class="list__bar">
           <!-- キーボードを使わなくても切り替えられるようにする（`h` と同じ） -->
-          <div class="list__view" role="group" aria-label="完了 / 未完了">
+          <div v-if="switchable" class="list__view" role="group" aria-label="完了 / 未完了">
             <button
               type="button"
               class="list__view-item"
@@ -752,6 +790,7 @@ defineExpose({
                 :focused="index === list.cursor.value"
                 :selected="list.selectedIds.value.has(item.id)"
                 :pending="item.syncState !== 'synced'"
+                :ignore-status="view === 'all'"
                 @focus="list.focusItem(item.id)"
                 @select="list.toggleSelect(item.id)"
                 @complete="toggleComplete(item)"

@@ -606,3 +606,29 @@ function parseDate(text: string, referenceDate: Date): ParsedDate | null {
 export function containsReservedSymbol(input: string): boolean {
   return RESERVED_SYMBOLS.some((symbol) => input.includes(symbol))
 }
+
+/**
+ * 絞り込みで見ている一覧からの追加に、その絞り込みを既定として足す
+ * （タスク一覧のタグ絞り込みと、スマートリスト）。
+ *
+ * - そのまま追加すると絞り込みから外れて一覧から消えてしまうため、
+ *   見ているタグを自動で付ける
+ * - 期限は書かなければ既定で「今日」になる（buildItemDraft）が、
+ *   タグで見ているときの追加は「今日やること」に限らないため「なし」にする
+ *
+ * 明示的に書かれた指定（`#別タグ` や `^明日` など）は上書きしない。
+ */
+export function withTagDefaults(text: string, tag: string | null | undefined): string {
+  if (!tag) return text
+
+  const split = splitInput(text)
+  if (!split) return text
+  const parsed = parseSmartAdd(split.titleLine)
+
+  const overrides: SmartAddOverrides = {
+    tags: [...new Set([...parsed.tags, tag])],
+  }
+  if (parsed.dueAt === null && !parsed.dueCleared) overrides.due = null
+
+  return composeSmartAddInput(text, overrides)
+}

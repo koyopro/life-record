@@ -44,6 +44,7 @@ const reading = computed(() => route.meta.wide === 'reading')
 const NAV = computed(() => [
   { to: '/today', label: '今日', match: '/today' },
   { to: '/', label: 'タスク', match: '/' },
+  { to: '/lists', label: 'リスト', match: '/lists' },
   { to: '/tags', label: 'タグ', match: '/tags' },
   { to: '/icons', label: 'アイコン', match: '/icons' },
   { to: todayDiary.value, label: '日記', match: '/diary' },
@@ -68,6 +69,19 @@ const tagSwitcherOpen = ref(false)
 function goToTag(name: string) {
   tagSwitcherOpen.value = false
   void navigateTo({ path: '/', query: { tag: name } })
+}
+
+/**
+ * 「リストに移動」（`g` `m`）。
+ *
+ * タグ（`g` `s`）と同じ形にする。スマートリスト
+ * （docs/08-todo-management.md 8.6）を名前で選び、直接そのリストへ移る。
+ */
+const listSwitcherOpen = ref(false)
+
+function goToSmartList(id: string) {
+  listSwitcherOpen.value = false
+  void navigateTo(`/lists/${id}`)
 }
 
 /**
@@ -140,6 +154,15 @@ const shortcuts: Shortcut[] = [
     group: '移動',
     run: () => {
       tagSwitcherOpen.value = true
+    },
+  },
+  {
+    prefix: 'g',
+    keys: ['m'],
+    label: 'リストに移動',
+    group: '移動',
+    run: () => {
+      listSwitcherOpen.value = true
     },
   },
   {
@@ -229,6 +252,12 @@ function isActive(to: string): boolean {
       v-if="tagSwitcherOpen"
       @select="goToTag"
       @close="tagSwitcherOpen = false"
+    />
+
+    <GoToSmartListDialog
+      v-if="listSwitcherOpen"
+      @select="goToSmartList"
+      @close="listSwitcherOpen = false"
     />
   </div>
 </template>

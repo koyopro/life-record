@@ -23,6 +23,7 @@ import {
   SETTING_KEY_MAX_LENGTH,
   SETTING_VALUE_MAX_LENGTH,
 } from '../../shared/types/setting'
+import { SMART_LIST_NAME_MAX_LENGTH } from '../../shared/types/smart-list'
 
 /**
  * データモデルの定義は docs/02-data-model.md を正とする。
@@ -193,6 +194,38 @@ export const icons = pgTable(
 )
 
 /**
+ * スマートリスト（docs/08-todo-management.md 8.6）。
+ *
+ * よく見る絞り込みに名前を付けて残しておくもの（RTM の Smart List）。
+ * 条件だけを持ち、どの Item が入るかは出すときに選び直すので、Item との
+ * 関連は持たない。
+ */
+export const smartLists = pgTable(
+  'smart_lists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    /** 絞り込むタグ名。NULL なら絞り込まない。タグの id ではなく名前で持つ */
+    tag: text('tag'),
+    /** 表示方法（`open` / `completed` / `all`）。 */
+    view: text('view').notNull().default('open'),
+    /** グループ順・並び。名前はクライアントの GroupKey / SortKey と同じ */
+    groupBy: text('group_by').notNull().default('none'),
+    sort: text('sort').notNull().default('priorityDueDesc'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check('smart_lists_name_not_blank', sql`length(btrim(${t.name})) > 0`),
+    check(
+      'smart_lists_name_length',
+      sql`length(${t.name}) <= ${sql.raw(String(SMART_LIST_NAME_MAX_LENGTH))}`,
+    ),
+  ],
+)
+
+/**
  * 画面の設定（docs/15-client-state.md 14.7）。
  *
  * 一覧の並び・グループ順のように「どう見せるか」だけを持つ。ブラウザごとの
@@ -271,4 +304,6 @@ export type Tag = typeof tags.$inferSelect
 export type NewTag = typeof tags.$inferInsert
 export type Icon = typeof icons.$inferSelect
 export type NewIcon = typeof icons.$inferInsert
+export type SmartList = typeof smartLists.$inferSelect
+export type NewSmartList = typeof smartLists.$inferInsert
 export type ItemStatus = Item['status']

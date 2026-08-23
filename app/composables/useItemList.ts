@@ -12,6 +12,7 @@ import {
   toSortKey,
 } from '~~/shared/types/item'
 import { groupSettingKey, sortSettingKey } from '~~/shared/types/setting'
+import type { ListView } from '~~/shared/types/smart-list'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { writeToClipboard } from '~/utils/clipboard'
 import { composeItemCopyText } from '~/utils/item-copy'
@@ -22,8 +23,12 @@ import { endOfAppDay, startOfAppDay } from '~~/shared/utils/date'
 interface Options {
   /** 対象の status。'all' なら絞り込まない。 */
   status: MaybeRefOrGetter<ItemStatus | 'all'>
-  /** 完了したものだけを見ているか（`h`）。 */
-  completed?: MaybeRefOrGetter<boolean>
+  /**
+   * 表示方法（`open` / `completed` / `all`）。
+   *
+   * `all` は**状態を見ない**（スマートリスト、docs/08-todo-management.md 8.6）。
+   */
+  view?: MaybeRefOrGetter<ListView>
   /** 絞り込むタグ名。undefined なら絞り込まない。 */
   tag?: MaybeRefOrGetter<string | undefined>
   /** タグが付いていない Item だけに絞るか。 */
@@ -32,10 +37,21 @@ interface Options {
   dueUntilToday?: MaybeRefOrGetter<boolean>
   /**
    * どの一覧か（`items` / `today`）。並び・グループ順は画面ごとに覚えるので、
-   * その鍵に使う（`sortSettingKey`）。
+   * その鍵に使う（`sortSettingKey`）。外から与えるとき（スマートリスト）は
+   * 覚え先がそちらになるので、渡さない。
    */
-  screen: string
+  screen?: string
   defaultSort?: SortKey
+  /**
+   * 並び・グループ順を外から与える（スマートリスト）。
+   *
+   * 与えたときの覚え先はリストの定義なので、選び直したことは
+   * `onSortChange` / `onGroupChange` で呼び出し側へ返す。
+   */
+  sort?: MaybeRefOrGetter<SortKey>
+  groupBy?: MaybeRefOrGetter<GroupKey>
+  onSortChange?: (value: SortKey) => void
+  onGroupChange?: (value: GroupKey) => void
 }
 
 /**
@@ -54,12 +70,33 @@ interface Options {
  */
 export function useItemList(options: Options) {
   const status = computed(() => toValue(options.status))
-  const completed = computed(() => toValue(options.completed ?? false))
+  const view = computed<ListView>(() => toValue(options.view ?? 'open'))
   const tag = computed(() => toValue(options.tag ?? undefined))
   const untagged = computed(() => toValue(options.untagged ?? false))
   const dueUntilToday = computed(() => toValue(options.dueUntilToday ?? false))
-  const sort = ref<SortKey>(options.defaultSort ?? 'priorityDueDesc')
-  const groupBy = ref<GroupKey>('none')
+  /*
+   * 並び・グループ順。外から与えられていればそちらを読み書きし、
+   * 無ければこの場で持つ（＝画面ごとに覚える）。
+   */
+  const ownSort = ref<SortKey>(options.defaultSort ?? 'priorityDueDesc')
+  const ownGroupBy = ref<GroupKey>('none')
+
+  const sort = computed<SortKey>({
+    get: () => (options.sort === undefined ? ownSort.value : toValue(options.sort)),
+    set: (value) => {
+      if (options.sort === undefined) ownSort.value = value
+      else options.onSortChange?.(value)
+    },
+  })
+
+  const groupBy = computed<GroupKey>({
+    get: () =>
+      options.groupBy === undefined ? ownGroupBy.value : toValue(options.groupBy),
+    set: (value) => {
+      if (options.groupBy === undefined) ownGroupBy.value = value
+      else options.onGroupChange?.(value)
+    },
+  })
 
   const store = useItemStore()
   const sync = useSync()
@@ -103,7 +140,7 @@ export function useItemList(options: Options) {
     // 削除して、まだ送れていないもの。取り消せるよう記録は残してある
     if (item.syncState === 'pending_delete') return false
 
-    if (completed.value) {
+    if (view.value === 'completed') {
       if (item.status !== 'closed') return false
       // 「今日」リストの完了タスクは、期限ではなく「今日完了したか」で絞る。
       // 未完了側は「今日までにやること」を期限で選ぶのに対し、完了側で
@@ -117,7 +154,8 @@ export function useItemList(options: Options) {
       // 未完了側に完了したものは出さない。「未完了 / 完了」は裏表で、
       // 見ている側に反対のものが混じると切り替えの意味が無くなる
       // （docs/08-todo-management.md 8.4）。
-      if (item.status === 'closed') return false
+      // 「すべて」は裏表を持たない見方なので、状態では絞らない。
+      if (view.value === 'open' && item.status === 'closed') return false
       if (status.value !== 'all' && item.status !== status.value) return false
       if (dueUntilToday.value) {
         if (!item.dueAt) return false
@@ -479,22 +517,25 @@ export function useItemList(options: Options) {
   // 覚える先はサーバー（docs/15-client-state.md 14.7）。ブラウザに閉じて
   // いると、PC と iPhone、あるいはブラウザを変えるたびに見え方が変わる。
 
-  const settings = useSettings()
-  const sortKey = sortSettingKey(options.screen)
-  const groupKey = groupSettingKey(options.screen)
+  const screen = options.screen
+  if (screen) {
+    const settings = useSettings()
+    const sortKey = sortSettingKey(screen)
+    const groupKey = groupSettingKey(screen)
 
-  // 無くした軸（タイトル順など）を覚えていることもあるので、読み替えて拾う
-  settings.track(sortKey, (value) => {
-    const key = toSortKey(value)
-    if (key) sort.value = key
-  })
+    // 無くした軸（タイトル順など）を覚えていることもあるので、読み替えて拾う
+    settings.track(sortKey, (value) => {
+      const key = toSortKey(value)
+      if (key) ownSort.value = key
+    })
 
-  settings.track(groupKey, (value) => {
-    if (isGroupKey(value)) groupBy.value = value
-  })
+    settings.track(groupKey, (value) => {
+      if (isGroupKey(value)) ownGroupBy.value = value
+    })
 
-  watch(sort, (value) => settings.set(sortKey, value))
-  watch(groupBy, (value) => settings.set(groupKey, value))
+    watch(ownSort, (value) => settings.set(sortKey, value))
+    watch(ownGroupBy, (value) => settings.set(groupKey, value))
+  }
 
   return {
     items,

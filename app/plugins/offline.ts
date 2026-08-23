@@ -39,5 +39,11 @@ export default defineNuxtPlugin(async (nuxtApp) => {
  * 引くかどうかだけを決める。
  */
 function showsItems(path: string): boolean {
-  return path === '/' || path === '/today' || path.startsWith('/items')
+  return (
+    path === '/' ||
+    path === '/today' ||
+    path.startsWith('/items') ||
+    // スマートリストの中身（一覧そのもの）。リスト一覧（/lists）は要らない
+    path.startsWith('/lists/')
+  )
 }

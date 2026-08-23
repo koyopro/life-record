@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { normalizeTagName } from '~~/shared/types/tag'
-import {
-  composeSmartAddInput,
-  parseSmartAdd,
-  type SmartAddOverrides,
-} from '~~/shared/utils/smart-add'
-import { splitInput } from '~~/shared/utils/text'
+import { withTagDefaults } from '~~/shared/utils/smart-add'
 
 // 一覧の右側に詳細を並べるため、この画面だけコンテナを広く使う
 definePageMeta({ wide: true })
@@ -23,33 +18,10 @@ const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null
 
 useHead({ title: 'タスク' })
 
-/**
- * タグで絞り込んでいる間の追加に既定を足す。
- *
- * - そのまま追加すると絞り込みから外れて一覧から消えてしまうため、
- *   見ているタグを自動で付ける
- * - 期限は書かなければ既定で「今日」になる（buildItemDraft）が、
- *   タグ一覧からの追加は「今日やること」に限らないため「なし」にする
- *
- * 明示的に書かれた指定（`#別タグ` や `^明日` など）は上書きしない。
- */
-function applyTagDefaults(text: string): string {
-  if (!tag.value) return text
-
-  const split = splitInput(text)
-  if (!split) return text
-  const parsed = parseSmartAdd(split.titleLine)
-
-  const overrides: SmartAddOverrides = {
-    tags: [...new Set([...parsed.tags, tag.value])],
-  }
-  if (parsed.dueAt === null && !parsed.dueCleared) overrides.due = null
-
-  return composeSmartAddInput(text, overrides)
-}
-
+// タグで絞り込んでいる間の追加には、そのタグを既定として足す
+// （`withTagDefaults`。付けないと、追加した途端に一覧から消える）
 async function add(text: string) {
-  await listView.value?.create(applyTagDefaults(text))
+  await listView.value?.create(withTagDefaults(text, tag.value))
 }
 </script>
 

@@ -41,7 +41,10 @@ Diary.date
 
 これにより、ある日の Diary から「その日に作業した TODO」を導出できる。
 
-記録そのものではないが、**Setting**（画面の設定）も同じデータベースに置く。
+記録そのものではないが、**SmartList**（保存した絞り込み。
+[08-todo-management.md](08-todo-management.md) 8.6）と **Setting**（画面の設定）も
+同じデータベースに置く。SmartList は条件だけを持ち、どの Item が入るかは
+出すときに選び直すので、Item との関連は持たない。Setting は
 一覧の並び・グループ順のような「どう見せるか」を鍵と値で持つだけで、どの
 エンティティとも関連を持たない。ブラウザを変えても見え方を保つために置いて
 いる（DDL は 2.11、扱いは [15-client-state.md](15-client-state.md) 14.7）。
@@ -495,6 +498,19 @@ CREATE TABLE diaries (
   body       TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 保存した絞り込み（スマートリスト）。中身は持たず、条件だけを持つ
+CREATE TABLE smart_lists (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  tag        TEXT,                              -- 絞り込むタグ名。NULL なら絞り込まない
+  view       TEXT NOT NULL DEFAULT 'open',      -- open / completed / all
+  group_by   TEXT NOT NULL DEFAULT 'none',
+  sort       TEXT NOT NULL DEFAULT 'priorityDueDesc',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT smart_lists_name_not_blank CHECK (length(btrim(name)) > 0),
+  CONSTRAINT smart_lists_name_length CHECK (length(name) <= 50)
 );
 
 -- 画面の設定（一覧の並び・グループ順）。値の意味はクライアントが決める
