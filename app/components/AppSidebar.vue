@@ -5,14 +5,17 @@ import { tagColorVar } from '~/utils/tag-color'
 /**
  * 左袖のナビゲーション（RTM の左側に合わせる）。
  *
- * 上の帯（app.vue の NAV）が「どの画面か」を選ぶのに対して、ここは
- * **どの絞り込みを見るか**を選ぶ場所。リスト・タグ・日記の中身まで
- * 出しておき、一覧 → 一覧の移動を1押しで済ませる。
+ * **画面を移る入口はここだけ**にする。以前は上に区分の帯を置いていたが、
+ * 袖と同じ行き先を2か所に持つことになり、狭い画面では帯と画面の見出しで
+ * 2行が埋まっていた。帯をやめたぶん、本文が上に詰まる。
+ *
+ * リスト・タグ・日記は中身まで出しておき、一覧 → 一覧の移動を1押しで
+ * 済ませる。
  *
  * 開閉は `;` とハンバーガー（app.vue）。広い画面（60rem 以上）では本文の
  * 横に並べ、狭い画面では本文に重ねて出す（useSidebar）。
  */
-const { open, docked, close, isCollapsed, toggleSection } = useSidebar()
+const { open, docked, close, toggle, isCollapsed, toggleSection } = useSidebar()
 
 const route = useRoute()
 const today = useToday()
@@ -95,6 +98,20 @@ watch(open, async (value) => {
       :inert="!open || undefined"
       @keydown.esc.prevent="close"
     >
+      <!--
+        閉じるボタン。開くときに押した ☰（app.vue）と同じ場所に出す。
+        押した指がそのまま次に触れる場所なので、動かさない。
+      -->
+      <button
+        type="button"
+        class="fold"
+        aria-label="サイドバーの開閉"
+        title="サイドバーの開閉（;）"
+        @click="toggle"
+      >
+        <span aria-hidden="true">☰</span>
+      </button>
+
       <NuxtLink class="item item--top" :class="{ 'item--active': isAllTasks }" to="/">
         全てのタスク
       </NuxtLink>
@@ -105,6 +122,14 @@ watch(open, async (value) => {
         to="/today"
       >
         今日
+      </NuxtLink>
+
+      <NuxtLink
+        class="item item--top"
+        :class="{ 'item--active': route.path === '/search' }"
+        to="/search"
+      >
+        検索
       </NuxtLink>
 
       <!-- 日記。当日を末尾にした直近5日ぶんを並べる -->
@@ -217,6 +242,21 @@ watch(open, async (value) => {
           <li v-if="!tags.length" class="group__empty">タグはまだありません</li>
         </ul>
       </section>
+
+      <!--
+        下の段。毎日押すものではない持ち物（アイコンの管理・表示テーマ）を
+        置く。タグが増えても押せるよう、袖の下端に貼り付ける。
+      -->
+      <footer class="foot">
+        <NuxtLink
+          class="item foot__link"
+          :class="{ 'item--active': route.path === '/icons' }"
+          to="/icons"
+        >
+          アイコン
+        </NuxtLink>
+        <ThemeToggle />
+      </footer>
     </nav>
   </aside>
 </template>
@@ -263,10 +303,12 @@ watch(open, async (value) => {
 }
 
 .sidebar__nav {
-  display: grid;
+  /* 下の段を袖の下端へ送るため、縦に積んで高さいっぱいを使う */
+  display: flex;
+  flex-direction: column;
   gap: 0.125rem;
-  align-content: start;
-  padding: 0.75rem 0.5rem 2rem;
+  min-height: 100%;
+  padding: 0.75rem 0.5rem 0;
   /* 画面に固定しているので、セーフエリアは body の余白に頼れない */
   padding-left: calc(0.5rem + env(safe-area-inset-left));
   padding-top: calc(0.75rem + env(safe-area-inset-top));
@@ -279,6 +321,27 @@ watch(open, async (value) => {
   inset: 0;
   z-index: 17;
   background: rgb(0 0 0 / 45%);
+}
+
+/* 袖の中の ☰。開くときに押したボタン（app.vue の .menu）と同じ見た目にする */
+.fold {
+  align-self: start;
+  min-width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  margin: 0 0 0.375rem 0.125rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+
+.fold:hover {
+  color: var(--text);
 }
 
 .item {
@@ -345,6 +408,27 @@ watch(open, async (value) => {
 
 .group {
   margin-top: 0.75rem;
+}
+
+/*
+ * 下の段。中身が短いときは下端へ、長いときはスクロールしても下端に残す
+ * （sticky）。袖の背景と同じ色を敷き、下を流れる項目と重ならないようにする。
+ */
+.foot {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.foot__link {
+  flex: 1;
+  min-width: 0;
 }
 
 .group__head {

@@ -36,21 +36,6 @@ function goToTodayDiary() {
 const wide = computed(() => route.meta.wide === true)
 const reading = computed(() => route.meta.wide === 'reading')
 
-/*
- * 「日記」は**その日の日記**へ入れる。日記は開いて書くものなので、
- * カレンダー（`/diary`）を経由させると必ず1タップ余分になる。
- * 別の日を選ぶときだけ、日記の画面のカレンダーボタンから移る。
- */
-const NAV = computed(() => [
-  { to: '/today', label: '今日', match: '/today' },
-  { to: '/', label: 'タスク', match: '/' },
-  { to: '/lists', label: 'リスト', match: '/lists' },
-  { to: '/tags', label: 'タグ', match: '/tags' },
-  { to: '/icons', label: 'アイコン', match: '/icons' },
-  { to: todayDiary.value, label: '日記', match: '/diary' },
-  { to: '/search', label: '検索', match: '/search' },
-])
-
 // --- 画面をまたぐショートカット（docs/08-todo-management.md 8.4） ---------
 //
 // 一覧の操作は ItemListView が持つが、追加と移動はどの画面からでも
@@ -198,19 +183,6 @@ const shortcuts: Shortcut[] = [
 ]
 
 useShortcuts(shortcuts)
-
-/**
- * いまどの区分にいるか。
- *
- * `router-link-active` に任せられない。タスク一覧（`/`）と詳細
- * （`/items/:id`）は Nuxt では親子ではなく別々のルートなので、
- * 詳細画面にいるときに一覧のリンクが active にならない。
- */
-function isActive(to: string): boolean {
-  // 詳細はタスク一覧の下にあるものとして扱う
-  if (to === '/') return route.path === '/' || route.path.startsWith('/items')
-  return route.path === to || route.path.startsWith(`${to}/`)
-}
 </script>
 
 <template>
@@ -231,31 +203,6 @@ function isActive(to: string): boolean {
       -->
       <VitePwaManifest />
 
-      <header class="shell__header">
-        <!-- 袖の開閉（`;` と同じ入り口）。キーボードの無い端末のために置く -->
-        <button
-          type="button"
-          class="menu"
-          :aria-expanded="sidebarOpen"
-          aria-label="サイドバーの開閉"
-          title="サイドバーの開閉（;）"
-          @click="toggleSidebar"
-        >
-          <span aria-hidden="true">☰</span>
-        </button>
-        <nav class="nav">
-          <NuxtLink
-            v-for="entry in NAV"
-            :key="entry.match"
-            :to="entry.to"
-            class="nav__link"
-            :class="{ 'nav__link--active': isActive(entry.match) }"
-          >
-            {{ entry.label }}
-          </NuxtLink>
-        </nav>
-        <ThemeToggle />
-      </header>
       <!--
         オフライン・未同期の知らせ。出すものが無ければ何も描かない。
         ブラウザの状態を見るので、サーバー描画とは食い違う。
@@ -266,6 +213,23 @@ function isActive(to: string): boolean {
       <main class="shell__main">
         <NuxtPage />
       </main>
+
+      <!--
+        袖を開く（`;` と同じ入り口）。キーボードの無い端末のために置く。
+        画面の流れには入れない。1行ぶんの高さを取ると、区分の帯をやめて
+        本文を上へ詰めた意味がなくなるため。開いている間は袖の中の ☰
+        （AppSidebar）が同じ場所に出るので、こちらは消す。
+      -->
+      <button
+        v-if="!sidebarOpen && !selectionCount"
+        type="button"
+        class="menu"
+        aria-label="サイドバーの開閉"
+        title="サイドバーの開閉（;）"
+        @click="toggleSidebar"
+      >
+        <span aria-hidden="true">☰</span>
+      </button>
 
       <!--
         タスクを追加する（`t` と同じ入り口）。狭い画面ではキーボードが
@@ -316,6 +280,11 @@ function isActive(to: string): boolean {
 }
 
 @media (min-width: 60rem) {
+  /* 閉じている間、左上の ☰ が本文に重ならないように空けておく */
+  .layout {
+    padding-left: 3rem;
+  }
+
   .layout--docked {
     padding-left: var(--sidebar-width);
   }
@@ -387,70 +356,59 @@ function isActive(to: string): boolean {
 }
 
 /*
- * 袖の開閉（`;` と同じ入り口）。区分の並びに押し出されないよう、
- * テーマの切り替えと同じ大きさで左端に固定する。
+ * 袖を開くボタン。
+ *
+ * 狭い画面では「＋」と対にして**左下**に浮かべる。上に置くと画面の見出し
+ * （「タスク」「未完了 / 完了」）と重なり、避けるために左を空けると、
+ * ただでさえ狭い一覧がさらに細くなる。下端なら縦も横も取らず、片手で届く。
  */
 .menu {
-  flex: 0 0 auto;
-  min-width: 2rem;
-  height: 2rem;
+  position: fixed;
+  left: calc(1rem + env(safe-area-inset-left));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 10;
+  width: 3.5rem;
+  height: 3.5rem;
   display: grid;
   place-items: center;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--text-muted);
-  font-size: 0.9375rem;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+  font-size: 1.25rem;
   line-height: 1;
 }
 
-.menu:hover {
-  color: var(--text);
+.menu:active {
+  transform: scale(0.96);
 }
 
-.shell__header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding-bottom: 0.75rem;
+/*
+ * 並べて置ける幅では左上に戻す。袖を開いたときの ☰（AppSidebar の .fold）と
+ * 同じ場所なので、開け閉めしてもボタンが飛ばない。重ならないよう、
+ * その幅ぶんは本文の左を空ける（.layout）。
+ */
+@media (min-width: 60rem) {
+  .menu {
+    top: calc(0.75rem + env(safe-area-inset-top));
+    left: calc(0.625rem + env(safe-area-inset-left));
+    bottom: auto;
+    width: 2rem;
+    height: 2rem;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+
+  .menu:hover {
+    color: var(--text);
+  }
 }
 
 .shell__sync {
   padding-bottom: 0.5rem;
 }
 
-/*
- * 区分の並び。数が増えても1行に収める。
- *
- * 折り返すと、狭い端末（360px）でヘッダーだけで2行ぶんの高さを取る。
- * 入りきらないぶんは横に流し、テーマの切り替えは右端に残す。
- */
-.nav {
-  display: flex;
-  gap: 0.875rem;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.nav::-webkit-scrollbar {
-  display: none;
-}
-
-.nav__link {
-  color: var(--text-muted);
-  white-space: nowrap;
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  padding: 0.25rem 0;
-  border-bottom: 2px solid transparent;
-}
-
-.nav__link--active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
 </style>
