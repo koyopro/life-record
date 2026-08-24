@@ -511,6 +511,14 @@ interface ParsedDate {
   hasTime: boolean
   /** 先頭から何文字を日付として消費したか。 */
   consumed: number
+  /**
+   * 曜日だけで書かれた指定（「月曜」「monday」）か。
+   *
+   * 日付で書かれたもの（「8/24」「今日」）と区別する。同じ日を指していても、
+   * 曜日で書いたときだけ「今日と同じ曜日なら次の週」にするため
+   * （`skipSameWeekday`）。
+   */
+  weekdayOnly?: boolean
 }
 
 /**
@@ -545,9 +553,35 @@ function runChrono(text: string, referenceDate: Date): ParsedDate | null {
       date: hasTime ? result.start.date() : endOfDay(result.start.date()),
       hasTime,
       consumed: result.index + result.text.length,
+      // 曜日から日付が決まったもの。日付そのものを書いたものは day が確定する
+      weekdayOnly: result.start.isCertain('weekday') && !result.start.isCertain('day'),
     }
   }
   return null
+}
+
+/** 同じ日か（時刻は見ない）。 */
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+/**
+ * 曜日だけの指定が今日と同じ曜日なら、次の同じ曜日（7日後）にする。
+ *
+ * 今日が月曜のときに「月曜」と書くのは**次の**月曜のつもりで、今日のことなら
+ * 「今日」と書く。chrono は `forwardDate` でも当日を返すため、ここでずらす。
+ * 「今週末」（`nextWeekday`）が当日を飛ばすのと同じ考え方。
+ *
+ * 基準日をずらしてから読むもの（`SHIFT_PREFIXES` の「来週の月曜」など）には
+ * かけない。そちらはずらした先の週の月曜を指すのが正しいため。
+ */
+function skipSameWeekday(parsed: ParsedDate, referenceDate: Date): ParsedDate {
+  if (!parsed.weekdayOnly || !isSameDay(parsed.date, referenceDate)) return parsed
+  return { ...parsed, date: addDays(parsed.date, 7) }
 }
 
 /**
@@ -599,7 +633,8 @@ function parseDate(text: string, referenceDate: Date): ParsedDate | null {
     }
   }
 
-  return runChrono(text, referenceDate)
+  const parsed = runChrono(text, referenceDate)
+  return parsed ? skipSameWeekday(parsed, referenceDate) : null
 }
 
 /** 予約記号が含まれているか。UI での案内に使う。 */

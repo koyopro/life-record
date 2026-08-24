@@ -48,3 +48,46 @@ describe('期限の候補', () => {
     }
   })
 })
+
+/**
+ * 曜日での指定（docs/08-todo-management.md 8.5 日付のパース）。
+ *
+ * 今日と同じ曜日を書いたときは、次の同じ曜日（7日後）にする。今日のことなら
+ * 「今日」と書くので、曜日で書くのは次のその曜日のつもりのため。
+ */
+describe('曜日の指定', () => {
+  /** 2026-08-24 は月曜。 */
+  const monday = new Date(2026, 7, 24, 10, 0, 0)
+
+  function dueDate(text: string, reference = monday): Date {
+    const result = parseDueExpression(text, reference)
+    if (!result || result.cleared) throw new Error(`解釈できなかった: ${text}`)
+    return result.date
+  }
+
+  it('今日と同じ曜日は、次の同じ曜日（7日後）', () => {
+    expect(dueDate('月曜').getDate()).toBe(31)
+    expect(dueDate('月曜日').getDate()).toBe(31)
+    expect(dueDate('monday').getDate()).toBe(31)
+  })
+
+  it('時刻を添えても同じ（次の同じ曜日の、その時刻）', () => {
+    const due = dueDate('月曜 15時')
+    expect(due.getDate()).toBe(31)
+    expect(due.getHours()).toBe(15)
+  })
+
+  it('別の曜日は、いちばん近い先の日のまま', () => {
+    expect(dueDate('火曜').getDate()).toBe(25)
+    expect(dueDate('日曜').getDate()).toBe(30)
+  })
+
+  it('日付で書いたものは動かさない（今日を指していてもそのまま）', () => {
+    expect(dueDate('今日').getDate()).toBe(24)
+    expect(dueDate('8/24').getDate()).toBe(24)
+  })
+
+  it('「来週の月曜」は、来週の月曜のまま（さらに1週ずらさない）', () => {
+    expect(dueDate('来週の月曜').getDate()).toBe(31)
+  })
+})
