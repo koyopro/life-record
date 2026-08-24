@@ -1101,6 +1101,22 @@ function onContainerMousedown() {
 function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
   if (target?.closest('a')) return
+
+  /*
+   * 本文の画像は、押したら拡大して見せる（Scrapbox と同じ）。
+   *
+   * 本文の中では高さで頭打ちにしているので、そのままでは読めないことが多い。
+   * その行の編集には入らない（編集したいときは画像の横を押す）。
+   *
+   * アイコン（`:name:`、`.sb-icon`）は文字の一部なので拡大しない。
+   * 押したらその行の編集に入る。
+   */
+  const image = target?.closest('img.sb-image')
+  if (image instanceof HTMLImageElement) {
+    viewer.open(image.currentSrc || image.src, image.alt)
+    return
+  }
+
   void activate(index)
 }
 
@@ -1468,6 +1484,8 @@ watch(model, () => {
 })
 
 // --- 画像（docs/11-scrapbox-notation.md 11.7） ---------------------------
+
+const viewer = useImageViewer()
 
 const images = useImageUpload()
 const filePicker = ref<HTMLInputElement | null>(null)
@@ -2205,6 +2223,8 @@ defineExpose({
 
 .editor :deep(.sb-image) {
   max-width: 100%;
+  /* 押すと拡大する（onLineClick）。押せることが分かるようにする */
+  cursor: zoom-in;
   /* 縦長の画像が場所を取りすぎないよう、高さで頭打ちにする。
      幅・高さのどちらも指定しないことで、img 本来の縦横比を保ったまま
      縮む（全体が見える。切り取りはしない） */

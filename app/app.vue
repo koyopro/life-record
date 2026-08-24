@@ -259,6 +259,12 @@ function isActive(to: string): boolean {
       @select="goToSmartList"
       @close="listSwitcherOpen = false"
     />
+
+    <!--
+      本文の画像の拡大表示（docs/11-scrapbox-notation.md 11.7）。
+      どの画面の画像からも同じものを使うので、ここに1つだけ置く。
+    -->
+    <ImageViewer />
   </div>
 </template>
 
