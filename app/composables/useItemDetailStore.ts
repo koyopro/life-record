@@ -87,9 +87,44 @@ export function useItemDetailStore() {
   /** IndexedDB から読み直す。記録の増減があったあとに呼ぶ。 */
   async function reload(id: string): Promise<void> {
     if (!import.meta.client) return
-    sections.value = { ...sections.value, [id]: await sectionsOfItem(id) }
+    const loadedSections = await sectionsOfItem(id)
+    sections.value = {
+      ...sections.value,
+      [id]: keepUnsent(sections.value[id] ?? [], loadedSections),
+    }
     loaded.value = { ...loaded.value, [id]: true }
     await refreshErrors()
+  }
+
+  /**
+   * 読み直した内容を当てるとき、**まだ送れていない記録は手元の状態を残す**。
+   *
+   * 打鍵は「状態を先に進めてから IndexedDB へ書く」（`applyLocal` → `write`）。
+   * 書き終わる前に読み直すと1つ前の内容が返るので、そのまま当てると入力欄が
+   * 一瞬だけ前の状態へ戻る。日本語入力では、その1回で変換が打ち切られる
+   * （書いている途中に勝手に確定する）。
+   *
+   * 送れていない記録は、この端末で書いた分がそのまま残っているもの。手元の
+   * 状態が IndexedDB より古くなることはない（先に進めてから書くため）ので、
+   * **中身が食い違っていれば**手元を採る。
+   *
+   * 中身が同じなら読み直した側を採る。送り終えた印（`synced`）を受け取れないと、
+   * いつまでも「未同期」のままになるため。
+   */
+  function keepUnsent(
+    current: LocalSection[],
+    loadedSections: LocalSection[],
+  ): LocalSection[] {
+    if (current.length === 0) return loadedSections
+
+    const mine = new Map(current.map((section) => [section.id, section]))
+    return loadedSections.map((section) => {
+      const local = mine.get(section.id)
+      if (!local || local.syncState === 'synced') return section
+
+      const changed = local.body !== section.body || local.date !== section.date
+      return changed ? local : section
+    })
   }
 
   /** 手元へ読み込んである Item を、まとめて読み直す（送信が通ったあとなど）。 */

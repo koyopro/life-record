@@ -126,13 +126,35 @@ export function useDiaryStore() {
     loaded.value = nextLoaded
   }
 
-  /** IndexedDB から読み直す。ローカルへ書いたあとは必ずこれを呼ぶ。 */
+  /**
+   * IndexedDB から読み直す。ローカルへ書いたあとは必ずこれを呼ぶ。
+   *
+   * ただし**まだ送れていない日は、手元の状態を残す**。打鍵は「状態を先に
+   * 進めてから IndexedDB へ書く」（`editBody`）ので、書き終わる前に読み直すと
+   * 1つ前の内容が返る。当ててしまうと入力欄が一瞬だけ前の状態へ戻り、
+   * 日本語入力ではその1回で変換が打ち切られる（勝手に確定する）。
+   */
   async function reload(date: string): Promise<void> {
     if (!import.meta.client) return
-    const local = await getDiary(date)
+
+    const loadedDiary = (await getDiary(date)) ?? {
+      date,
+      body: '',
+      updatedAt: null as string | null,
+      syncState: 'synced' as const,
+    }
+
+    /*
+     * 中身が同じなら読み直した側を採る。送り終えた印（`synced`）を
+     * 受け取れないと、いつまでも「未同期」のままになる。
+     */
+    const mine = diaries.value[date]
+    const keepMine =
+      mine && mine.syncState !== 'synced' && mine.body !== loadedDiary.body
+
     diaries.value = {
       ...diaries.value,
-      [date]: local ?? { date, body: '', updatedAt: null, syncState: 'synced' },
+      [date]: keepMine ? mine : loadedDiary,
     }
     loaded.value = { ...loaded.value, [date]: true }
     await refreshErrors()

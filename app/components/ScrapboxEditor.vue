@@ -1441,6 +1441,20 @@ watch(model, () => {
   const index = activeIndex.value
   if (index === null) return
 
+  /*
+   * 変換中は入力欄に触れない。
+   *
+   * 入力欄の値（`activeText`）を書き換えると、その時点で日本語入力の変換が
+   * 打ち切られる（勝手に確定した・消えたように見える）。本文は送信が通った
+   * あとに読み直される（useSync の onLocalChange）ため、書いている最中にも
+   * 外から入れ替わることがあり、その1回で変換中の文字が確定してしまう。
+   *
+   * 見送っても困らない。変換中も打鍵ごとに commit しているので、次の打鍵で
+   * この watch が走って合わせ直す。そもそも書いている本人の内容のほうが
+   * 新しいので、そちらを残すのが正しい（docs/15-client-state.md 14.2）。
+   */
+  if (composing.value) return
+
   if (index > parsed.value.length - 1) {
     // 行そのものが無くなったときだけ諦める
     deactivate()
