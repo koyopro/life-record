@@ -237,9 +237,19 @@ watch(open, async (value) => {
   border-right: 1px solid var(--border);
   overflow-y: auto;
   overscroll-behavior: contain;
+  /*
+   * 縦のスクロールバーは出さない（上の帯と同じ扱い）。中身が画面に
+   * 収まっていても常に幅を取り、名前の右に細い帯が残って読みにくいため。
+   * 触れるものが減るわけではなく、指でも車輪でもそのまま送れる。
+   */
+  scrollbar-width: none;
   /* 閉じている間は画面の外へ出す */
   transform: translateX(-100%);
   transition: transform 0.18s ease;
+}
+
+.sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar--open {
