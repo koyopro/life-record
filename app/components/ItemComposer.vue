@@ -400,11 +400,53 @@ function focus() {
   nextTick(() => textarea.value?.focus())
 }
 
+/**
+ * 最初に画面へ触れた時点で、入力欄へフォーカスし直す。
+ *
+ * ブラウザは**指で触れた流れの中でないとソフトキーボードを出さない**。
+ * ホーム画面アイコンの長押しから開いた `/add` には触れた記録が無いので、
+ * カーソルは入っていてもキーボードが出ない（docs/14-app-shortcuts.md 14.2）。
+ *
+ * そこで最初の接触でフォーカスし直す。触れた流れの中でのフォーカスなので
+ * キーボードが出る。**画面のどこを触ってもよい**ので、細い入力欄を狙って
+ * 押す必要が無くなる。
+ *
+ * - 拾うのは `click`。`pointerdown` で当てても、そのあとブラウザが既定の
+ *   フォーカス移動（触れた場所へ移す）を行うので、当てたそばから外れる
+ * - ボタン・リンク・入力欄そのものに触れたときは何もしない
+ *   （その要素の操作を横取りしない。入力欄はブラウザが自分で開く）
+ * - 効くのは最初の1回だけ。キーボードを閉じるつもりで画面を触ったときに、
+ *   また開いてしまわないようにする
+ */
+function focusFromTouch(event: Event) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('a, button, input, select, textarea, label, [role="button"]')) {
+    return
+  }
+
+  stopWaitingForTouch()
+
+  const el = textarea.value
+  if (!el) return
+  // すでにフォーカスされている要素へ focus() しても、キーボードは出ない
+  el.blur()
+  el.focus()
+}
+
+function stopWaitingForTouch() {
+  window.removeEventListener('click', focusFromTouch, true)
+}
+
 // 最初から入っているテキストは、高さを合わせないと後ろが隠れる
 onMounted(() => {
   if (props.initialText) autoGrow()
-  if (props.autofocus) focus()
+  if (!props.autofocus) return
+
+  focus()
+  window.addEventListener('click', focusFromTouch, true)
 })
+
+onUnmounted(stopWaitingForTouch)
 
 defineExpose({ focus })
 
@@ -437,6 +479,7 @@ useComposerRegistration(focus)
         :rows="multiline ? 2 : 1"
         :placeholder="placeholder"
         autocapitalize="off"
+        :autofocus="autofocus"
         @input="onInput"
         @keydown="onKeydown"
         @keyup.left="updateTagTrigger"
