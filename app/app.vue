@@ -133,12 +133,28 @@ function composerReady(): Promise<(() => void) | null> {
  */
 const selectionCount = useSelectionCount()
 
+/**
+ * 左袖（AppSidebar）。開いているあいだ、並べて置ける幅なら本文を右へ寄せる。
+ * 狭い画面では本文に重ねて出すので、寄せない。
+ */
+const { open: sidebarOpen, docked: sidebarDocked, toggle: toggleSidebar } = useSidebar()
+
 const shortcuts: Shortcut[] = [
   {
     keys: ['t'],
     label: 'タスクを追加',
     group: '追加',
     run: () => addTask(),
+  },
+  {
+    /*
+     * サイドバーの開閉。RTM の `;` に合わせる。単独キーの中では珍しく
+     * 空いていて、押しやすい位置にある。
+     */
+    keys: [';'],
+    label: 'サイドバーの開閉',
+    group: 'その他',
+    run: () => toggleSidebar(),
   },
   {
     prefix: 'g',
@@ -198,77 +214,119 @@ function isActive(to: string): boolean {
 </script>
 
 <template>
-  <div class="shell" :class="{ 'shell--wide': wide, 'shell--reading': reading }">
-    <!--
-      <link rel="manifest"> を出す（@vite-pwa/nuxt の部品）。モジュールを
-      入れるだけでは出ないので、ここで置く。これが無いとブラウザは manifest を
-      読まず、インストールできる条件を満たさない。Android の「ホーム画面に
-      追加」が「ショートカットを作成」になり、共有先にも出てこない
-      （docs/13-share-target.md 13.1）。
-    -->
-    <VitePwaManifest />
+  <!--
+    袖（AppSidebar）は画面に固定してあるので、並べて置ける幅で開いている間だけ、
+    その分だけ本文を右へ寄せる（狭い画面では重ねて出すため寄せない）。
+  -->
+  <div class="layout" :class="{ 'layout--docked': sidebarOpen && sidebarDocked }">
+    <AppSidebar />
 
-    <header class="shell__header">
-      <nav class="nav">
-        <NuxtLink
-          v-for="entry in NAV"
-          :key="entry.match"
-          :to="entry.to"
-          class="nav__link"
-          :class="{ 'nav__link--active': isActive(entry.match) }"
+    <div class="shell" :class="{ 'shell--wide': wide, 'shell--reading': reading }">
+      <!--
+        <link rel="manifest"> を出す（@vite-pwa/nuxt の部品）。モジュールを
+        入れるだけでは出ないので、ここで置く。これが無いとブラウザは manifest を
+        読まず、インストールできる条件を満たさない。Android の「ホーム画面に
+        追加」が「ショートカットを作成」になり、共有先にも出てこない
+        （docs/13-share-target.md 13.1）。
+      -->
+      <VitePwaManifest />
+
+      <header class="shell__header">
+        <!-- 袖の開閉（`;` と同じ入り口）。キーボードの無い端末のために置く -->
+        <button
+          type="button"
+          class="menu"
+          :aria-expanded="sidebarOpen"
+          aria-label="サイドバーの開閉"
+          title="サイドバーの開閉（;）"
+          @click="toggleSidebar"
         >
-          {{ entry.label }}
-        </NuxtLink>
-      </nav>
-      <ThemeToggle />
-    </header>
-    <!--
-      オフライン・未同期の知らせ。出すものが無ければ何も描かない。
-      ブラウザの状態を見るので、サーバー描画とは食い違う。
-    -->
-    <ClientOnly>
-      <SyncStatus class="shell__sync" />
-    </ClientOnly>
-    <main class="shell__main">
-      <NuxtPage />
-    </main>
+          <span aria-hidden="true">☰</span>
+        </button>
+        <nav class="nav">
+          <NuxtLink
+            v-for="entry in NAV"
+            :key="entry.match"
+            :to="entry.to"
+            class="nav__link"
+            :class="{ 'nav__link--active': isActive(entry.match) }"
+          >
+            {{ entry.label }}
+          </NuxtLink>
+        </nav>
+        <ThemeToggle />
+      </header>
+      <!--
+        オフライン・未同期の知らせ。出すものが無ければ何も描かない。
+        ブラウザの状態を見るので、サーバー描画とは食い違う。
+      -->
+      <ClientOnly>
+        <SyncStatus class="shell__sync" />
+      </ClientOnly>
+      <main class="shell__main">
+        <NuxtPage />
+      </main>
 
-    <!--
-      タスクを追加する（`t` と同じ入り口）。狭い画面ではキーボードが
-      使えないので、どの画面からでも押せる場所に置く。入力欄のない画面
-      （日記・検索・詳細）からはタスク一覧へ移ってから開く。
-    -->
-    <button
-      v-if="!selectionCount"
-      type="button"
-      class="add"
-      aria-label="タスクを追加"
-      @click="addTask"
-    >
-      <span aria-hidden="true">＋</span>
-    </button>
+      <!--
+        タスクを追加する（`t` と同じ入り口）。狭い画面ではキーボードが
+        使えないので、どの画面からでも押せる場所に置く。入力欄のない画面
+        （日記・検索・詳細）からはタスク一覧へ移ってから開く。
+      -->
+      <button
+        v-if="!selectionCount"
+        type="button"
+        class="add"
+        aria-label="タスクを追加"
+        @click="addTask"
+      >
+        <span aria-hidden="true">＋</span>
+      </button>
 
-    <GoToTagDialog
-      v-if="tagSwitcherOpen"
-      @select="goToTag"
-      @close="tagSwitcherOpen = false"
-    />
+      <GoToTagDialog
+        v-if="tagSwitcherOpen"
+        @select="goToTag"
+        @close="tagSwitcherOpen = false"
+      />
 
-    <GoToSmartListDialog
-      v-if="listSwitcherOpen"
-      @select="goToSmartList"
-      @close="listSwitcherOpen = false"
-    />
+      <GoToSmartListDialog
+        v-if="listSwitcherOpen"
+        @select="goToSmartList"
+        @close="listSwitcherOpen = false"
+      />
 
-    <!--
-      本文の画像の拡大表示（docs/11-scrapbox-notation.md 11.7）。
-      どの画面の画像からも同じものを使うので、ここに1つだけ置く。
-    -->
-    <ImageViewer />
+      <!--
+        本文の画像の拡大表示（docs/11-scrapbox-notation.md 11.7）。
+        どの画面の画像からも同じものを使うので、ここに1つだけ置く。
+      -->
+      <ImageViewer />
+    </div>
   </div>
 </template>
 
 <style scoped>
+/*
+ * 袖（AppSidebar）は画面に固定しているので、本文はその下へ潜り込む。
+ * 並べて置ける幅で開いている間だけ、袖の幅ぶん左を空けて避ける。
+ *
+ * 狭い画面では避けない。避けると本文が画面の外へはみ出し、袖を閉じた
+ * あとも横スクロールが残る。重ねて出し、背景を押せば閉じる（AppSidebar）。
+ */
+.layout {
+  transition: padding-left 0.18s ease;
+}
+
+@media (min-width: 60rem) {
+  .layout--docked {
+    padding-left: var(--sidebar-width);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layout {
+    transition: none;
+  }
+}
+
 .shell {
   /* スマートフォンでの片手操作を基準に、幅は読みやすい範囲に留める */
   max-width: 40rem;
@@ -326,6 +384,29 @@ function isActive(to: string): boolean {
 /* 長文を読み書きする画面（日記など）。Scrapbox の本文幅に合わせる */
 .shell--reading {
   max-width: 53.875rem;
+}
+
+/*
+ * 袖の開閉（`;` と同じ入り口）。区分の並びに押し出されないよう、
+ * テーマの切り替えと同じ大きさで左端に固定する。
+ */
+.menu {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1;
+}
+
+.menu:hover {
+  color: var(--text);
 }
 
 .shell__header {

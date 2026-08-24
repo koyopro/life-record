@@ -235,6 +235,7 @@ RTM の[キーボードショートカット](https://www.rememberthemilk.com/he
 | `z` | 元に戻す | 元に戻す |
 | `Delete` / `Backspace` | 削除 | |
 | `/` | 検索へ移る（[03-functional-spec.md](03-functional-spec.md) 3.6） | |
+| `;` | サイドバーの開閉（[03-functional-spec.md](03-functional-spec.md) 3.9） | サイドバーの表示/非表示 |
 | `?` | ショートカット一覧を表示 | |
 | `Esc` | 編集・選択・ダイアログをキャンセル | |
 

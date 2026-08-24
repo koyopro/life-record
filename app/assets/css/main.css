@@ -121,6 +121,8 @@
    */
   --cursor-bg: light-dark(#fdf3c8, color-mix(in srgb, #8a7328 32%, var(--surface)));
   --radius: 12px;
+  /* 左袖（AppSidebar）の幅。開いているあいだ本文を右へ寄せる幅でもある */
+  --sidebar-width: 15rem;
   --shadow: 0 1px 2px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 30%)),
     0 4px 12px light-dark(rgb(0 0 0 / 4%), rgb(0 0 0 / 20%));
 }
