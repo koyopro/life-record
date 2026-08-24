@@ -83,6 +83,37 @@ const byCreatedAsc: Compare = (a, b) => compareText(a.createdAt, b.createdAt)
 const byCreatedDesc: Compare = (a, b) => compareText(b.createdAt, a.createdAt)
 
 /**
+ * 一覧から消えた Item の代わりに、カーソルを置く先の id。
+ *
+ * 編集した結果その一覧の条件から外れる（完了にする・タグを外す・期限を
+ * 動かす）ことは多く、そのたびに先頭へ飛ばされると、続けて片付けられない。
+ * **消える前にその下にあったもの**へ移す（消したメールの次が選ばれる、
+ * よくある動き）。
+ *
+ * 下に残っているものが無ければ上へ遡る。まとめて消えた（一括操作の）ときも、
+ * 残っているものの中でいちばん近い下、次に近い上、の順で選ぶ。
+ * どれも残っていなければ null（呼び出し側が先頭に戻す）。
+ */
+export function nextFocusAfterRemoval<T extends { id: string }>(
+  before: T[],
+  removedId: string,
+  alive: Set<string>,
+): string | null {
+  const index = before.findIndex((item) => item.id === removedId)
+  if (index < 0) return null
+
+  for (let i = index + 1; i < before.length; i++) {
+    const id = before[i]!.id
+    if (alive.has(id)) return id
+  }
+  for (let i = index - 1; i >= 0; i--) {
+    const id = before[i]!.id
+    if (alive.has(id)) return id
+  }
+  return null
+}
+
+/**
  * グループ順（docs/08-todo-management.md 8.2、RTM の Group by）。
  *
  * 並びより上位の区切り。並び替え済みの配列をグループごとに分けるだけで、

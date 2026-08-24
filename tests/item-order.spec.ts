@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sortItems } from '~/utils/item-order'
+import { nextFocusAfterRemoval, sortItems } from '~/utils/item-order'
 import { toSortKey } from '~~/shared/types/item'
 import { itemDto } from './helpers'
 
@@ -78,5 +78,40 @@ describe('toSortKey', () => {
   it('読み替え先の無いものは null（画面の既定に戻す）', () => {
     expect(toSortKey('title')).toBeNull()
     expect(toSortKey(null)).toBeNull()
+  })
+})
+
+/**
+ * 一覧から消えた Item の代わりに、カーソルを置く先
+ * （docs/08-todo-management.md 8.4）。
+ *
+ * 編集した結果その一覧の条件から外れる（完了にする・タグを外す）ことは多く、
+ * そのたびに先頭へ飛ばされると続けて片付けられない。
+ */
+describe('nextFocusAfterRemoval', () => {
+  const list = [itemDto({ id: 'a' }), itemDto({ id: 'b' }), itemDto({ id: 'c' })]
+
+  it('消えたものの下にあったものへ移る', () => {
+    expect(nextFocusAfterRemoval(list, 'b', new Set(['a', 'c']))).toBe('c')
+  })
+
+  it('下が無ければ、上へ遡る', () => {
+    expect(nextFocusAfterRemoval(list, 'c', new Set(['a', 'b']))).toBe('b')
+  })
+
+  it('まとめて消えたときは、残っているうちでいちばん近い下', () => {
+    // b と c が同時に消えた（一括で完了にした）
+    expect(nextFocusAfterRemoval(list, 'b', new Set(['a']))).toBe('a')
+
+    const longer = [...list, itemDto({ id: 'd' })]
+    expect(nextFocusAfterRemoval(longer, 'b', new Set(['a', 'd']))).toBe('d')
+  })
+
+  it('どれも残っていなければ null', () => {
+    expect(nextFocusAfterRemoval(list, 'b', new Set())).toBeNull()
+  })
+
+  it('消える前の一覧に無いものは、行き先を決められないので null', () => {
+    expect(nextFocusAfterRemoval(list, 'z', new Set(['a', 'b', 'c']))).toBeNull()
   })
 })

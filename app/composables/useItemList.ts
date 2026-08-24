@@ -17,7 +17,7 @@ import type { Recurrence } from '~~/shared/types/recurrence'
 import { writeToClipboard } from '~/utils/clipboard'
 import { composeItemCopyText } from '~/utils/item-copy'
 import { buildItemDraft } from '~/utils/item-draft'
-import { groupItems } from '~/utils/item-order'
+import { groupItems, nextFocusAfterRemoval } from '~/utils/item-order'
 import { endOfAppDay, startOfAppDay } from '~~/shared/utils/date'
 
 interface Options {
@@ -235,16 +235,28 @@ export function useItemList(options: Options) {
 
   watch(
     items,
-    (list) => {
-      // 指していた Item が一覧から消えたら、同じ位置にあるものへ移す
-      const stillThere = list.some((item) => item.id === focusedId.value)
-      if (!stillThere) {
-        const fallback = Math.min(cursor.value, Math.max(0, list.length - 1))
-        focusedId.value = list[fallback]?.id ?? null
+    (list, previous) => {
+      const alive = new Set(list.map((item) => item.id))
+
+      if (focusedId.value === null) {
+        // まだどれも指していなければ先頭を指す
+        focusedId.value = list[0]?.id ?? null
+      } else if (!alive.has(focusedId.value)) {
+        /*
+         * 指していた Item が一覧から消えたら、**その下にあったもの**へ移す
+         * （`nextFocusAfterRemoval`）。編集で条件から外れることは多く、
+         * そのたびに先頭へ飛ばされると続けて片付けられない。
+         *
+         * 位置は「消える前の一覧」（previous）から引く。いまの一覧には
+         * もう無いので、消えた後の並びからでは下がどれか分からない。
+         */
+        focusedId.value =
+          nextFocusAfterRemoval(previous ?? [], focusedId.value, alive) ??
+          list[0]?.id ??
+          null
       }
 
       // 一覧から消えたものは選択からも外す
-      const alive = new Set(list.map((item) => item.id))
       const next = new Set([...selectedIds.value].filter((id) => alive.has(id)))
       if (next.size !== selectedIds.value.size) selectedIds.value = next
     },
