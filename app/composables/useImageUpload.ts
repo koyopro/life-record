@@ -3,6 +3,7 @@ import {
   extensionFor,
   type ImageUploadDto,
 } from '~~/shared/types/image'
+import { saveCachedImage } from '~/utils/offline/image-cache'
 
 /**
  * 画像を S3 へ上げ、本文に書くパスを返す（docs/03-functional-spec.md 3.5）。
@@ -44,6 +45,15 @@ export function useImageUpload() {
       if (!response.ok) {
         throw new Error(`S3 への保存に失敗しました (${response.status})`)
       }
+
+      /*
+       * 上げた画像は、その場で控えておく（docs/11-scrapbox-notation.md 11.7）。
+       * 中身は手元にあるので、S3 から読み直さずに済む。差し込んだ直後の
+       * 表示にも、そのまま使える。
+       */
+      void saveCachedImage(target.path, file).catch(() => {
+        // 控えられなくても、表示そのものは今までどおりできる
+      })
 
       return target.path
     } catch (e) {

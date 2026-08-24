@@ -27,7 +27,7 @@ export const DB_NAME = 'life-record'
  * ただし未送信の操作（operations）だけは作り直せない。まだサーバーに
  * 届いていない変更そのものなので、移行では必ず持ち越す。
  */
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 
 /** Item ごとの同期状態。 */
 export type SyncState =
@@ -139,6 +139,35 @@ interface MetaRecord {
   value: unknown
 }
 
+/**
+ * 一度見た画像の控え（docs/11-scrapbox-notation.md 11.7）。
+ *
+ * 画像は S3 にあり、表示のたびに「リダイレクトを引く → S3 から読む」の
+ * 2往復が要る。ブラウザの持っている分で済むこともあるが、署名付き URL は
+ * 1時間ごとに変わるうえ、アプリの WebView（macOS アプリ）では持ち越されない
+ * ことがあり、**一度見た画像でも出るまで待たされる**。
+ *
+ * そこで中身そのものを手元に置く。次からは通信せずに出せる。
+ */
+export interface LocalImage {
+  /** 本文に書くパス（`/images/<ID>.<拡張子>`）。これが主キー。 */
+  path: string
+  /**
+   * 中身。Blob ではなく ArrayBuffer で持つ。
+   *
+   * WebKit（Safari と、macOS アプリの WebView）は IndexedDB に入れた Blob の
+   * 扱いに穴があり、入れたはずのものが読めないことがある。ArrayBuffer なら
+   * どの環境でもそのまま出し入れできる。読むときに Blob へ組み直す。
+   */
+  bytes: ArrayBuffer
+  /** MIME タイプ。Blob へ組み直すときに要る。 */
+  type: string
+  size: number
+  savedAt: string
+  /** 最後に使った時刻。置き場が一杯になったら古いものから捨てる。 */
+  usedAt: string
+}
+
 interface LifeRecordDb extends DBSchema {
   items: {
     key: string
@@ -165,6 +194,12 @@ interface LifeRecordDb extends DBSchema {
   diaries: { key: string; value: LocalDiary }
   /** 最終取得日時などの雑多な値。 */
   meta: { key: string; value: MetaRecord }
+  /** 一度見た画像の中身。古く使ったものから捨てるので、その順で引けるようにする。 */
+  images: {
+    key: string
+    value: LocalImage
+    indexes: { 'by-used-at': string }
+  }
 }
 
 export type LocalDatabase = IDBPDatabase<LifeRecordDb>
@@ -255,6 +290,12 @@ export function openLocalDatabase(): Promise<LocalDatabase> {
           sections.createIndex('by-date', 'date')
 
           db.createObjectStore('diaries', { keyPath: 'date' })
+        }
+
+        // 一度見た画像の中身を持つようにした（docs/11-scrapbox-notation.md 11.7）
+        if (oldVersion < 4) {
+          const images = db.createObjectStore('images', { keyPath: 'path' })
+          images.createIndex('by-used-at', 'usedAt')
         }
 
         // 作り直しは非同期になるので最後に置く。オブジェクトストアの作成は

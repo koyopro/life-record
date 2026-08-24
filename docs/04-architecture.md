@@ -235,7 +235,7 @@ CRC32」がクエリに入り、ブラウザが実ファイルを PUT した時�
 
 ### CORS
 
-バケットに CORS を設定し、アプリのドメインからの PUT を許可する。
+バケットに CORS を設定し、アプリのドメインからの PUT と GET を許可する。
 プリフライト（OPTIONS）は署名なしで飛ぶため、これが無いと IAM や署名が
 正しくても 403 になる。
 
@@ -243,7 +243,7 @@ CRC32」がクエリに入り、ブラウザが実ファイルを PUT した時�
 [
   {
     "AllowedOrigins": ["https://<本番ドメイン>"],
-    "AllowedMethods": ["PUT"],
+    "AllowedMethods": ["PUT", "GET"],
     "AllowedHeaders": ["content-type"],
     "MaxAgeSeconds": 3000
   }
@@ -253,8 +253,10 @@ CRC32」がクエリに入り、ブラウザが実ファイルを PUT した時�
 Origin はスキーム・ポートまで含めた完全一致で、末尾スラッシュは付けない。
 Preview デプロイはホスト名が変わるため、使うならワイルドカードが要る。
 
-表示側は `/images/<ID>.<拡張子>` から署名付き GET へリダイレクトする形で、
-`<img>` が読むだけなので GET の CORS は要らない。
+`<img>` で表示するだけなら GET の CORS は要らない。要るのは**一度見た画像を
+手元に控える**ため（[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.7）。
+控えを作る取得は `fetch` で、CORS の許可が無いと読めない。許可しない場合は
+控えが作られないだけで、表示はこれまでどおり動く。
 
 ### 配信
 
