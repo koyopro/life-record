@@ -151,6 +151,7 @@ Item について、その日に行った作業・検討内容などを記録す
 | date | date | Yes | 作業・記録の日付 |
 | body | text | Yes | その日の作業メモ |
 | position | integer | Yes | **同一日付内**での表示順 |
+| pinned | boolean | Yes | 日記でのピン留め（既定 false） |
 | created_at | timestamptz | Yes | 作成日時 |
 | updated_at | timestamptz | Yes | 更新日時 |
 
@@ -186,6 +187,19 @@ Section:
 - 作成時は **同じ Item・同じ日付**の末尾に置く
 - 並べ替えは同じ日付の記録どうしでのみ行う
 - 日付を変えたら、移した先の日付の末尾へ移す
+
+### pinned（日記でのピン留め）
+
+日記の「この日にやったこと」で、その記録を先頭にまとめて出すための印
+（[03-functional-spec.md](03-functional-spec.md) 3.3）。1日に何件でも立てられる。
+
+日記側ではなく Section が持つ。Diary と Section は日付だけで結び付いており
+（2.8）、日記の行そのものが無い日（本文を書いていない日）でも作業記録はあるため、
+日記側に持たせると留め先が無くなる。
+
+送るのは本文の保存とまったく同じ経路（`PUT /api/sections/:id`）で、`pinned` を
+**省略したら今の値のまま**にする。この経路は打鍵のたびに呼ばれるので、
+省略を false と読むと本文を書くだけでピンが外れる。
 
 ### 「本文」として扱う Section
 

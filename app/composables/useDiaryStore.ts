@@ -1,7 +1,7 @@
 import type { DiaryDetailDto, DiarySectionDto, DiarySummaryDto } from '~~/shared/types/diary'
 import type { ItemDto } from '~~/shared/types/item'
 import type { WorkedOnRecord } from '~/utils/diary-worked-on'
-import { excerptOf } from '~~/shared/utils/diary'
+import { excerptOf, pinnedImageOf } from '~~/shared/utils/diary'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
 import { IDLE_STATUS, type SaveStatus } from '~/utils/save-scheduler'
 import type { LocalDiary } from '~/utils/offline/local-database'
@@ -12,7 +12,7 @@ import {
   mergeServerSectionsOnDate,
   sectionsOnDate,
 } from '~/utils/offline/body-repository'
-import { saveDiaryBody } from '~/utils/offline/body-actions'
+import { saveDiaryBody, setSectionPinned } from '~/utils/offline/body-actions'
 import { requestFlush } from '~/utils/offline/flush-signal'
 import { listOperations, type DiarySavePayload } from '~/utils/offline/sync-queue'
 import { isNetworkError } from '~/utils/offline/sync-runner'
@@ -43,37 +43,62 @@ function scheduleFlush() {
   }, FLUSH_DELAY_MS)
 }
 
+/** 1つの Item について、その日の記録をまとめたもの。 */
+interface DayRecord {
+  body: string
+  /** どれか1つでもピンが立っていれば、その日の記録はピン留め。 */
+  pinned: boolean
+  /** 元になった作業記録の id。ピンの付け外しの宛先。 */
+  sectionIds: string[]
+}
+
 /**
  * その日の作業記録を Item ごとにまとめる。
  *
  * 同じ日に複数の記録がある Item（別の端末で書かれた分など。
- * docs/03-functional-spec.md 3.2）は、続けてつなぐ。
+ * docs/03-functional-spec.md 3.2）は、続けてつなぐ。日記に出る「作業記録」は
+ * この**まとめたもの1件**なので、ピンもまとめた単位で持つ（付け外しは
+ * 元になった記録すべてに当てる）。
  */
-function bodiesByItem(
-  sections: { itemId: string; body: string }[],
-): Map<string, string> {
-  const bodies = new Map<string, string[]>()
+function recordsByItem(
+  sections: { id: string; itemId: string; body: string; pinned?: boolean }[],
+): Map<string, DayRecord> {
+  const found = new Map<string, { bodies: string[]; pinned: boolean; sectionIds: string[] }>()
+
   for (const section of sections) {
-    const list = bodies.get(section.itemId) ?? []
-    list.push(section.body)
-    bodies.set(section.itemId, list)
+    const current = found.get(section.itemId) ?? {
+      bodies: [],
+      pinned: false,
+      sectionIds: [],
+    }
+    current.bodies.push(section.body)
+    current.pinned = current.pinned || section.pinned === true
+    current.sectionIds.push(section.id)
+    found.set(section.itemId, current)
   }
 
   return new Map(
-    [...bodies.entries()].map(([itemId, list]) => [
+    [...found.entries()].map(([itemId, entry]) => [
       itemId,
-      list.map((body) => body.trim()).filter(Boolean).join('\n'),
+      {
+        body: entry.bodies.map((body) => body.trim()).filter(Boolean).join('\n'),
+        pinned: entry.pinned,
+        sectionIds: entry.sectionIds,
+      },
     ]),
   )
 }
+
+/** その日の記録が無い Item のための空の値。 */
+const EMPTY_RECORD: DayRecord = { body: '', pinned: false, sectionIds: [] }
 
 /** サーバーの応答（Item と作業記録）から、画面に出す形を作る。 */
 function toRecords(
   items: ItemDto[],
   sections: DiarySectionDto[],
 ): WorkedOnRecord[] {
-  const bodies = bodiesByItem(sections)
-  return items.map((item) => ({ item, body: bodies.get(item.id) ?? '' }))
+  const records = recordsByItem(sections)
+  return items.map((item) => ({ item, ...(records.get(item.id) ?? EMPTY_RECORD) }))
 }
 
 export function useDiaryStore() {
@@ -294,12 +319,31 @@ export function useDiaryStore() {
    */
   function summaryOf(date: string): DiarySummaryDto | null {
     const diary = byDate(date)
+    /*
+     * ピン留めした作業記録の画像。カレンダーのサムネイルは
+     * 「本文の画像 → ピン留めの画像」の順に使う（docs/03-functional-spec.md 3.3）。
+     * その日の作業記録を手元に持っていない（開いたことがない）日は null で、
+     * 画面側がサーバーの答えで補う。
+     */
+    const pinnedImageSrc = pinnedImageOf(
+      workedOnOf(date)
+        .filter((record) => record.pinned)
+        .map((record) => record.body),
+    )
+
     if (!diary) return null
-    if (!diary.body.trim()) return null
+    // 本文を空にした日でも、ピン留めの画像があればその日の目印として残す
+    if (!diary.body.trim()) {
+      return pinnedImageSrc
+        ? { date, excerpt: '', imageSrc: null, pinnedImageSrc }
+        : null
+    }
+
     return {
       date,
       excerpt: excerptOf(diary.body),
       imageSrc: firstImageSrc(diary.body),
+      pinnedImageSrc,
     }
   }
 
@@ -333,19 +377,41 @@ export function useDiaryStore() {
   async function loadWorkedOn(date: string): Promise<void> {
     if (!import.meta.client) return
 
-    const bodies = bodiesByItem(
+    const records = recordsByItem(
       (await sectionsOnDate(date)).filter(
         (section) => section.syncState !== 'pending_delete',
       ),
     )
 
     const found = itemStore.items.value
-      .filter((item) => bodies.has(item.id) && item.syncState !== 'pending_delete')
+      .filter((item) => records.has(item.id) && item.syncState !== 'pending_delete')
       // サーバー（server/utils/diaries.ts）と同じく、更新の新しい順
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-      .map((item) => ({ item: item as ItemDto, body: bodies.get(item.id) ?? '' }))
+      .map((item) => ({
+        item: item as ItemDto,
+        ...(records.get(item.id) ?? EMPTY_RECORD),
+      }))
 
     workedOn.value = { ...workedOn.value, [date]: found }
+  }
+
+  /**
+   * 作業記録のピンを付け外しする（docs/03-functional-spec.md 3.3）。
+   *
+   * 手元（IndexedDB）へ先に書き、送信は列に積むだけ。オフラインでも留められ、
+   * 繋がったときに送られる。DB へ入るので、別のブラウザでも同じ並びで出る。
+   *
+   * 同じ日に複数の記録がある Item は、まとめて1件として出しているので、
+   * 元になった記録すべてに同じ値を当てる。
+   */
+  async function setPinned(
+    date: string,
+    sectionIds: string[],
+    pinned: boolean,
+  ): Promise<void> {
+    for (const id of sectionIds) await setSectionPinned(id, pinned)
+    await loadWorkedOn(date)
+    scheduleFlush()
   }
 
   function workedOnOf(date: string): WorkedOnRecord[] {
@@ -363,6 +429,7 @@ export function useDiaryStore() {
     loadAll,
     loadWorkedOn,
     workedOnOf,
+    setPinned,
     reload,
     reloadLoaded,
     track,

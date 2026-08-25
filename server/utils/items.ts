@@ -160,6 +160,7 @@ export function toSectionDto(section: Section): SectionDto {
     date: section.date,
     body: section.body,
     position: section.position,
+    pinned: section.pinned,
     createdAt: section.createdAt.toISOString(),
     updatedAt: section.updatedAt.toISOString(),
   }

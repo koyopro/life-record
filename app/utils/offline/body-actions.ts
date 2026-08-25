@@ -70,6 +70,7 @@ export async function saveSectionBody(
         itemId: params.itemId,
         date: params.date,
         body: params.body,
+        pinned: false,
         // 同じ日付の末尾に置く（サーバーと同じ規則。docs/02-data-model.md 2.4）
         position:
           params.position ??
@@ -84,9 +85,51 @@ export async function saveSectionBody(
     {
       kind: 'section_save',
       itemIds: [params.itemId],
-      payload: { id: params.id, itemId: params.itemId, date: params.date, body: params.body },
+      payload: {
+        id: params.id,
+        itemId: params.itemId,
+        date: params.date,
+        body: params.body,
+        pinned: next.pinned === true,
+      },
     },
     matchesSectionSave(params.id),
+    now,
+  )
+}
+
+/**
+ * 作業記録のピンを付け外しする（日記の「この日にやったこと」で使う）。
+ *
+ * 本文の保存とまったく同じ経路（`section_save`）へ積む。ピン専用の操作を
+ * 作ると、本文の保存と前後して届いたときにどちらが勝つのかが決められない。
+ * 送る内容は送信の直前に手元から取り直すので、まとめて1回で届く。
+ *
+ * 手元に無い記録（他の端末で書かれ、まだ取り込んでいない分）には何もしない。
+ * 宛先の日付や本文が分からないまま upsert すると、その記録を空で塗り潰す。
+ */
+export async function setSectionPinned(
+  id: string,
+  pinned: boolean,
+  now: Date = new Date(),
+): Promise<void> {
+  const local = await getSection(id)
+  if (!local || local.pinned === pinned) return
+
+  await putSection({ ...local, pinned, syncState: 'pending_save' })
+  await enqueueOnce(
+    {
+      kind: 'section_save',
+      itemIds: [local.itemId],
+      payload: {
+        id,
+        itemId: local.itemId,
+        date: local.date,
+        body: local.body,
+        pinned,
+      },
+    },
+    matchesSectionSave(id),
     now,
   )
 }
@@ -204,6 +247,7 @@ export async function resumePendingBodies(now: Date = new Date()): Promise<void>
           itemId: section.itemId,
           date: section.date,
           body: section.body,
+          pinned: section.pinned === true,
         },
       },
       matchesSectionSave(section.id),

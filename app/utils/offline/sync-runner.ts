@@ -115,6 +115,8 @@ export async function runOperation(
             itemId: payload.itemId,
             date: payload.date,
             body: payload.body,
+            // 日記でのピン留め（docs/03-functional-spec.md 3.3）
+            pinned: payload.pinned === true,
           },
         })) as SectionDto
         return { type: 'done', section }

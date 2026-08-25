@@ -62,6 +62,13 @@ export interface SectionSavePayload {
   itemId: string
   date: string
   body: string
+  /**
+   * 日記でのピン留め（docs/03-functional-spec.md 3.3）。
+   *
+   * 本文と同じ経路（PUT）で送る。ピンだけの操作を別に作ると、本文の保存と
+   * 前後して届いたときにどちらが勝つのかが決められない。
+   */
+  pinned: boolean
 }
 
 export interface SectionDeletePayload {

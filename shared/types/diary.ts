@@ -57,6 +57,15 @@ export interface DiarySummaryDto {
   excerpt: string
   /** 本文に含まれる最初の画像。ないなら null。 */
   imageSrc: string | null
+  /**
+   * ピン留めした作業記録に含まれる最初の画像。ないなら null。
+   *
+   * カレンダーのサムネイルは「本文の画像 → ピン留めの画像」の順に使う
+   * （docs/03-functional-spec.md 3.3）。本文とは別に持つのは、手元の控えが
+   * 正なのは**本文だけ**で、ピン留めの画像は開いたことのない日のぶんを
+   * サーバーから受け取るため。
+   */
+  pinnedImageSrc: string | null
 }
 
 /** 一覧の抜粋に使う長さ。 */

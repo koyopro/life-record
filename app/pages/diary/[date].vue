@@ -2,7 +2,7 @@
 import type { ItemDto } from '~~/shared/types/item'
 import type { Shortcut } from '~/composables/useShortcuts'
 import { formatAppDate, isAppDate, shiftAppDate } from '~~/shared/utils/date'
-import { groupWorkedOn, UNTAGGED_TITLE } from '~/utils/diary-worked-on'
+import { groupWorkedOn, PINNED_TITLE, UNTAGGED_TITLE } from '~/utils/diary-worked-on'
 import { headOf } from '~~/shared/utils/diary'
 import { startItemLinkDrag } from '~/utils/item-drag'
 
@@ -130,16 +130,34 @@ if (import.meta.client) {
  */
 const workedOnGroups = computed(() =>
   groupWorkedOn(workedOn.value).map((group) => ({
+    key: group.pinned ? '__pinned' : (group.tag ?? '__untagged'),
     tag: group.tag,
-    title: group.tag ?? UNTAGGED_TITLE,
+    pinned: group.pinned === true,
+    title: group.pinned ? PINNED_TITLE : (group.tag ?? UNTAGGED_TITLE),
     records: group.records.map((record) => ({
       item: record.item,
       head: headOf(record.body),
+      pinned: record.pinned === true,
+      sectionIds: record.sectionIds ?? [],
       // グループの見出しに出ているタグは、行にも並べない
-      tags: record.item.tags.filter((tag) => tag !== group.tag),
+      // （ピン留めの見出しにはタグが出ないので、そのまま全部出す）
+      tags: group.pinned
+        ? record.item.tags
+        : record.item.tags.filter((tag) => tag !== group.tag),
     })),
   })),
 )
+
+/**
+ * 作業記録のピンを付け外しする（docs/03-functional-spec.md 3.3）。
+ *
+ * 留めたものは、その日の「この日にやったこと」の先頭にまとまって出る。
+ * DB へ入るので、別のブラウザで開いても同じ並びになる。
+ */
+function togglePin(record: { pinned: boolean; sectionIds: string[] }) {
+  if (record.sectionIds.length === 0) return
+  return store.setPinned(date.value, record.sectionIds, !record.pinned)
+}
 
 /**
  * 「この日にやったこと」から本文へドラッグしたら、開かずにリンクを差し込めるようにする。
@@ -215,12 +233,15 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
       -->
       <section
         v-for="group in workedOnGroups"
-        :key="group.title"
+        :key="group.key"
         class="worked"
       >
         <h2 class="worked__title">
+          <span v-if="group.pinned">
+            <span aria-hidden="true">📌</span> {{ group.title }}
+          </span>
           <span
-            v-if="group.tag"
+            v-else-if="group.tag"
             class="worked__tag"
             :style="{
               '--tag-color': tagColorVar(colorOf(group.tag)),
@@ -233,28 +254,50 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
         </h2>
         <ul class="worked__list">
           <li v-for="record in group.records" :key="record.item.id" class="worked__entry">
-            <NuxtLink
-              class="worked__item"
-              :to="`/items/${record.item.id}`"
-              draggable="true"
-              :aria-label="`「${record.item.title}」を本文へドラッグすると、リンクを挿入できます`"
-              @dragstart="onWorkedOnDragStart(record.item, $event)"
-            >
-              <span class="worked__name">{{ record.item.title }}</span>
-              <span v-if="record.tags.length" class="worked__tags">
-                <span
-                  v-for="tag in record.tags"
-                  :key="tag"
-                  class="worked__tag"
-                  :style="{
-                    '--tag-color': tagColorVar(colorOf(tag)),
-                    '--tag-text': tagTextColorVar(colorOf(tag)),
-                  }"
-                >
-                  {{ tag }}
+            <!--
+              行とピンは並べて置く。リンクの中にボタンを入れると、押した先が
+              どちらなのか（開くのか留めるのか）ブラウザ任せになる。
+            -->
+            <div class="worked__row">
+              <NuxtLink
+                class="worked__item"
+                :to="`/items/${record.item.id}`"
+                draggable="true"
+                :aria-label="`「${record.item.title}」を本文へドラッグすると、リンクを挿入できます`"
+                @dragstart="onWorkedOnDragStart(record.item, $event)"
+              >
+                <span class="worked__name">{{ record.item.title }}</span>
+                <span v-if="record.tags.length" class="worked__tags">
+                  <span
+                    v-for="tag in record.tags"
+                    :key="tag"
+                    class="worked__tag"
+                    :style="{
+                      '--tag-color': tagColorVar(colorOf(tag)),
+                      '--tag-text': tagTextColorVar(colorOf(tag)),
+                    }"
+                  >
+                    {{ tag }}
+                  </span>
                 </span>
-              </span>
-            </NuxtLink>
+              </NuxtLink>
+
+              <button
+                type="button"
+                class="worked__pin"
+                :class="{ 'worked__pin--on': record.pinned }"
+                :aria-pressed="record.pinned"
+                :aria-label="
+                  record.pinned
+                    ? `「${record.item.title}」のピン留めを外す`
+                    : `「${record.item.title}」をピン留めする`
+                "
+                :title="record.pinned ? 'ピン留めを外す' : 'ピン留めする'"
+                @click="togglePin(record)"
+              >
+                <span aria-hidden="true">📌</span>
+              </button>
+            </div>
 
             <!-- その日の作業記録の冒頭だけ。続きは Item 詳細で読む -->
             <div v-if="record.head.text" class="worked__body">
@@ -395,6 +438,46 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
   min-width: 0;
 }
 
+/* 行（リンク）とピンのボタンを横に並べる */
+.worked__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+/*
+ * ピン留めのボタン。
+ *
+ * 触れたときだけ出す形にはしない。指で操作する画面では「触れた」が
+ * そのまま押したことになり、出す機会が無いため。留めていない間は薄くして、
+ * 読むときの邪魔にならないようにする。
+ */
+.worked__pin {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.875rem;
+  line-height: 1;
+  opacity: 0.4;
+}
+
+.worked__pin:hover {
+  opacity: 0.8;
+}
+
+/* 留めているものは、はっきり分かるようにする */
+.worked__pin--on {
+  opacity: 1;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
 /* 作業記録は本文より控えめに。日記そのものを読む邪魔にならないようにする */
 .worked__body {
   padding-left: 0.75rem;
@@ -412,6 +495,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
 }
 
 .worked__item {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;

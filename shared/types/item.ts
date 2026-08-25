@@ -104,6 +104,12 @@ export interface SectionDto {
   body: string
   /** 同じ日付の中での表示順（docs/02-data-model.md 2.4）。 */
   position: number
+  /**
+   * 日記でピン留めしているか（docs/03-functional-spec.md 3.3）。
+   *
+   * 立っていると、その日の「この日にやったこと」の先頭に出る。
+   */
+  pinned: boolean
   createdAt: string
   updatedAt: string
 }

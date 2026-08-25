@@ -231,7 +231,12 @@ export async function withCurrentValues(
     if (!local) return operation
     return {
       ...operation,
-      payload: { ...payload, date: local.date, body: local.body },
+      payload: {
+        ...payload,
+        date: local.date,
+        body: local.body,
+        pinned: local.pinned === true,
+      },
     }
   }
 
@@ -280,7 +285,11 @@ async function applyBodyOutcome(
         return
       }
 
-      if (local.body !== payload.body || local.date !== payload.date) {
+      if (
+        local.body !== payload.body ||
+        local.date !== payload.date ||
+        local.pinned !== payload.pinned
+      ) {
         // 送っている間に書き足された。位置や作成日時だけ確定させ、印は残す
         await putSection({
           ...local,

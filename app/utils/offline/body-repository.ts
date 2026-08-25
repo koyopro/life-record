@@ -37,6 +37,8 @@ export function toLocalSection(
     date: section.date,
     body: section.body,
     position: section.position,
+    // 古い写しには無い（この機能より前に入れた分）。無ければ立っていない扱い
+    pinned: section.pinned === true,
     createdAt: section.createdAt,
     updatedAt: section.updatedAt,
     syncState,

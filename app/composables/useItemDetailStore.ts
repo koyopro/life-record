@@ -347,6 +347,8 @@ export function useItemDetailStore() {
           date: today,
           body: value,
           position: nextPositionIn(sectionsOf(id), today),
+          // 日記でのピン留め（3.3）は日記の画面から立てる。作った時点では付かない
+          pinned: false,
           createdAt: stamp,
           updatedAt: stamp,
           syncState: 'pending_save',
@@ -432,6 +434,7 @@ export function useItemDetailStore() {
       date,
       body: '',
       position: nextPositionIn(sectionsOf(id), date),
+      pinned: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }

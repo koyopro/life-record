@@ -1,4 +1,5 @@
 import { DIARY_EXCERPT_LENGTH, WORKED_ON_HEAD_LINES } from '~~/shared/types/diary'
+import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
 import { toPlainText } from '~~/shared/utils/scrapbox/render'
 
 /**
@@ -13,6 +14,24 @@ export function excerptOf(body: string): string {
   const text = toPlainText(body)
   if (text.length <= DIARY_EXCERPT_LENGTH) return text
   return `${text.slice(0, DIARY_EXCERPT_LENGTH)}…`
+}
+
+/**
+ * ピン留めした作業記録から、カレンダーのサムネイルに使う画像を選ぶ。
+ *
+ * 渡すのは**日記の画面に並ぶ順**（上に出ているものが先）のピン留めの本文で、
+ * 最初に見つかった画像を使う。上から順に見るので、「上に出ている作業記録が
+ * 優先」になる（docs/03-functional-spec.md 3.3）。
+ *
+ * サーバー（一覧の API）とクライアント（手元の控え）の両方から使い、
+ * どちらで作っても同じ絵が出るようにする。
+ */
+export function pinnedImageOf(bodies: string[]): string | null {
+  for (const body of bodies) {
+    const found = firstImageSrc(body)
+    if (found) return found
+  }
+  return null
 }
 
 export interface BodyHead {

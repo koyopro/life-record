@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { groupWorkedOn, type WorkedOnRecord } from '~/utils/diary-worked-on'
-import { headOf } from '~~/shared/utils/diary'
+import { headOf, pinnedImageOf } from '~~/shared/utils/diary'
 import type { ItemDto } from '~~/shared/types/item'
 
 /**
@@ -88,6 +88,41 @@ describe('groupWorkedOn', () => {
   it('何も無ければグループも無い', () => {
     expect(groupWorkedOn([])).toEqual([])
   })
+
+  // --- ピン留め（docs/03-functional-spec.md 3.3） -------------------------
+
+  it('ピン留めしたものは、いちばん上のグループにまとめる', () => {
+    const pinned = { ...record({ id: 'item-1', tags: ['仕事'] }), pinned: true }
+    const other = record({ id: 'item-2', tags: ['仕事'] })
+
+    expect(groupWorkedOn([pinned, other])).toEqual([
+      { tag: null, pinned: true, records: [pinned] },
+      { tag: '仕事', records: [other] },
+    ])
+  })
+
+  it('ピン留めは1日に何件でも。渡された順（上に出る順）のまま並べる', () => {
+    const first = { ...record({ id: 'item-1' }), pinned: true }
+    const second = { ...record({ id: 'item-2', tags: ['仕事'] }), pinned: true }
+
+    expect(groupWorkedOn([first, second])).toEqual([
+      { tag: null, pinned: true, records: [first, second] },
+    ])
+  })
+
+  it('ピン留めしたものは、タグのグループには出さない（同じ記録を2か所に出さない）', () => {
+    const pinned = { ...record({ id: 'item-1', tags: ['仕事', '学び'] }), pinned: true }
+
+    expect(groupWorkedOn([pinned])).toEqual([
+      { tag: null, pinned: true, records: [pinned] },
+    ])
+  })
+
+  it('ピン留めでも、作業メモが無ければ出さない', () => {
+    const blank = { ...record({ id: 'item-1' }, ''), pinned: true }
+
+    expect(groupWorkedOn([blank])).toEqual([])
+  })
 })
 
 describe('headOf', () => {
@@ -120,5 +155,31 @@ describe('headOf', () => {
 
   it('行数は指定できる', () => {
     expect(headOf('1\n2\n3', 2)).toEqual({ text: '1\n2', truncated: true })
+  })
+})
+
+/**
+ * カレンダーのサムネイル（docs/03-functional-spec.md 3.3）。
+ * 本文に画像が無い日は、ピン留めした作業記録の画像を使う。
+ */
+describe('pinnedImageOf', () => {
+  it('上に出ている作業記録の画像を使う', () => {
+    const image = pinnedImageOf([
+      '打ち合わせのメモ\n[https://example.com/first.png]',
+      '[https://example.com/second.png]',
+    ])
+
+    expect(image).toBe('https://example.com/first.png')
+  })
+
+  it('画像を持たない記録は飛ばす', () => {
+    const image = pinnedImageOf(['文字だけのメモ', '[https://example.com/second.png]'])
+
+    expect(image).toBe('https://example.com/second.png')
+  })
+
+  it('どれにも画像が無ければ null', () => {
+    expect(pinnedImageOf(['文字だけ', ''])).toBeNull()
+    expect(pinnedImageOf([])).toBeNull()
   })
 })

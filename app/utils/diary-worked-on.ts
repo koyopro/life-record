@@ -13,16 +13,25 @@ import type { ItemDto } from '~~/shared/types/item'
 export interface WorkedOnRecord {
   item: ItemDto
   body: string
+  /** 日記でピン留めしているか（docs/03-functional-spec.md 3.3）。 */
+  pinned?: boolean
+  /** 元になった作業記録の id。ピンの付け外しの宛先。 */
+  sectionIds?: string[]
 }
 
 export interface WorkedOnGroup {
   /** タグ名。タグの付いていない Item のグループは null。 */
   tag: string | null
+  /** ピン留めをまとめた先頭のグループか。 */
+  pinned?: boolean
   records: WorkedOnRecord[]
 }
 
 /** タグの付いていない Item をまとめるグループの名前。 */
 export const UNTAGGED_TITLE = 'タグなし'
+
+/** ピン留めをまとめるグループの名前。 */
+export const PINNED_TITLE = 'ピン留め'
 
 /**
  * タグごとにまとめる。
@@ -33,16 +42,26 @@ export const UNTAGGED_TITLE = 'タグなし'
  * **複数のタグが付いた Item は、そのすべてのグループに出す。**「このタグで
  * 何をしたか」を見るのが目的なので、片方のタグからだけ見えないと取りこぼす。
  *
- * **タグの付いていないものが先頭**で、その後ろにタグ名順のグループを並べる。
+ * **ピン留めしたものはいちばん上**に、1つのグループとしてまとめる
+ * （docs/03-functional-spec.md 3.3）。留めたものはタグのグループには出さない。
+ * 上と下の2か所に同じ記録が出ると、読み返すときに数え直すことになるため。
+ *
+ * その次が**タグの付いていないもの**で、後ろにタグ名順のグループを並べる。
  * タグを付けていない作業は分類の手がかりが無く、下に置くと埋もれるため。
  * 各グループの中は、渡された順（更新の新しい順）のまま。
  */
 export function groupWorkedOn(records: WorkedOnRecord[]): WorkedOnGroup[] {
   const byTag = new Map<string, WorkedOnRecord[]>()
   const untagged: WorkedOnRecord[] = []
+  const pinned: WorkedOnRecord[] = []
 
   for (const record of records) {
     if (!record.body.trim()) continue
+
+    if (record.pinned) {
+      pinned.push(record)
+      continue
+    }
 
     if (record.item.tags.length === 0) {
       untagged.push(record)
@@ -59,5 +78,9 @@ export function groupWorkedOn(records: WorkedOnRecord[]): WorkedOnGroup[] {
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([tag, group]) => ({ tag, records: group }))
 
-  return untagged.length > 0 ? [{ tag: null, records: untagged }, ...tagged] : tagged
+  const groups = untagged.length > 0 ? [{ tag: null, records: untagged }, ...tagged] : tagged
+
+  return pinned.length > 0
+    ? [{ tag: null, pinned: true, records: pinned }, ...groups]
+    : groups
 }

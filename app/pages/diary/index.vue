@@ -71,8 +71,34 @@ const byDate = computed(
  * 編集前の抜粋が出ないようにするため（docs/15-client-state.md）。
  */
 function previewOf(date: string): DiarySummaryDto | undefined {
-  if (store.knows(date)) return store.summaryOf(date) ?? undefined
-  return byDate.value.get(date)
+  const remote = byDate.value.get(date)
+  if (!store.knows(date)) return remote
+
+  const local = store.summaryOf(date)
+
+  /*
+   * ピン留めの画像だけは、手元に無ければサーバーの答えを使う。
+   *
+   * その日の作業記録は「この端末で開いたことのある日」しか手元に無い
+   * （docs/12-offline.md 12.4）。本文と同じように手元だけを見ると、開いた
+   * ことのない日のサムネイルが消える。本文（抜粋・本文中の画像）は
+   * これまでどおり手元の控えが正。
+   */
+  const pinnedImageSrc = local?.pinnedImageSrc ?? remote?.pinnedImageSrc ?? null
+
+  if (!local) {
+    // 本文を消した日でも、ピン留めがあれば目印として残す
+    return pinnedImageSrc
+      ? { date, excerpt: '', imageSrc: null, pinnedImageSrc }
+      : undefined
+  }
+
+  return { ...local, pinnedImageSrc }
+}
+
+/** サムネイル。本文の画像が無ければ、ピン留めした作業記録の画像を使う。 */
+function thumbnailOf(preview: DiarySummaryDto): string | null {
+  return preview.imageSrc ?? preview.pinnedImageSrc
 }
 
 interface DayCell {
@@ -180,9 +206,9 @@ function onDateInput(event: Event) {
         <span class="day__number">{{ dayNumber(cell.date) }}</span>
         <div v-if="cell.preview" class="day__preview">
           <img
-            v-if="cell.preview.imageSrc"
+            v-if="thumbnailOf(cell.preview)"
             class="day__image"
-            :src="cell.preview.imageSrc"
+            :src="thumbnailOf(cell.preview)!"
             alt=""
             loading="lazy"
           />

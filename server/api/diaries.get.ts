@@ -1,7 +1,7 @@
-import { and, desc, gte, lte } from 'drizzle-orm'
-import { useDb } from '~~/server/db'
-import { diaries } from '~~/server/db/schema'
-import { excerptOf } from '~~/shared/utils/diary'
+import { and, desc, eq, gte, lte } from 'drizzle-orm'
+import { useDb, type Executor } from '~~/server/db'
+import { diaries, items, sections } from '~~/server/db/schema'
+import { excerptOf, pinnedImageOf } from '~~/shared/utils/diary'
 import type { DiarySummaryDto } from '~~/shared/types/diary'
 import { isAppDate } from '~~/shared/utils/date'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
@@ -45,9 +45,64 @@ export default defineEventHandler(async (event): Promise<DiarySummaryDto[]> => {
     .orderBy(desc(diaries.date))
     .limit(limit)
 
-  return rows.map((row) => ({
+  const pinnedImages = await pinnedImagesByDate(db, from, to)
+
+  const summaries: DiarySummaryDto[] = rows.map((row) => ({
     date: row.date,
     excerpt: excerptOf(row.body),
     imageSrc: firstImageSrc(row.body),
+    pinnedImageSrc: pinnedImages.get(row.date) ?? null,
   }))
+
+  /*
+   * 日記を書いていない日でも、ピン留めした作業記録に画像があればその日は
+   * カレンダーに出す。ピン留めは「その日の目印」なので、本文を書いた日
+   * だけに出しても目印にならない。
+   */
+  const written = new Set(summaries.map((summary) => summary.date))
+  for (const [date, imageSrc] of pinnedImages) {
+    if (written.has(date)) continue
+    summaries.push({ date, excerpt: '', imageSrc: null, pinnedImageSrc: imageSrc })
+  }
+
+  return summaries.sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, limit)
 })
+
+/**
+ * 日付ごとの「ピン留めした作業記録の画像」。
+ *
+ * 並べる順は日記の画面と同じ（Item の更新が新しい順。
+ * server/utils/diaries.ts の `itemsWorkedOn`）で、上に出ているものを優先する。
+ */
+async function pinnedImagesByDate(
+  db: Executor,
+  from: string | null,
+  to: string | null,
+): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ date: sections.date, body: sections.body })
+    .from(sections)
+    .innerJoin(items, eq(items.id, sections.itemId))
+    .where(
+      and(
+        eq(sections.pinned, true),
+        from ? gte(sections.date, from) : undefined,
+        to ? lte(sections.date, to) : undefined,
+      ),
+    )
+    .orderBy(desc(items.updatedAt))
+
+  const bodies = new Map<string, string[]>()
+  for (const row of rows) {
+    const list = bodies.get(row.date) ?? []
+    list.push(row.body)
+    bodies.set(row.date, list)
+  }
+
+  const found = new Map<string, string>()
+  for (const [date, list] of bodies) {
+    const image = pinnedImageOf(list)
+    if (image) found.set(date, image)
+  }
+  return found
+}

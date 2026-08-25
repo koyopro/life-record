@@ -118,6 +118,13 @@ export const sections = pgTable(
     body: text('body').notNull(),
     /** Item 内での表示順。 */
     position: integer('position').notNull().default(0),
+    /**
+     * 日記でのピン留め（docs/03-functional-spec.md 3.3）。
+     *
+     * 立てると、その日の「この日にやったこと」の先頭にまとめて出る。
+     * 1日に何件でも立てられる。
+     */
+    pinned: boolean('pinned').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

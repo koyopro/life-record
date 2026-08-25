@@ -11,6 +11,13 @@ interface Body {
   /** 作業・記録の日付。 */
   date?: unknown
   body?: unknown
+  /**
+   * 日記でのピン留め（docs/03-functional-spec.md 3.3）。
+   *
+   * 省略されたら**今の値のまま**にする。この経路は本文の保存にも使うので、
+   * 省略を false と読むと、打鍵のたびにピンが外れてしまう。
+   */
+  pinned?: unknown
 }
 
 /**
@@ -40,7 +47,12 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
     })
   }
 
+  if (payload.pinned !== undefined && typeof payload.pinned !== 'boolean') {
+    throw createError({ statusCode: 400, message: '不正なピン留めです' })
+  }
+
   const body = payload.body
+  const pinned = payload.pinned as boolean | undefined
   const db = useDb()
 
   return await db.transaction(async (tx) => {
@@ -75,6 +87,7 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
           itemId,
           date,
           body,
+          pinned: pinned ?? false,
           position: await nextPosition(tx, itemId, date),
         })
         .returning()
@@ -90,7 +103,14 @@ export default defineEventHandler(async (event): Promise<SectionDto> => {
 
     const [updated] = await tx
       .update(sections)
-      .set({ date, body, position, updatedAt: now })
+      .set({
+        date,
+        body,
+        position,
+        // 省略されたら今の値のまま（本文の保存でピンを落とさない）
+        pinned: pinned ?? current.pinned,
+        updatedAt: now,
+      })
       .where(eq(sections.id, id))
       .returning()
 
