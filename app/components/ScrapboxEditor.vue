@@ -11,6 +11,7 @@ import {
 import type { Line } from '~~/shared/utils/scrapbox/types'
 import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
+import { caretAfterSplit, type LineSplit } from '~/utils/caret-shift'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import { writeToClipboard } from '~/utils/clipboard'
 import {
@@ -1507,17 +1508,30 @@ const dragging = ref(false)
  * 複数枚を順に並べるためと、差し込んだ直後に続きを編集するため。行は
  * `model` が親を往復して戻るまで古いままなので、呼び出し側へ渡す。
  */
-function insertImageAt(
-  path: string,
-  at: CaretPosition | null,
-): { lines: string[]; at: CaretPosition } {
+interface ImageInsert {
+  lines: string[]
+  /** 画像の次（続きを書く場所）。 */
+  at: CaretPosition
+  /**
+   * どの行をどこで割ったか。末尾に足したときは割っていないので null。
+   *
+   * 上げている間も書き続けている人のカーソルを、見た目の同じ場所に
+   * 留めるために使う（`caretAfterSplit`）。
+   */
+  split: LineSplit | null
+  /** 差し込みで増えた行数。 */
+  added: number
+}
+
+function insertImageAt(path: string, at: CaretPosition | null): ImageInsert {
   const lines = [...rawLines.value]
   const image = `[${path}]`
 
   if (!at || at.index < 0 || at.index >= lines.length) {
     lines.push(image)
     commit(lines)
-    return { lines, at: { index: lines.length, offset: 0 } }
+    // 末尾に足しただけなので、いまある行の番号は動かない
+    return { lines, at: { index: lines.length, offset: 0 }, split: null, added: 0 }
   }
 
   const line = lineAt(lines, at.index)
@@ -1534,8 +1548,13 @@ function insertImageAt(
   lines.splice(at.index, 1, ...replacement)
   commit(lines)
 
-  // 差し込んだ画像の行（before があれば1つ下）の、さらに次
-  return { lines, at: { index: at.index + (before ? 1 : 0) + 1, offset: 0 } }
+  return {
+    lines,
+    // 差し込んだ画像の行（before があれば1つ下）の、さらに次
+    at: { index: at.index + (before ? 1 : 0) + 1, offset: 0 },
+    split: { index: at.index, offset, hasBefore: Boolean(before) },
+    added: replacement.length - 1,
+  }
 }
 
 /**
@@ -1558,13 +1577,55 @@ async function uploadAll(files: File[], at: CaretPosition | null = caretNow()) {
 
   let position = at
   let lines = rawLines.value
+  /** 上げている間も書き続けていたか。書いていたなら、その手元へは触らない。 */
+  let typedMeanwhile = false
+
   for (const file of files) {
     const path = await images.upload(file)
     if (!path) continue
+
+    /*
+     * 上げ終わった時点で、書いている人がどこにいるか。
+     *
+     * 貼った位置から動いていれば、その間も書き続けているということ。
+     * そこでカーソルを画像の次へ移すと、打っている最中に行頭へ飛ばされる。
+     */
+    const typing = activeIndex.value === null ? null : caretNow()
+    const moved =
+      typing !== null &&
+      (position === null ||
+        typing.index !== position.index ||
+        typing.offset !== position.offset)
+
     const inserted = insertImageAt(path, position)
     lines = inserted.lines
     position = inserted.at
+
+    if (!moved || !typing) continue
+
+    typedMeanwhile = true
+    const next = inserted.split
+      ? caretAfterSplit(typing, inserted.split, inserted.added)
+      : typing
+
+    if (inserted.split && typing.index === inserted.split.index) {
+      /*
+       * 書いている行そのものを割った。入力欄の中身が変わるので、
+       * 割れた先の同じ文字のところへ入り直す。
+       */
+      await activate(next.index, next.offset, lines)
+      continue
+    }
+
+    /*
+     * 別の行に入っただけ。増えた行数のぶん番号をずらすだけにして、
+     * 入力欄には触らない（触ると変換中の文字まで確定してしまう）。
+     */
+    activeIndex.value = next.index
   }
+
+  // 書き続けていた人の手元は、そのままにしておく
+  if (typedMeanwhile) return
 
   // 位置が分からないまま入れた（末尾に足した）ときは、戻る場所が無いので降りる
   if (!at || !position) {
