@@ -82,4 +82,15 @@ async function add(text: string) {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/*
+ * 狭い画面では入れ物を透明にし、中身（未完了/完了・グループ・並び）を
+ * 見出しと同じ並びへ差し出す。ヘッダーを2行に収めるため
+ * （ItemListView の 40rem 以下の指定と対）。
+ */
+@media (max-width: 40rem) {
+  .head__bar {
+    display: contents;
+  }
+}
 </style>

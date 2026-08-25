@@ -159,6 +159,16 @@ async function submitEdit(input: SmartListInput) {
   justify-content: flex-end;
 }
 
+/*
+ * 狭い画面では入れ物を透明にし、中身（グループ・並び）を見出しと同じ
+ * 並びへ差し出す（ItemListView の 40rem 以下の指定と対）。
+ */
+@media (max-width: 40rem) {
+  .head__bar {
+    display: contents;
+  }
+}
+
 .page__error {
   margin: 0;
   color: var(--danger);
