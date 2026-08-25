@@ -9,10 +9,10 @@ import {
   type ItemDto,
   type ItemStatus,
   type SortKey,
-  isOpenableUrl,
 } from '~~/shared/types/item'
 import type { ListView } from '~~/shared/types/smart-list'
 import { groupItems } from '~/utils/item-order'
+import { describeUrlOpen, openableUrls } from '~/utils/item-url'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { normalizeTagName } from '~~/shared/types/tag'
 
@@ -249,17 +249,37 @@ async function focusDetail(field: 'Title' | 'Url' | 'Body') {
 /**
  * タスクの URL を別タブで開く（`Shift` + `u`）。
  *
- * 開けるのは http(s) のみ。保存時にも同じ条件で弾いている。
+ * チェックしたタスクがあれば**その全部**を新しいタブで開く（他の操作と同じく
+ * 選択中の全件が対象。docs/08-todo-management.md 8.4）。チェックが無ければ
+ * カーソルのタスク1件。開けるのは http(s) のみで、保存時にも同じ条件で弾いている。
+ *
+ * 開くのは押した打鍵の流れの中で行う。待ってから開くと、利用者の操作から
+ * 離れた開き方になり、ブラウザにポップアップとして止められる。
  */
 function openUrl() {
-  const target = list.cursorItem.value
-  if (!target) return
+  const targets = list.targets.value
+  if (targets.length === 0) return
 
-  if (!target.url || !isOpenableUrl(target.url)) {
-    list.message.value = 'このタスクに URL はありません'
-    return
-  }
-  window.open(target.url, '_blank', 'noopener,noreferrer')
+  const found = openableUrls(targets)
+  for (const url of found.urls) window.open(url, '_blank', 'noopener,noreferrer')
+
+  list.message.value = describeUrlOpen(found)
+}
+
+/**
+ * チェックの四角を押した（マウス・指）。
+ *
+ * チェックと合わせて**カーソルもその行へ動かす**。押した行が色付きにならないと、
+ * 続けて押すキー操作（`c` / `d` など）がどこを起点にしているのか読み取れない。
+ * `i`（キーボードでの選択）はもともとカーソルの行が対象なので、これで
+ * どちらから選んでも「押した行＝カーソル」でそろう。
+ *
+ * 外すときも同じく動かす。カーソルは「いまどこにいるか」を示すだけなので、
+ * 触れた行に付いてくるほうが分かりやすい。
+ */
+function selectItem(item: ItemDto) {
+  list.focusItem(item.id)
+  list.toggleSelect(item.id)
 }
 
 function onDetailRemoved(id: string) {
@@ -792,7 +812,7 @@ defineExpose({
                 :pending="item.syncState !== 'synced'"
                 :ignore-status="view === 'all'"
                 @focus="list.focusItem(item.id)"
-                @select="list.toggleSelect(item.id)"
+                @select="selectItem(item)"
                 @complete="toggleComplete(item)"
                 @open="open(item)"
                 @longpress="sheetFor = { mode: 'longpress', item }"
