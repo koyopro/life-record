@@ -49,6 +49,21 @@ fn main() {
                         false
                     }
                 })
+                /*
+                 * ドラッグ＆ドロップは WebView（＝画面側）に任せる。
+                 *
+                 * Tauri は既定でドロップを横取りし、ファイルのパスを
+                 * `tauri://drag-drop` として Rust 側へ送るだけになる。その間
+                 * WebView には `drop` が届かないので、日記や作業記録の本文へ
+                 * 画像を落としてもアップロードが始まらなかった
+                 * （docs/16-macos-app.md 16.7）。
+                 *
+                 * 横取りをやめると macOS の既定の動き（WKWebView が受ける）に
+                 * 戻り、ブラウザとまったく同じ経路で画像が上がる。パスを
+                 * ネイティブ側で読む必要が無いので、WebView へファイルを読む
+                 * 権限（16.5）を渡さずに済む。
+                 */
+                .disable_drag_drop_handler()
                 .initialization_script(include_str!("open-external.js"))
                 .build()?;
 
