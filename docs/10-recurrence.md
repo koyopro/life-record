@@ -159,6 +159,7 @@ every day until 12/31   → FREQ=DAILY;UNTIL=20261231T000000Z
 |---|---|---|
 | title | ○ | |
 | priority | ○ | |
+| url | ○ | 毎週見に行くページなど、回が変わっても行き先は同じことが多い |
 | tags | ○ | [09-tags.md](09-tags.md) |
 | recurrence_rule / basis | ○ | |
 | series_id | ○ | |
@@ -287,7 +288,7 @@ CREATE INDEX items_series_id_idx
 - [x] 完了時に次回オカレンスを生成する処理
   - [x] basis = due（過去日になる場合は未来まで進める）
   - [x] basis = completion
-  - [x] title / priority / tags の引き継ぎ
+  - [x] title / priority / url / tags の引き継ぎ
   - [x] 終了条件（COUNT / UNTIL）の判定
 - [x] Item 詳細での繰り返し設定UI
 - [x] 一覧での繰り返しアイコン表示

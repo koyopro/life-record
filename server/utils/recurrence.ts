@@ -56,6 +56,12 @@ export async function createNextOccurrence(
       // 未着手として出す（docs/10-recurrence.md 10.5）
       status: 'backlog',
       priority: completed.priority,
+      /*
+       * URL も引き継ぐ（10.5）。毎週見に行くページ・毎月開く申請フォームの
+       * ように、回が変わっても行き先は同じものが多い。要らなければ外せるが、
+       * 毎回貼り直すのは手間が大きい。
+       */
+      url: completed.url,
       dueAt: due,
       dueHasTime: completed.dueHasTime,
       recurrenceRule: completed.recurrenceRule,
