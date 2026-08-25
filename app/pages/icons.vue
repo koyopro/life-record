@@ -11,6 +11,7 @@ import { iconNameFromFileName, normalizeIconName } from '~~/shared/types/icon'
 useHead({ title: 'アイコン' })
 
 const { icons, pending, create, remove } = useIcons()
+const { ask } = useConfirm()
 const { upload, uploading, errorMessage: uploadError } = useImageUpload()
 
 const fileEl = ref<HTMLInputElement | null>(null)
@@ -81,9 +82,12 @@ async function submit() {
 }
 
 async function onRemove(id: string, iconName: string) {
-  if (!confirm(`「:${iconName}:」を削除します。本文に書いた :${iconName}: は文字のまま残ります。`)) {
-    return
-  }
+  const ok = await ask({
+    message: `「:${iconName}:」を削除します。本文に書いた :${iconName}: は文字のまま残ります。`,
+    confirmLabel: '削除',
+    danger: true,
+  })
+  if (!ok) return
 
   errorMessage.value = null
   try {

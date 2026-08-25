@@ -263,6 +263,13 @@ useShortcuts(shortcuts)
         どの画面の画像からも同じものを使うので、ここに1つだけ置く。
       -->
       <ImageViewer />
+
+      <!--
+        「本当に消しますか？」の問い合わせ（app/composables/useConfirm.ts）。
+        ブラウザの confirm() は macOS アプリ（WKWebView）では出ないので、
+        アプリの中で出す（docs/16-macos-app.md 16.8）。
+      -->
+      <ConfirmDialog />
     </div>
   </div>
 </template>

@@ -40,6 +40,7 @@ const id = computed(() => props.itemId)
 
 /** 「← 一覧へ」の戻り先。直前に見ていた一覧へ返す。 */
 const listOrigin = useListOrigin()
+const { ask } = useConfirm()
 
 const store = useItemStore()
 const { colorOf } = useTags()
@@ -527,7 +528,12 @@ const dueLabel = computed(() =>
 )
 
 async function remove() {
-  if (!confirm('このタスクを削除します。よろしいですか？')) return
+  const ok = await ask({
+    message: 'このタスクを削除します。よろしいですか？',
+    confirmLabel: '削除',
+    danger: true,
+  })
+  if (!ok) return
   // ローカルで消して先へ進む。サーバーへの削除は useSync が送る
   await store.remove([id.value])
   emit('removed', id.value)
@@ -646,13 +652,11 @@ async function changeSectionDate(section: SectionDto, date: string) {
       return
     }
 
-    if (
-      !confirm(
-        `${formatAppDate(date)} にはすでに作業記録があります。1つにまとめますか？`,
-      )
-    ) {
-      return
-    }
+    const merge = await ask({
+      message: `${formatAppDate(date)} にはすでに作業記録があります。1つにまとめますか？`,
+      confirmLabel: 'まとめる',
+    })
+    if (!merge) return
 
     await detailStore.mergeSections(id.value, section.id, existing.id)
     emit('changed')
@@ -687,7 +691,12 @@ async function moveSection(index: number, delta: -1 | 1) {
 }
 
 async function removeSection(section: SectionDto) {
-  if (!confirm('この作業記録を削除します。よろしいですか？')) return
+  const ok = await ask({
+    message: 'この作業記録を削除します。よろしいですか？',
+    confirmLabel: '削除',
+    danger: true,
+  })
+  if (!ok) return
 
   actionError.value = null
   try {

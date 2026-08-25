@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatAppDateShort, shiftAppDate } from '~~/shared/utils/date'
+import { countSmartList } from '~/utils/smart-list-count'
 import { tagColorVar } from '~/utils/tag-color'
 
 /**
@@ -21,6 +22,17 @@ const route = useRoute()
 const today = useToday()
 const { lists } = useSmartLists()
 const { tags } = useTags()
+const itemStore = useItemStore()
+
+/**
+ * リストごとの件数。タグと同じく、押した先に並ぶ数を添える。
+ *
+ * サーバーに数えさせず、手元の Item（＝一覧を作っているのと同じ元）から
+ * 数える。オフラインでも数字と中身がずれない（app/utils/smart-list-count.ts）。
+ */
+const listCounts = computed(
+  () => new Map(lists.value.map((list) => [list.id, countSmartList(itemStore.items.value, list)])),
+)
 
 /** 日記に出す日数。当日を含めて数える。 */
 const DIARY_DAYS = 5
@@ -196,6 +208,7 @@ watch(open, async (value) => {
               :to="`/lists/${list.id}`"
             >
               <span class="item__label">{{ list.name }}</span>
+              <span class="item__note">{{ listCounts.get(list.id) ?? 0 }}</span>
             </NuxtLink>
           </li>
           <li v-if="!lists.length" class="group__empty">リストはまだありません</li>

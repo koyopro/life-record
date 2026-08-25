@@ -13,6 +13,7 @@ import {
  * 直接移れる別の入口（app.vue の GoToSmartListDialog）を使う。
  */
 const { lists, loaded, create, update, remove } = useSmartLists()
+const { ask } = useConfirm()
 
 useHead({ title: 'リスト' })
 
@@ -46,7 +47,12 @@ async function submit(input: SmartListInput) {
 }
 
 async function removeList(list: SmartListDto) {
-  if (!confirm(`「${list.name}」を削除します。タスクは消えません。`)) return
+  const ok = await ask({
+    message: `「${list.name}」を削除します。タスクは消えません。`,
+    confirmLabel: '削除',
+    danger: true,
+  })
+  if (!ok) return
 
   errorMessage.value = null
   try {
