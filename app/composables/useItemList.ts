@@ -206,24 +206,23 @@ export function useItemList(options: Options) {
 
   // --- カーソルと選択 -------------------------------------------------
 
-  /**
-   * カーソルが指している Item の id。
+  /*
+   * カーソル（`j` `k`）の持ち方・送り方は、検索結果と同じものを使う
+   * （app/composables/useListCursor.ts）。
    *
-   * 位置（index）ではなく id で持つ。重要度を変えるなどして並び順が
-   * 変わったとき、位置で持っていると同じ位置が別の Item を指してしまう。
+   * 編集した結果その一覧の条件から外れる（完了にする・タグを外す・期限を
+   * 動かす）ことは多く、そのたびに先頭へ飛ばされると続けて片付けられない。
+   * **消える前にその下にあったもの**へ移す（`nextFocusAfterRemoval`）。
    */
-  const focusedId = ref<string | null>(null)
+  const {
+    cursor,
+    cursorRow: cursorItem,
+    moveCursor,
+    focusRow: focusItem,
+    listEl,
+  } = useListCursor(items, { onMissing: nextFocusAfterRemoval })
+
   const selectedIds = ref<Set<string>>(new Set())
-
-  /** 表示上のカーソル位置。focusedId から導く。 */
-  const cursor = computed(() => {
-    const index = items.value.findIndex((item) => item.id === focusedId.value)
-    return index >= 0 ? index : 0
-  })
-
-  const cursorItem = computed<LocalItem | null>(
-    () => items.value[cursor.value] ?? null,
-  )
 
   /** 操作の対象。複数選択があればそちら、なければカーソル位置。 */
   const targets = computed<LocalItem[]>(() => {
@@ -233,47 +232,12 @@ export function useItemList(options: Options) {
     return cursorItem.value ? [cursorItem.value] : []
   })
 
-  watch(
-    items,
-    (list, previous) => {
-      const alive = new Set(list.map((item) => item.id))
-
-      if (focusedId.value === null) {
-        // まだどれも指していなければ先頭を指す
-        focusedId.value = list[0]?.id ?? null
-      } else if (!alive.has(focusedId.value)) {
-        /*
-         * 指していた Item が一覧から消えたら、**その下にあったもの**へ移す
-         * （`nextFocusAfterRemoval`）。編集で条件から外れることは多く、
-         * そのたびに先頭へ飛ばされると続けて片付けられない。
-         *
-         * 位置は「消える前の一覧」（previous）から引く。いまの一覧には
-         * もう無いので、消えた後の並びからでは下がどれか分からない。
-         */
-        focusedId.value =
-          nextFocusAfterRemoval(previous ?? [], focusedId.value, alive) ??
-          list[0]?.id ??
-          null
-      }
-
-      // 一覧から消えたものは選択からも外す
-      const next = new Set([...selectedIds.value].filter((id) => alive.has(id)))
-      if (next.size !== selectedIds.value.size) selectedIds.value = next
-    },
-    { immediate: true },
-  )
-
-  /** 上下端まで来たら反対側へ折り返す。 */
-  function moveCursor(delta: number) {
-    const list = items.value
-    if (list.length === 0) return
-    const next = (((cursor.value + delta) % list.length) + list.length) % list.length
-    focusedId.value = list[next]?.id ?? null
-  }
-
-  function focusItem(id: string) {
-    if (items.value.some((item) => item.id === id)) focusedId.value = id
-  }
+  // 一覧から消えたものは選択からも外す
+  watch(items, (list) => {
+    const alive = new Set(list.map((item) => item.id))
+    const next = new Set([...selectedIds.value].filter((id) => alive.has(id)))
+    if (next.size !== selectedIds.value.size) selectedIds.value = next
+  })
 
   function toggleSelect(id?: string) {
     const targetId = id ?? cursorItem.value?.id
@@ -559,6 +523,8 @@ export function useItemList(options: Options) {
     groupBy,
     cursor,
     cursorItem,
+    /** 行を並べている入れ物。カーソルを画面内へ送るのに使う（`ref="listEl"`）。 */
+    listEl,
     selectedIds,
     targets,
     canUndo: undoStack.canUndo,

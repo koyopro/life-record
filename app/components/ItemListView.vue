@@ -148,24 +148,11 @@ const split = useSplitLayout()
  */
 useSidebarSwipe()
 
-/**
- * カーソルが動いたら、その行が見えるところまでスクロールする。
- *
- * `j` / `k` で送っていると画面外へ出てしまい、どこを操作しているのか
- * 分からなくなるため。すでに見えているときは動かさない。
+/*
+ * カーソルの行を画面内へ送るための入れ物（`useListCursor`）。
+ * 各行の `data-item-id` から引くので、テンプレートで結ぶだけでよい。
  */
-const listEl = ref<HTMLElement | null>(null)
-
-watch(
-  () => list.cursorItem.value?.id,
-  async (id) => {
-    if (!id) return
-    await nextTick()
-    listEl.value
-      ?.querySelector(`[data-item-id="${id}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
-  },
-)
+const listEl = list.listEl
 
 /**
  * カーソル以外から明示的に選んだ Item。
@@ -693,7 +680,8 @@ defineExpose({
 </script>
 
 <template>
-  <div class="split" :class="{ 'split--active': selectedId }">
+  <!-- 一覧と詳細の並べ方は ListDetailSplit が持つ（検索結果と共通） -->
+  <ListDetailSplit :active="Boolean(selectedId)">
     <!-- 選択中は下端に帯が出るので、最後のカードが隠れないよう空ける -->
     <div class="list" :class="{ 'list--selecting': list.selectedIds.value.size }">
       <nav v-if="showTagFilter && allTags.length" class="tags" aria-label="タグで絞り込む">
@@ -832,9 +820,10 @@ defineExpose({
       </div>
     </div>
 
-    <aside v-if="selectedId" class="split__detail">
+    <template #detail>
       <!-- id が変わったら作り直す。前のタスクの編集状態を持ち越さないため -->
       <ItemDetail
+        v-if="selectedId"
         :key="selectedId"
         ref="detail"
         :item-id="selectedId"
@@ -843,9 +832,10 @@ defineExpose({
         @changed="list.refresh()"
         @select-series="onSelectSeries"
       />
-    </aside>
+    </template>
+  </ListDetailSplit>
 
-    <ShortcutHelp v-if="helpOpen" :groups="groups" @close="helpOpen = false" />
+  <ShortcutHelp v-if="helpOpen" :groups="groups" @close="helpOpen = false" />
 
     <DueDialog
       v-if="dueOpen"
@@ -899,51 +889,13 @@ defineExpose({
       @more="sheetFor = { mode: 'selection' }"
       @clear="list.clearSelection()"
     />
-  </div>
 </template>
 
 <style scoped>
-/*
- * 一覧と詳細の分割。詳細が出ていないときは、読みやすい幅に収める。
- * すべての一覧で同じ挙動にするため、ここで完結させる。
- */
-.split {
-  display: grid;
-  gap: 1.5rem;
-  max-width: 40rem;
-}
-
-@media (min-width: 60rem) {
-  .split--active {
-    max-width: none;
-    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  /* 詳細は別スクロール。長い本文を読んでも一覧の位置が動かない */
-  .split--active .split__detail {
-    position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 2rem);
-    overflow-y: auto;
-    padding-right: 0.25rem;
-  }
-}
-
-.split__detail {
-  min-width: 0;
-  border-left: 1px solid var(--border);
-  padding-left: 1.5rem;
-}
-
 .list {
   min-width: 0;
+  /* 列は親の幅に収める（はみ出させず、中身のほうを折り返させる） */
   display: grid;
-  /*
-   * 列は必ず親の幅に収める。既定（auto）だと、中身のいちばん広いもの
-   * （並び替えのセレクトなど）の最小幅まで列が広がり、分割表示で
-   * 一覧が詳細に重なる。はみ出させず、中身のほうを折り返させる。
-   */
   grid-template-columns: minmax(0, 1fr);
   gap: 0.625rem;
 }

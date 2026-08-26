@@ -26,6 +26,8 @@ export const SEARCH_KIND_LABELS: Record<SearchKind, string> = {
  * ものと違う顔つきで並ぶと、同じものだと結び付けるのに一拍かかるため。
  */
 export interface SearchHitItem {
+  /** タスクの id。右ペインに詳細を出すのに使う。 */
+  id: string
   status: ItemStatus
   /** 左端の帯に出す重要度。 */
   priority: Priority | null

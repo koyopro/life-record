@@ -11,6 +11,7 @@ import {
 } from '~~/shared/types/search'
 import { normalizeTagName } from '~~/shared/types/tag'
 import { formatAppDate, isAppDate } from '~~/shared/utils/date'
+import type { Shortcut } from '~/composables/useShortcuts'
 import { formatDue } from '~/utils/due'
 import { tagColorVar, tagTextColorVar } from '~/utils/tag-color'
 
@@ -19,6 +20,10 @@ import { tagColorVar, tagTextColorVar } from '~/utils/tag-color'
  *
  * 条件は URL に置く。同じ検索に戻れるようにするため。
  */
+
+// 結果の右側に詳細を並べるため、この画面もコンテナを広く使う（一覧と同じ）
+definePageMeta({ wide: true })
+
 const route = useRoute()
 const router = useRouter()
 
@@ -60,13 +65,20 @@ const tag = computed<string | undefined>(() => {
   return normalizeTagName(value) ?? undefined
 })
 
-/** URL の条件を書き換える。履歴を汚さないよう replace を使う。 */
+/**
+ * URL の条件を書き換える。履歴を汚さないよう replace を使う。
+ *
+ * 条件が変われば結果の中身も変わるので、右ペインに出していた選択
+ * （`?selected=`）は持ち越さない。一覧（`ItemListView` の setFilter）と同じ。
+ */
 function setQuery(patch: Record<string, string | undefined>) {
   const next: Record<string, string> = { ...(route.query as Record<string, string>) }
   for (const [key, value] of Object.entries(patch)) {
     if (value) next[key] = value
     else delete next[key]
   }
+  delete next.selected
+  pinnedId.value = null
   router.replace({ query: next })
 }
 
@@ -74,8 +86,31 @@ function setQuery(patch: Record<string, string | undefined>) {
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(q, (value) => {
   clearTimeout(timer)
-  timer = setTimeout(() => setQuery({ q: value.trim() || undefined }), 300)
+  timer = setTimeout(() => apply(value), 300)
 })
+
+function apply(value: string) {
+  clearTimeout(timer)
+  setQuery({ q: value.trim() || undefined })
+}
+
+/**
+ * 入力欄で `Enter`（検索の実行）。
+ *
+ * 待たずに投げて、**入力欄からフォーカスを外す**。ここを離れて初めて
+ * `j` / `k` が結果の行に効くようになる（入力欄にいる間、画面の割り当ては
+ * 下がる。`isTypingTarget`）。打ち終わったら結果を見るのだから、そのまま
+ * 送れるようにする。スマートフォンではキーボードも下がる。
+ *
+ * 日本語入力の変換を確定する `Enter` は拾わない（ItemComposer と同じ判定）。
+ */
+function onSearchKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter') return
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  apply(q.value)
+  ;(event.target as HTMLInputElement).blur()
+}
 
 // 別の画面から `?q=` 付きで来たときに追随する
 watch(
@@ -88,7 +123,7 @@ watch(
 // 条件は computed で渡す。useFetch はこれを見て投げ直す
 const term = computed(() => queryString('q'))
 
-const { data: hits, pending } = await useFetch<SearchHit[]>('/api/search', {
+const { data: hits, pending, refresh } = await useFetch<SearchHit[]>('/api/search', {
   query: { q: term, kind, view, tag, from, to },
   default: () => [],
 })
@@ -133,6 +168,8 @@ const KIND_LABELS: Record<Exclude<SearchKind, 'all'>, string> = {
  */
 const rows = computed(() =>
   hits.value.map((hit) => ({
+    /** カーソル（useListCursor）が行を見分ける鍵。 */
+    id: hit.id,
     hit,
     /*
      * 期限。一覧のカード（`ItemCard`）と同じ相対表現・同じ色にする。
@@ -148,6 +185,138 @@ const rows = computed(() =>
     date: hit.kind === 'item' ? '' : formatAppDate(hit.date),
   })),
 )
+
+// --- カーソルと分割表示 -------------------------------------------------
+//
+// 一覧（ItemListView）と同じ形にする。`j` / `k` で結果を送り、広い画面では
+// 左に結果・右にタスクの詳細を並べる。探した結果をその場で片付けられる
+// ようにするため、いちいち詳細画面へ移らずに済ませたい。
+
+const { cursor, cursorRow, moveCursor, focusRow, listEl } = useListCursor(rows)
+
+const split = useSplitLayout()
+
+/*
+ * 画面の左端からのスワイプで左袖を引き出す。一覧を出している画面に付ける
+ * （app/composables/useSidebarSwipe.ts）。
+ */
+useSidebarSwipe()
+
+/**
+ * カーソル以外から明示的に選んだタスク（行を押したとき）。
+ *
+ * 押した行とカーソルの行は普段そろっているが、押した直後に一覧が
+ * 取り直されても選んだものが動かないよう、別に持つ（一覧と同じ）。
+ */
+const pinnedId = ref<string | null>(
+  typeof route.query.selected === 'string' ? route.query.selected : null,
+)
+
+/** 右ペインに出すタスク。日記の行を指している間は無い。 */
+const selectedId = computed(() =>
+  split.value ? (pinnedId.value ?? cursorRow.value?.hit.item?.id ?? null) : null,
+)
+
+/**
+ * 右ペインの枠を出すか。
+ *
+ * 出すものが無い行（日記）でも、行を指していれば枠は残す。結果には
+ * タスクと日記が混ざるので、送るたびに枠が出たり消えたりすると幅が跳ねる。
+ */
+const detailOpen = computed(() => split.value && Boolean(cursorRow.value))
+
+// カーソルが実際に動いたら、押して選んだものは解除してカーソルに追従させる
+watch(
+  () => cursorRow.value?.id,
+  (id, previous) => {
+    if (id && previous && id !== previous) pinnedId.value = null
+  },
+)
+
+// 選択を URL に残す。再読み込みや共有で同じ状態に戻せるようにする
+watch(selectedId, (id) => {
+  const next = id ?? undefined
+  if (route.query.selected === next) return
+  const query = { ...route.query, selected: next }
+  if (!next) delete query.selected
+  router.replace({ query })
+})
+
+/**
+ * 行を開く。広い画面のタスクは右ペインに出し、それ以外はそのページへ移る。
+ *
+ * 日記には埋め込める詳細が無いので、広い画面でもページを開く。
+ */
+function open(row: (typeof rows.value)[number]) {
+  focusRow(row.id)
+  if (split.value && row.hit.item) {
+    pinnedId.value = row.hit.item.id
+    return
+  }
+  void navigateTo(row.hit.path)
+}
+
+/**
+ * 行を押した（マウス・指）。
+ *
+ * 行はリンクのままにしておき、右ペインで開けるときだけ遷移を止める。
+ * ⌘ + クリックや中クリックで別タブに開けるようにしておきたいため。
+ */
+function onRowClick(row: (typeof rows.value)[number], event: MouseEvent) {
+  focusRow(row.id)
+  if (!split.value || !row.hit.item) return
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  pinnedId.value = row.hit.item.id
+}
+
+/*
+ * 結果の中を送るショートカット。一覧（ItemListView）と同じ打鍵にする。
+ *
+ * 中身を変える操作（完了・期限・タグ）はここには置かない。検索結果には
+ * タスク以外も混ざるうえ、右ペインの詳細から同じことができる。
+ */
+const shortcuts = computed<Shortcut[]>(() => [
+  {
+    keys: ['j', 'ArrowDown'],
+    display: 'j / ↓',
+    label: '次の結果へ',
+    group: '移動',
+    run: () => moveCursor(1),
+  },
+  {
+    keys: ['k', 'ArrowUp'],
+    display: 'k / ↑',
+    label: '前の結果へ',
+    group: '移動',
+    run: () => moveCursor(-1),
+  },
+  {
+    keys: ['o', 'Enter'],
+    display: 'o',
+    label: '結果を開く',
+    group: '移動',
+    run: () => {
+      const target = cursorRow.value
+      if (target) open(target)
+    },
+  },
+  {
+    /*
+     * 入力欄へ戻る。`Enter` で欄を離れたあと、キーボードだけで打ち直せる
+     * ようにするため（どの検索でもだいたいこの割り当て）。
+     */
+    keys: ['/'],
+    label: '検索語を打ち直す',
+    group: '移動',
+    run: () => {
+      input.value?.focus()
+      input.value?.select()
+    },
+  },
+])
+
+useShortcuts(shortcuts)
 </script>
 
 <template>
@@ -159,8 +328,9 @@ const rows = computed(() =>
       v-model="q"
       class="search"
       type="search"
-      placeholder="タスク名・作業記録・日記から探す"
+      placeholder="タスク名・作業記録・日記から探す（Enter で結果へ）"
       aria-label="検索語"
+      @keydown="onSearchKeydown"
     />
 
     <div class="filters">
@@ -236,59 +406,87 @@ const rows = computed(() =>
 
     <p v-if="excludedNote" class="note">{{ excludedNote }}</p>
 
-    <p v-if="!hasQuery" class="page__placeholder">
-      探したい言葉を入れてください。
-    </p>
-    <p v-else-if="pending && !hits.length" class="page__placeholder">読み込み中…</p>
-    <p v-else-if="!hits.length" class="page__placeholder">見つかりませんでした。</p>
-
     <!--
-      タスクの行は、一覧のカード（ItemCard）と同じ読み取り方にする。
-      左端の帯で重要度、タイトルの後ろにタグ、右端に期限。探し当てたものが
-      一覧で見ているのと違う顔つきだと、同じタスクだと結び付けるのに一拍かかる。
+      結果（左）とタスクの詳細（右）。並べ方は一覧と同じ部品に任せる
+      （app/components/ListDetailSplit.vue）。
     -->
-    <ul v-else class="results">
-      <li v-for="{ hit, due, date } in rows" :key="hit.id">
-        <NuxtLink
-          class="hit"
-          :class="hit.item ? `hit--priority-${hit.item.priority ?? 'none'}` : undefined"
-          :to="hit.path"
-        >
-          <div class="hit__head">
-            <time v-if="date" class="hit__date" :datetime="hit.date">{{ date }}</time>
-            <span class="hit__kind">{{ KIND_LABELS[hit.kind] }}</span>
-          </div>
+    <ListDetailSplit :active="detailOpen">
+      <p v-if="!hasQuery" class="page__placeholder">
+        探したい言葉を入れてください。
+      </p>
+      <p v-else-if="pending && !hits.length" class="page__placeholder">読み込み中…</p>
+      <p v-else-if="!hits.length" class="page__placeholder">見つかりませんでした。</p>
 
-          <div class="hit__body">
-            <span class="hit__title">{{ hit.title }}</span>
-            <!--
-              タグは押せない。行そのものが行き先へのリンクなので、中に別の
-              押しどころを入れ子にできない（絞り込みは上のタグ行から）。
-            -->
-            <span
-              v-for="name in hit.item?.tags ?? []"
-              :key="name"
-              class="hit__tag"
-              :style="{
-                '--tag-color': tagColorVar(colorOf(name)),
-                '--tag-text': tagTextColorVar(colorOf(name)),
-              }"
-            >
-              {{ name }}
-            </span>
-            <span
-              v-if="due && due.state !== 'none'"
-              class="hit__due"
-              :class="`hit__due--${due.state}`"
-            >
-              {{ due.label }}
-            </span>
-          </div>
+      <!--
+        タスクの行は、一覧のカード（ItemCard）と同じ読み取り方にする。
+        左端の帯で重要度、タイトルの後ろにタグ、右端に期限。探し当てたものが
+        一覧で見ているのと違う顔つきだと、同じタスクだと結び付けるのに一拍かかる。
+      -->
+      <ul v-else ref="listEl" class="results">
+        <li v-for="(row, index) in rows" :key="row.id" :data-item-id="row.id">
+          <NuxtLink
+            class="hit"
+            :class="[
+              row.hit.item ? `hit--priority-${row.hit.item.priority ?? 'none'}` : '',
+              { 'hit--focused': index === cursor },
+            ]"
+            :to="row.hit.path"
+            @click="onRowClick(row, $event)"
+          >
+            <div class="hit__head">
+              <time v-if="row.date" class="hit__date" :datetime="row.hit.date">
+                {{ row.date }}
+              </time>
+              <span class="hit__kind">{{ KIND_LABELS[row.hit.kind] }}</span>
+            </div>
 
-          <p v-if="hit.excerpt" class="hit__excerpt">{{ hit.excerpt }}</p>
-        </NuxtLink>
-      </li>
-    </ul>
+            <div class="hit__body">
+              <span class="hit__title">{{ row.hit.title }}</span>
+              <!--
+                タグは押せない。行そのものが行き先へのリンクなので、中に別の
+                押しどころを入れ子にできない（絞り込みは上のタグ行から）。
+              -->
+              <span
+                v-for="name in row.hit.item?.tags ?? []"
+                :key="name"
+                class="hit__tag"
+                :style="{
+                  '--tag-color': tagColorVar(colorOf(name)),
+                  '--tag-text': tagTextColorVar(colorOf(name)),
+                }"
+              >
+                {{ name }}
+              </span>
+              <span
+                v-if="row.due && row.due.state !== 'none'"
+                class="hit__due"
+                :class="`hit__due--${row.due.state}`"
+              >
+                {{ row.due.label }}
+              </span>
+            </div>
+
+            <p v-if="row.hit.excerpt" class="hit__excerpt">{{ row.hit.excerpt }}</p>
+          </NuxtLink>
+        </li>
+      </ul>
+
+      <template #detail>
+        <!-- id が変わったら作り直す。前のタスクの編集状態を持ち越さないため -->
+        <ItemDetail
+          v-if="selectedId"
+          :key="selectedId"
+          :item-id="selectedId"
+          embedded
+          @changed="refresh()"
+        />
+        <!--
+          日記の行。埋め込める詳細が無いので、ここでは開かずページへ移る。
+          枠だけは残す（送るたびに幅が跳ねないように）。
+        -->
+        <p v-else class="detail-note">日記はページを開いて読みます（<kbd>Enter</kbd>）。</p>
+      </template>
+    </ListDetailSplit>
   </div>
 </template>
 
@@ -488,6 +686,15 @@ const rows = computed(() =>
   background: var(--priority-3);
 }
 
+/*
+ * カーソル位置。キーボード操作の対象がどれかを、行の背景色で示す
+ * （一覧のカードと同じ。`ItemCard` の card--focused）。
+ */
+.hit--focused {
+  background: var(--cursor-bg);
+  border-color: var(--accent);
+}
+
 .hit__head {
   display: flex;
   align-items: baseline;
@@ -560,5 +767,19 @@ const rows = computed(() =>
   color: var(--text-muted);
   font-size: 0.875rem;
   line-height: 1.6;
+}
+
+/* 日記の行を指している間、右ペインに出す断り書き */
+.detail-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.detail-note kbd {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 0.25rem;
 }
 </style>

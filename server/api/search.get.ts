@@ -109,6 +109,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
         title: row.title,
         excerpt: '',
         item: {
+          id: row.id,
           status: row.status,
           priority: (row.priority as Priority | null) ?? null,
           tags: [],
@@ -157,6 +158,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
         title: row.title,
         excerpt: excerptAround(row.body, q),
         item: {
+          id: row.itemId,
           status: row.status,
           priority: (row.priority as Priority | null) ?? null,
           tags: [],
