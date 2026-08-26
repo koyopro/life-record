@@ -7,6 +7,17 @@ export interface DueDisplay {
   state: DueState
 }
 
+/**
+ * 期限を表示するのに要るのはこれだけ。
+ *
+ * `ItemDto` のほか、検索結果の行（`SearchHitItem`）や、まだ保存していない
+ * 入力中の値もそのまま渡せる。
+ */
+export interface DueSource {
+  dueAt: string | null
+  dueHasTime: boolean
+}
+
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 
 /** その日の 0:00 を返す。日数差の計算に使う。 */
@@ -29,7 +40,7 @@ function daysBetween(from: Date, to: Date): number {
  * 絶対日付より「今日」「明日」のほうが読み取りが速いため、
  * 近い日付は相対表現を優先する。
  */
-export function formatDue(item: ItemDto, now = new Date()): DueDisplay {
+export function formatDue(item: DueSource, now = new Date()): DueDisplay {
   if (!item.dueAt) return { label: '', state: 'none' }
 
   const due = new Date(item.dueAt)

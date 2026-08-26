@@ -65,7 +65,7 @@ const preview = computed(() => {
   return formatDue({
     dueAt: parsed.value.date.toISOString(),
     dueHasTime: parsed.value.hasTime,
-  } as never).label
+  }).label
 })
 
 /** 候補の右に出す実際の日付。どの日になるのかを、選ぶ前に見せる。 */

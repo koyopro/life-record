@@ -181,7 +181,7 @@ const dueLabel = computed(() => {
   return formatDue({
     dueAt: selected.date.toISOString(),
     dueHasTime: selected.hasTime,
-  } as never).label
+  }).label
 })
 
 /**
