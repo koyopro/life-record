@@ -117,18 +117,26 @@ const titleIndicatorState = computed<SaveDotState>(() =>
 )
 
 /**
- * タイトルは複数行での編集を想定していないため、`Enter` は改行ではなく
- * 確定として扱う（すぐに保存してフォーカスを外す）。
+ * 1行で書く欄（タイトル・URL）の `Enter` を、改行ではなく**確定**として扱う。
+ * すぐに保存してフォーカスを外す。
+ *
+ * これらの欄はどれも打つそばから保存している（useAutosave）ので、押す
+ * ボタンが無い。書き終わったと伝える手が `Enter` しかなく、そこで何も
+ * 起きないと、入力が終わったのかどうかが分からないまま欄に留まる。
  *
  * 日本語入力の変換を確定する `Enter` まで拾ってしまわないよう、
  * 変換中は素通りさせる（ItemComposer.vue と同じ判定）。
  */
-function onTitleKeydown(event: KeyboardEvent) {
+function confirmOnEnter(event: KeyboardEvent, save: { flush: () => Promise<void> }) {
   if (event.key !== 'Enter') return
   if (event.isComposing || event.keyCode === 229) return
   event.preventDefault()
-  void titleSave.flush()
-  ;(event.target as HTMLTextAreaElement).blur()
+  void save.flush()
+  ;(event.target as HTMLElement).blur()
+}
+
+function onTitleKeydown(event: KeyboardEvent) {
+  confirmOnEnter(event, titleSave)
 }
 
 // --- 作業記録（リアルタイム保存） ----------------------------------------
@@ -280,6 +288,18 @@ const urlSave = useAutosave({
     await store.patch([id.value], { url: value.trim() || null })
   },
 })
+
+/**
+ * URL 欄の `Enter`（タイトルと同じ確定）。
+ *
+ * URL は貼って終わりの欄なので、待つ時間（useAutosave の 700ms）を挟まずに
+ * 送り、欄から出る。まだ http(s) の形になっていなければ `enabled` が止める
+ * ので何も送られないが、書きかけのまま欄を出ることになるのは他の欄
+ * （フォーカスを外したとき）と同じで、●が「未保存」を出し続ける。
+ */
+function onUrlKeydown(event: KeyboardEvent) {
+  confirmOnEnter(event, urlSave)
+}
 
 /**
  * 別画面での変更や再取得に追随する。編集中の内容は上書きしない。
@@ -842,6 +862,7 @@ async function removeSection(section: SectionDto) {
             inputmode="url"
             placeholder="https://..."
             aria-label="URL"
+            @keydown="onUrlKeydown"
           />
           <a
             v-if="item.url && isOpenableUrl(item.url)"
