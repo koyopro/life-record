@@ -1944,6 +1944,21 @@ defineExpose({
   line-height: 1.7;
   cursor: text;
   overflow-wrap: anywhere;
+
+  /*
+   * 字下げ1段ぶんの幅。行の階層はどこでもこれを単位にする。
+   * コードブロックの中も外と同じ単位で下げないと、同じ階層のはずの行が
+   * ブロックの内と外で違う位置から始まってしまう。
+   */
+  --sb-step: 1.25rem;
+  /*
+   * コードブロックの枠を、文字より左へ出す幅。
+   *
+   * 見出し（`code:` のファイル名）が枠線に貼り付かないよう、文字を右へ
+   * 動かすのではなく枠のほうを広げる。文字を動かすと、ブロックの外の
+   * 同じ階層と開始位置がずれる。
+   */
+  --sb-code-bleed: 0.5rem;
 }
 
 /*
@@ -2115,7 +2130,7 @@ defineExpose({
 
 .editor :deep(.sb-line) {
   /* 字下げ1段ぶん。行頭の空白の数がそのまま階層になる */
-  padding-left: calc(var(--sb-indent, 0) * 1.25rem);
+  padding-left: calc(var(--sb-indent, 0) * var(--sb-step));
   position: relative;
   min-height: 1.7em;
   /* 入力欄と同じように空白を残す。詰めると、その行だけ文字の位置がずれる */
@@ -2126,7 +2141,7 @@ defineExpose({
 .editor :deep(.sb-line--indented)::before {
   content: '';
   position: absolute;
-  left: calc(var(--sb-indent, 0) * 1.25rem - 0.75rem);
+  left: calc(var(--sb-indent, 0) * var(--sb-step) - 0.75rem);
   top: 0.75em;
   width: 0.3125rem;
   height: 0.3125rem;
@@ -2141,38 +2156,45 @@ defineExpose({
  * 箱そのものを margin で字下げの分だけ右へ寄せる
  */
 .editor :deep(.sb-line--quote) {
-  margin-left: calc(var(--sb-indent, 0) * 1.25rem);
+  margin-left: calc(var(--sb-indent, 0) * var(--sb-step));
   border-left: 3px solid var(--border);
   padding-left: 0.625rem;
   color: var(--text-muted);
 }
 
-/* コードブロックは行が連なって1つの箱に見えるようにする */
+/*
+ * コードブロックは行が連なって1つの箱に見えるようにする。
+ *
+ * 箱は文字より `--sb-code-bleed` だけ左へ出し、そのぶんを padding で戻す。
+ * こうすると**文字の開始位置は変えないまま**、見出しの左に枠線との余白ができる。
+ *
+ * 枠線（1px）ぶんも足して出す。枠の内側から文字までがちょうど
+ * `--sb-code-bleed` になり、文字はブロックの外の同じ階層と同じ位置に並ぶ。
+ */
 .editor :deep(.sb-line--code-header),
 .editor :deep(.sb-line--code-body) {
-  margin-left: calc(var(--sb-indent, 0) * 1.25rem);
-  /* 字下げは箱そのものを margin で寄せて表すので、行の padding は使わない */
-  padding-left: 0;
+  margin-left: calc(
+    var(--sb-indent, 0) * var(--sb-step) - var(--sb-code-bleed) - 1px
+  );
+  padding-left: var(--sb-code-bleed);
   background: var(--bg);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
 }
 
 /*
- * 中身の行は `code:` の行から**1字下げる**（Scrapbox と同じ）。
+ * 中身の行は `code:` の行から**1段下げる**（Scrapbox と同じ）。
  *
  * ブロックの続きであることは本文でも行頭の空白1つで表していて、その空白は
  * 実際に入っている。行頭は文字として入力欄に入れず余白で見せる決まり
- * （docs/11-scrapbox-notation.md 11.6）なので、その1字ぶんをここで空ける。
- * 空けないと、書いてある空白が表示から消えて中身が箱の縁に貼り付く。
+ * （docs/11-scrapbox-notation.md 11.6）なので、その1段ぶんをここで空ける。
  *
- * 幅は等幅の1文字ぶん。`font-family` だけをそろえて `ch` を使い、
- * `font-size` は変えない（変えると `.sb-line` の min-height（em）まで動く）。
- * 中身の文字サイズぶん（0.875）を掛けて、コード1文字の幅にそろえる。
+ * 下げ幅は**ブロックの外と同じ1段**（`--sb-step`）。同じ階層のはずの行が、
+ * コードブロックの内と外で違う位置から始まると、階層を目で追えなくなる。
+ * 基準より深い字下げはコードの一部として中身に残り、そのぶんはさらに右へ出る。
  */
 .editor :deep(.sb-line--code-body) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  padding-left: calc(1ch * 0.875);
+  padding-left: calc(var(--sb-code-bleed) + var(--sb-step));
 }
 
 .editor :deep(.sb-line--code-header) {
@@ -2193,11 +2215,12 @@ defineExpose({
 }
 
 /*
- * 見出し行はリストの1項目として中黒を出す。箱自体が margin で
- * 字下げの分だけ寄っているので、中黒の位置もそこからの相対値に直す
+ * 見出し行はリストの1項目として中黒を出す。箱自体が margin で字下げの分だけ
+ * 寄っている（さらに --sb-code-bleed ぶん左へ出ている）ので、中黒の位置も
+ * そこからの相対値に直す
  */
 .editor :deep(.sb-line--code-header.sb-line--indented)::before {
-  left: -0.75rem;
+  left: calc(var(--sb-code-bleed) - 0.75rem);
 }
 
 /*
