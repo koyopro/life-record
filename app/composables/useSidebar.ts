@@ -57,6 +57,16 @@ export function useSidebar() {
   const open = useState<boolean>('sidebar:open', () => false)
   const collapsed = useState<SidebarSection[]>('sidebar:collapsed', () => [])
 
+  /*
+   * 端からのスワイプで引き出している最中の、指を動かした距離（px）。
+   * 触れていなければ null。useSidebarSwipe が入れ、AppSidebar が
+   * 袖の位置と背景の濃さに使う。
+   *
+   * 開いているかどうか（open）とは別に持つ。途中でやめれば閉じたところへ
+   * 戻るので、引いている間はまだ「開いた」ことにはならない。
+   */
+  const dragX = useState<number | null>('sidebar:drag', () => null)
+
   const docked = useMediaQuery(DOCK_QUERY)
 
   onMounted(() => {
@@ -108,5 +118,5 @@ export function useSidebar() {
     remember()
   }
 
-  return { open, docked, toggle, close, isCollapsed, toggleSection }
+  return { open, docked, dragX, setOpen, toggle, close, isCollapsed, toggleSection }
 }

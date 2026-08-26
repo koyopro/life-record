@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PRIORITY_LABELS, type ItemDto } from '~~/shared/types/item'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
+import { EDGE_WIDTH } from '~/utils/edge-swipe'
 
 const props = defineProps<{
   item: ItemDto
@@ -61,6 +62,11 @@ function cancelLongPress() {
 function onTouchStart(event: TouchEvent) {
   const touch = event.touches[0]
   if (!touch) return
+  /*
+   * 画面の左端から始まったものは、袖を引き出すスワイプ（useSidebarSwipe）。
+   * ここでも拾うと、袖が出ながらそのタスクまで完了してしまう。
+   */
+  if (touch.clientX <= EDGE_WIDTH) return
   startX = touch.clientX
   startY = touch.clientY
   dragging.value = true

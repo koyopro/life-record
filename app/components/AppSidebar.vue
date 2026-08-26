@@ -16,7 +16,7 @@ import { tagColorVar } from '~/utils/tag-color'
  * 開閉は `;` とハンバーガー（app.vue）。広い画面（60rem 以上）では本文の
  * 横に並べ、狭い画面では本文に重ねて出す（useSidebar）。
  */
-const { open, docked, close, toggle, isCollapsed, toggleSection } = useSidebar()
+const { open, docked, dragX, close, toggle, isCollapsed, toggleSection } = useSidebar()
 
 const route = useRoute()
 const today = useToday()
@@ -67,6 +67,36 @@ const isAllTasks = computed(
 )
 
 const nav = ref<HTMLElement | null>(null)
+const aside = ref<HTMLElement | null>(null)
+
+/**
+ * 端からのスワイプ（useSidebarSwipe）で、いまどこまで引かれているか
+ * （0 = 閉じたところ、1 = 開ききったところ）。触れていなければ null。
+ *
+ * 幅は袖そのものから測る。閉じている間も画面の外にあるだけで大きさは
+ * 持っているので、いつでも読める。CSS 側（--sidebar-width）と二重に
+ * 持たずに済む。
+ */
+const dragProgress = computed(() => {
+  if (dragX.value === null) return null
+  const width = aside.value?.offsetWidth
+  if (!width) return null
+  return Math.min(1, dragX.value / width)
+})
+
+/*
+ * 引いている間だけ、指の位置をそのまま袖の位置にする。指に追わせている
+ * あいだに時間差（transition）を挟むと、遅れて付いてくるように見える。
+ *
+ * 離すと null に戻り、そこから既定の transition で開き（閉じ）きる。
+ */
+const dragStyle = computed(() => {
+  if (dragProgress.value === null) return undefined
+  return {
+    transform: `translateX(${(dragProgress.value - 1) * 100}%)`,
+    transition: 'none',
+  }
+})
 
 /*
  * 重ねて出しているときは、行き先へ移ったら閉じる。開いたままだと、
@@ -94,10 +124,18 @@ watch(open, async (value) => {
   <!--
     重ねて出しているときの背景。押せば閉じる。並べて置ける幅では
     本文を覆っていないので出さない。
-  -->
-  <div v-if="open && !docked" class="scrim" @click="close" />
 
-  <aside class="sidebar" :class="{ 'sidebar--open': open }">
+    端から引いている間も、引いた分だけ濃くする。袖が半分出ているのに
+    背景が出そろっていると、指を戻しても閉じられないように見える。
+  -->
+  <div
+    v-if="!docked && (open || dragProgress !== null)"
+    class="scrim"
+    :style="dragProgress !== null ? { opacity: dragProgress, transition: 'none' } : undefined"
+    @click="close"
+  />
+
+  <aside ref="aside" class="sidebar" :class="{ 'sidebar--open': open }" :style="dragStyle">
     <!--
       閉じているあいだは画面の外にあるだけなので、Tab では入れないように
       する（見えないものへフォーカスが移ると、どこにいるのか分からなくなる）。
@@ -334,6 +372,17 @@ watch(open, async (value) => {
   inset: 0;
   z-index: 17;
   background: rgb(0 0 0 / 45%);
+  /*
+   * 端から引いた指を離したとき、袖が開ききるのに合わせて濃さも揃える
+   * （引いている間は inline の transition: none で指に追わせる）。
+   */
+  transition: opacity 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim {
+    transition: none;
+  }
 }
 
 /* 袖の中の ☰。開くときに押したボタン（app.vue の .menu）と同じ見た目にする */

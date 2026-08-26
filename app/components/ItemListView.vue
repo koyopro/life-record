@@ -140,6 +140,14 @@ const sheetFor = ref<
 
 const split = useSplitLayout()
 
+/*
+ * 画面の左端からのスワイプで左袖を引き出す（app/composables/useSidebarSwipe.ts）。
+ *
+ * 一覧を出している画面だけに付ける。狭い画面では袖を開く入口が左下の ☰
+ * しかなく、一覧 → 別の一覧の移動のたびに親指を下ろすことになるため。
+ */
+useSidebarSwipe()
+
 /**
  * カーソルが動いたら、その行が見えるところまでスクロールする。
  *
