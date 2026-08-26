@@ -32,14 +32,24 @@ export function toAppDate(at: Date = new Date()): string {
 }
 
 /**
- * その日の終わり（23:59:59.999）を、アプリのタイムゾーンで返す。
+ * アプリ日付（`YYYY-MM-DD`）の終わり（23:59:59.999）。
  *
- * 「期限が今日まで」の絞り込みに使う。実行環境のタイムゾーンに
+ * 「期限がその日まで」の絞り込みに使う。実行環境のタイムゾーンに
  * 依存しないよう、オフセットを明示して組み立てる。
  * Asia/Tokyo はサマータイムがないため +09:00 固定でよい。
  */
+export function endOfDate(date: string): Date {
+  return new Date(`${date}T23:59:59.999+09:00`)
+}
+
+/**
+ * その日の終わり（23:59:59.999）を、アプリのタイムゾーンで返す。
+ *
+ * 「いま」から数えるとき用。日付そのものを持っている（`useToday` など）
+ * ときは endOfDate に渡す。そちらは日付が変われば数え直せる。
+ */
 export function endOfAppDay(at: Date = new Date()): Date {
-  return new Date(`${toAppDate(at)}T23:59:59.999+09:00`)
+  return endOfDate(toAppDate(at))
 }
 
 /**

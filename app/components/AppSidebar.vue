@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatAppDateShort, shiftAppDate } from '~~/shared/utils/date'
-import { countSmartList } from '~/utils/smart-list-count'
+import { countList, countToday } from '~/utils/list-count'
 import { tagColorVar } from '~/utils/tag-color'
 
 /**
@@ -28,11 +28,19 @@ const itemStore = useItemStore()
  * リストごとの件数。タグと同じく、押した先に並ぶ数を添える。
  *
  * サーバーに数えさせず、手元の Item（＝一覧を作っているのと同じ元）から
- * 数える。オフラインでも数字と中身がずれない（app/utils/smart-list-count.ts）。
+ * 数える。オフラインでも数字と中身がずれない（app/utils/list-count.ts）。
  */
 const listCounts = computed(
-  () => new Map(lists.value.map((list) => [list.id, countSmartList(itemStore.items.value, list)])),
+  () => new Map(lists.value.map((list) => [list.id, countList(itemStore.items.value, list)])),
 )
+
+/**
+ * 「今日」の件数。リスト・タグと同じく、押した先に並ぶ数を添える。
+ *
+ * ここだけ数字が無いと、他は数えられていて「今日」は数えられない欄なのだと
+ * 読めてしまう。いちばんよく押す行なので、開く前に残りが分かるようにする。
+ */
+const todayCount = computed(() => countToday(itemStore.items.value, today.value))
 
 /** 日記に出す日数。当日を含めて数える。 */
 const DIARY_DAYS = 5
@@ -171,7 +179,8 @@ watch(open, async (value) => {
         :class="{ 'item--active': route.path === '/today' }"
         to="/today"
       >
-        今日
+        <span class="item__label">今日</span>
+        <span class="item__note">{{ todayCount }}</span>
       </NuxtLink>
 
       <NuxtLink
