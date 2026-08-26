@@ -9,6 +9,15 @@ import { defineConfig } from 'vitest/config'
  */
 export default defineConfig({
   test: {
+    /*
+     * アプリのタイムゾーン（Asia/Tokyo）で走らせる。
+     *
+     * 日付の解釈は2通りある。`toAppDate` などは Asia/Tokyo 固定だが、
+     * SmartAdd の `^今日` は端末のタイムゾーンで解釈する（chrono）。
+     * 実際の利用者の端末では両者が一致するので、テストでもそろえないと
+     * 「日付が1日ずれる」だけの失敗が出る。
+     */
+    env: { TZ: 'Asia/Tokyo' },
     environment: 'happy-dom',
     include: ['tests/**/*.spec.ts'],
     setupFiles: ['tests/setup.ts'],

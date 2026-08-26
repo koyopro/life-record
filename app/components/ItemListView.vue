@@ -10,7 +10,7 @@ import {
   type ItemStatus,
   type SortKey,
 } from '~~/shared/types/item'
-import type { ListView } from '~~/shared/types/smart-list'
+import type { DueCondition, ListView } from '~~/shared/types/smart-list'
 import { groupItems } from '~/utils/item-order'
 import { normalizeTagName } from '~~/shared/types/tag'
 
@@ -29,6 +29,8 @@ const props = withDefaults(
     view?: ListView
     /** 絞り込むタグを固定する（スマートリスト）。URL のタグより優先する。 */
     fixedTag?: string | null
+    /** 期限での絞り込み（スマートリスト）。タグとは AND で重ねる。 */
+    dueCondition?: DueCondition | null
     /** 並び・グループ順を外から与える（スマートリスト）。 */
     sort?: SortKey
     group?: GroupKey
@@ -99,6 +101,7 @@ const list = useItemList({
   view: () => view.value,
   tag: () => tag.value,
   untagged: () => untagged.value,
+  due: () => props.dueCondition ?? null,
   dueUntilToday: () => Boolean(props.dueUntilToday),
   screen: props.screen,
   defaultSort: props.defaultSort ?? 'priorityDueDesc',

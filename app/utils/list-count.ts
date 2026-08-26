@@ -1,6 +1,7 @@
 import type { ItemStatus } from '~~/shared/types/item'
-import type { ListView } from '~~/shared/types/smart-list'
+import type { DueCondition, ListView } from '~~/shared/types/smart-list'
 import { endOfDate } from '~~/shared/utils/date'
+import { matchesDue } from '~~/shared/utils/smart-list'
 
 /** 数えるのに要るのはこれだけ。手元の Item（LocalItem）をそのまま渡せる。 */
 export interface CountableItem {
@@ -16,6 +17,8 @@ export interface CountableItem {
 export interface CountableList {
   tag: string | null
   view: ListView
+  /** 期限での絞り込み（スマートリスト）。タグとは AND で重ねる。 */
+  due?: DueCondition | null
   /**
    * 期限がここまでのものだけを数える（「今日」）。
    *
@@ -50,6 +53,7 @@ export function countList(items: CountableItem[], list: CountableList): number {
     if (list.view === 'open' && item.status === 'closed') continue
     if (list.view === 'completed' && item.status !== 'closed') continue
     if (list.tag && !item.tags.includes(list.tag)) continue
+    if (!matchesDue(item.dueAt ?? null, list.due ?? null)) continue
 
     if (list.dueUntil) {
       // 期限のないものは「今日やること」ではない

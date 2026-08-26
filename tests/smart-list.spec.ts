@@ -25,6 +25,7 @@ describe('toSmartListInput', () => {
     expect(toSmartListInput({ ...base, name: '  仕事の残り  ' })).toEqual({
       name: '仕事の残り',
       tag: '仕事',
+      due: null,
       view: 'open',
       groupBy: 'priority',
       sort: 'due',
@@ -89,5 +90,45 @@ describe('withTagDefaults', () => {
   it('期限を書いていなければ、既定の「今日」ではなく「なし」にする', () => {
     // タグで見ている一覧からの追加は、今日やることとは限らない
     expect(withTagDefaults('請求書を出す', '仕事')).not.toMatch(/\^\d{4}\/\d{2}\/\d{2}/)
+  })
+})
+
+describe('toSmartListInput（期限の条件）', () => {
+  const base = {
+    name: '今週中',
+    tag: null,
+    view: 'open',
+    groupBy: 'none',
+    sort: 'due',
+  }
+
+  it('渡さなければ「絞り込まない」（null）', () => {
+    expect(toSmartListInput(base)?.due).toBeNull()
+    expect(toSmartListInput({ ...base, due: null })?.due).toBeNull()
+  })
+
+  it('向きと式がそろっていれば、そのまま読む', () => {
+    expect(
+      toSmartListInput({ ...base, due: { operator: 'within', value: ' 金曜 ' } })?.due,
+    ).toEqual({ operator: 'within', value: '金曜' })
+  })
+
+  it('日付を要らない向き（期限なし・期限あり）は式を持たない', () => {
+    expect(
+      toSmartListInput({ ...base, due: { operator: 'unset', value: '今日' } })?.due,
+    ).toEqual({ operator: 'unset', value: '' })
+  })
+
+  /*
+   * 式が空のまま保存できてしまうと、開いたときに何も当てはまらない
+   * リストになる。作れてしまうより、作らせないほうがよい。
+   */
+  it('式が要る向きなのに空なら、入力ごと断る', () => {
+    expect(toSmartListInput({ ...base, due: { operator: 'within', value: '  ' } })).toBeNull()
+    expect(toSmartListInput({ ...base, due: { operator: 'on' } })).toBeNull()
+  })
+
+  it('知らない向きは読まない', () => {
+    expect(toSmartListInput({ ...base, due: { operator: 'soon', value: '今日' } })).toBeNull()
   })
 })

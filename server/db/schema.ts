@@ -214,6 +214,17 @@ export const smartLists = pgTable(
     name: text('name').notNull(),
     /** 絞り込むタグ名。NULL なら絞り込まない。タグの id ではなく名前で持つ */
     tag: text('tag'),
+    /**
+     * 期限での絞り込み（`within` / `on` / `before` / `after` / `unset` / `set`）。
+     * NULL なら絞り込まない。タグとは AND で重ねる。
+     */
+    dueOperator: text('due_operator'),
+    /**
+     * 期限の式（`今日` `金曜`…）。日付そのものではなく式で持つ。
+     * 保存しておくリストは毎日開くので、作った日の日付を焼き付けると
+     * 翌日には別の意味になる（shared/types/smart-list.ts）。
+     */
+    dueValue: text('due_value'),
     /** 表示方法（`open` / `completed` / `all`）。 */
     view: text('view').notNull().default('open'),
     /** グループ順・並び。名前はクライアントの GroupKey / SortKey と同じ */

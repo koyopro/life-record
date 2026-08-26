@@ -8,14 +8,20 @@ import {
   type SortKey,
 } from '~~/shared/types/item'
 import {
+  DUE_OPERATORS,
+  DUE_OPERATOR_LABELS,
   LIST_VIEWS,
   LIST_VIEW_LABELS,
   SMART_LIST_NAME_MAX_LENGTH,
+  isDueOperatorBare,
   normalizeSmartListName,
+  type DueOperator,
   type ListView,
   type SmartListDto,
   type SmartListInput,
 } from '~~/shared/types/smart-list'
+import { DUE_PRESETS, type DuePreset } from '~/utils/due'
+import { parseDueExpression } from '~~/shared/utils/smart-add'
 
 /**
  * スマートリストを作る・直すフォーム（docs/08-todo-management.md 8.6）。
@@ -40,6 +46,64 @@ const tag = ref<string>(props.list?.tag ?? '')
 const view = ref<ListView>(props.list?.view ?? 'open')
 const groupBy = ref<GroupKey>(props.list?.groupBy ?? 'none')
 const sort = ref<SortKey>(props.list?.sort ?? 'priorityDueDesc')
+
+// --- 期限での絞り込み（RTM の due 条件） --------------------------------
+//
+// 「向き」と「日付の式」を分けて選ぶ。日付そのものではなく式で持つので、
+// 「金曜以内」のリストは開くたびに今週の金曜として解釈し直される。
+
+/** 絞り込まないことを表す値。`<select>` に入れるので空文字で持つ。 */
+const NO_DUE = ''
+
+const dueOperator = ref<DueOperator | typeof NO_DUE>(
+  props.list?.due?.operator ?? NO_DUE,
+)
+
+/**
+ * 日付の式。候補は SmartAdd の `^` と同じもの（`DUE_PRESETS`）を使う。
+ *
+ * 「期限なし」は向きのほうに「は空です」があるので候補から外す。
+ * 同じことを2か所から指せると、どちらで指したかで結果が変わるように見える。
+ */
+const dueValue = ref(props.list?.due?.value || '今日')
+
+const duePresets = computed(() =>
+  DUE_PRESETS.filter((preset) => preset.expression !== 'なし'),
+)
+
+/** 日付の式が要る向きか（「期限なし」「期限あり」では選ばせない）。 */
+const needsDueValue = computed(
+  () => dueOperator.value !== NO_DUE && !isDueOperatorBare(dueOperator.value),
+)
+
+/** どの日になるのかを、選ぶ前に見せる（RTM と同じ）。式のままでは読み取れない。 */
+function presetDate(preset: DuePreset): string {
+  const result = parseDueExpression(preset.expression)
+  if (!result || result.cleared) return ''
+  return `${result.date.getMonth() + 1}月${result.date.getDate()}日`
+}
+
+/**
+ * 日付の式の候補。
+ *
+ * いま無い式（前に別の書き方で保存したもの）も残す。それだけで条件を
+ * 選び直せなくなるのは困る（タグの候補と同じ考え方）。
+ */
+const valueOptions = computed(() => {
+  const options = duePresets.value.map((preset) => {
+    const date = presetDate(preset)
+    return {
+      expression: preset.expression,
+      label: date ? `${preset.label}（${date}）` : preset.label,
+    }
+  })
+
+  const current = props.list?.due?.value
+  if (current && !options.some((option) => option.expression === current)) {
+    options.unshift({ expression: current, label: current })
+  }
+  return options
+})
 
 const nameEl = ref<HTMLInputElement | null>(null)
 
@@ -66,6 +130,13 @@ function submit() {
   emit('submit', {
     name: trimmed,
     tag: tag.value || null,
+    due:
+      dueOperator.value === NO_DUE
+        ? null
+        : {
+            operator: dueOperator.value,
+            value: needsDueValue.value ? dueValue.value : '',
+          },
     view: view.value,
     groupBy: groupBy.value,
     sort: sort.value,
@@ -112,6 +183,36 @@ onMounted(() => {
         </select>
       </label>
 
+      <!--
+        期限。タグとは AND で重ねる（両方に当てはまるものだけが並ぶ）。
+        向きと日付の式を分けて選ぶ（docs/08-todo-management.md 8.6）。
+      -->
+      <div class="field">
+        <span class="field__label">期限</span>
+        <div class="field__pair">
+          <select v-model="dueOperator" class="field__input" aria-label="期限の条件">
+            <option :value="NO_DUE">絞り込まない</option>
+            <option v-for="key in DUE_OPERATORS" :key="key" :value="key">
+              {{ DUE_OPERATOR_LABELS[key] }}
+            </option>
+          </select>
+          <select
+            v-if="needsDueValue"
+            v-model="dueValue"
+            class="field__input"
+            aria-label="期限の日付"
+          >
+            <option
+              v-for="option in valueOptions"
+              :key="option.expression"
+              :value="option.expression"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+
       <label class="field">
         <span class="field__label">表示</span>
         <select v-model="view" class="field__input">
@@ -157,6 +258,21 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/*
+ * 向きと日付を横に並べる。狭いときは折り返す（どちらも選択肢の文字数ぶん
+ * 幅を要求するので、無理に1行へ収めると読めなくなる）。
+ */
+.field__pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.field__pair > .field__input {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
 .overlay {
   position: fixed;
   inset: 0;

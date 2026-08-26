@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { GroupKey, SortKey } from '~~/shared/types/item'
 import type { SmartListInput } from '~~/shared/types/smart-list'
-import { withTagDefaults } from '~~/shared/utils/smart-add'
+import { withListDefaults } from '~~/shared/utils/smart-list'
 
 /**
  * スマートリスト（docs/08-todo-management.md 8.6）。
@@ -27,10 +27,16 @@ const errorMessage = ref<string | null>(null)
 
 const listView = ref<{ create: (text: string) => Promise<boolean> } | null>(null)
 
-// リストのタグで絞り込んでいるなら、追加にもそのタグを足す
-// （付けないと、追加した途端にこのリストから消える）
+/*
+ * リストの条件で絞り込んでいるなら、追加にもその条件を既定として足す
+ * （付けないと、追加した途端にこのリストから消える）。
+ *
+ * 期限は「以内」「と等しい」のときだけ。「より前」「以降」「期限あり」は
+ * どの日を入れれば当てはまるのかが1つに決まらず、勝手に決めると
+ * 書いていない期限が入ってしまう。
+ */
 async function add(text: string) {
-  await listView.value?.create(withTagDefaults(text, list.value?.tag))
+  await listView.value?.create(withListDefaults(text, list.value))
 }
 
 /** いまの中身に1か所だけ差し替えて保存する。 */
@@ -43,6 +49,7 @@ async function save(patch: Partial<SmartListInput>) {
     await update(current.id, {
       name: current.name,
       tag: current.tag,
+      due: current.due,
       view: current.view,
       groupBy: current.groupBy,
       sort: current.sort,
@@ -102,6 +109,7 @@ async function submitEdit(input: SmartListInput) {
         status="all"
         :view="list.view"
         :fixed-tag="list.tag"
+        :due-condition="list.due"
         :sort="list.sort"
         :group="list.groupBy"
         show-sort

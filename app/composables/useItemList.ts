@@ -12,7 +12,8 @@ import {
   toSortKey,
 } from '~~/shared/types/item'
 import { groupSettingKey, sortSettingKey } from '~~/shared/types/setting'
-import type { ListView } from '~~/shared/types/smart-list'
+import type { DueCondition, ListView } from '~~/shared/types/smart-list'
+import { matchesDue } from '~~/shared/utils/smart-list'
 import type { Recurrence } from '~~/shared/types/recurrence'
 import { writeToClipboard } from '~/utils/clipboard'
 import { composeItemCopyText } from '~/utils/item-copy'
@@ -56,6 +57,8 @@ interface Options {
   tag?: MaybeRefOrGetter<string | undefined>
   /** タグが付いていない Item だけに絞るか。 */
   untagged?: MaybeRefOrGetter<boolean>
+  /** 期限での絞り込み（スマートリスト）。タグとは AND で重ねる。 */
+  due?: MaybeRefOrGetter<DueCondition | null>
   /** 期限が今日までのものだけに絞るか（「今日」リスト）。 */
   dueUntilToday?: MaybeRefOrGetter<boolean>
   /**
@@ -99,6 +102,7 @@ export function useItemList(options: Options) {
   const view = computed<ListView>(() => toValue(options.view ?? 'open'))
   const tag = computed(() => toValue(options.tag ?? undefined))
   const untagged = computed(() => toValue(options.untagged ?? false))
+  const due = computed(() => toValue(options.due ?? null))
   const dueUntilToday = computed(() => toValue(options.dueUntilToday ?? false))
   /*
    * 並び・グループ順。外から与えられていればそちらを読み書きし、
@@ -190,6 +194,8 @@ export function useItemList(options: Options) {
     }
     if (tag.value && !item.tags.includes(tag.value)) return false
     if (untagged.value && item.tags.length > 0) return false
+    // 期限の条件はタグと AND で重ねる（docs/08-todo-management.md 8.6）
+    if (!matchesDue(item.dueAt, due.value)) return false
     return true
   }
 

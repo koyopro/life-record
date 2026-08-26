@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { GROUP_LABELS, SORT_LABELS } from '~~/shared/types/item'
 import {
+  DUE_OPERATOR_LABELS,
   LIST_VIEW_LABELS,
+  isDueOperatorBare,
   type SmartListDto,
   type SmartListInput,
 } from '~~/shared/types/smart-list'
@@ -25,11 +27,18 @@ const errorMessage = ref<string | null>(null)
 function describe(list: SmartListDto): string {
   const parts = [
     list.tag ? `#${list.tag}` : 'すべてのタスク',
+    ...(list.due ? [describeDue(list.due)] : []),
     LIST_VIEW_LABELS[list.view],
     SORT_LABELS[list.sort],
   ]
   if (list.groupBy !== 'none') parts.push(`${GROUP_LABELS[list.groupBy]}でグループ`)
   return parts.join(' ・ ')
+}
+
+/** 期限の条件を「期限が金曜以内」のように読める形にする。 */
+function describeDue(due: NonNullable<SmartListDto['due']>): string {
+  const label = DUE_OPERATOR_LABELS[due.operator]
+  return isDueOperatorBare(due.operator) ? `期限${label}` : `期限が${due.value}${label}`
 }
 
 async function submit(input: SmartListInput) {

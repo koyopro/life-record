@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { smartLists } from '~~/server/db/schema'
 import { assertUuid } from '~~/server/utils/items'
-import { toSmartListDto } from '~~/server/utils/smart-lists'
+import { toSmartListDto, toSmartListRow } from '~~/server/utils/smart-lists'
 import { toSmartListInput, type SmartListDto } from '~~/shared/types/smart-list'
 
 /**
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event): Promise<SmartListDto> => {
 
   const [row] = await useDb()
     .update(smartLists)
-    .set(input)
+    .set(toSmartListRow(input))
     .where(eq(smartLists.id, id))
     .returning()
 
