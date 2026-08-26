@@ -2151,10 +2151,28 @@ defineExpose({
 .editor :deep(.sb-line--code-header),
 .editor :deep(.sb-line--code-body) {
   margin-left: calc(var(--sb-indent, 0) * 1.25rem);
+  /* 字下げは箱そのものを margin で寄せて表すので、行の padding は使わない */
   padding-left: 0;
   background: var(--bg);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
+}
+
+/*
+ * 中身の行は `code:` の行から**1字下げる**（Scrapbox と同じ）。
+ *
+ * ブロックの続きであることは本文でも行頭の空白1つで表していて、その空白は
+ * 実際に入っている。行頭は文字として入力欄に入れず余白で見せる決まり
+ * （docs/11-scrapbox-notation.md 11.6）なので、その1字ぶんをここで空ける。
+ * 空けないと、書いてある空白が表示から消えて中身が箱の縁に貼り付く。
+ *
+ * 幅は等幅の1文字ぶん。`font-family` だけをそろえて `ch` を使い、
+ * `font-size` は変えない（変えると `.sb-line` の min-height（em）まで動く）。
+ * 中身の文字サイズぶん（0.875）を掛けて、コード1文字の幅にそろえる。
+ */
+.editor :deep(.sb-line--code-body) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding-left: calc(1ch * 0.875);
 }
 
 .editor :deep(.sb-line--code-header) {
