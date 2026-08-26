@@ -12,8 +12,6 @@ import {
 import { normalizeTagName } from '~~/shared/types/tag'
 import { formatAppDate, isAppDate } from '~~/shared/utils/date'
 import type { Shortcut } from '~/composables/useShortcuts'
-import { formatDue } from '~/utils/due'
-import { tagColorVar, tagTextColorVar } from '~/utils/tag-color'
 
 /**
  * 横断検索（docs/03-functional-spec.md 3.6）。
@@ -55,9 +53,8 @@ const from = computed(() =>
 const to = computed(() => (isAppDate(route.query.to) ? String(route.query.to) : ''))
 
 // タグでの絞り込み（docs/03-functional-spec.md 3.6）。一覧と同じく
-// 名前で指定し、状態は URL に置く（docs/09-tags.md 9.3）。
-// colorOf は結果のタグを一覧と同じ色で塗るのに使う
-const { tags: allTags, colorOf } = useTags()
+// 名前で指定し、状態は URL に置く（docs/09-tags.md 9.3）
+const { tags: allTags } = useTags()
 
 const tag = computed<string | undefined>(() => {
   const value = route.query.tag
@@ -151,7 +148,14 @@ const hasQuery = computed(() => term.value.length > 0)
 const input = ref<HTMLInputElement | null>(null)
 onMounted(() => {
   // タッチ端末では、開いた瞬間にキーボードがせり上がると邪魔になる
-  if (!window.matchMedia('(hover: none)').matches) input.value?.focus()
+  if (window.matchMedia('(hover: none)').matches) return
+  /*
+   * すでに結果が出ている状態で開いたとき（`?q=` 付きのリンク、戻ってきた
+   * とき）は、入力欄へ入れない。読みたいのは結果のほうで、ここに
+   * フォーカスがあると `j` / `k` が打てない。打ち直すときは `/` で戻る。
+   */
+  if (hasQuery.value) return
+  input.value?.focus()
 })
 
 const KIND_LABELS: Record<Exclude<SearchKind, 'all'>, string> = {
@@ -160,31 +164,65 @@ const KIND_LABELS: Record<Exclude<SearchKind, 'all'>, string> = {
   diary: '日記',
 }
 
+const itemStore = useItemStore()
+
+/**
+ * 検索の当たりを、一覧に並んでいるのと同じ Item に置き換える。
+ *
+ * カード（`ItemCard`）も操作（`ItemActions`）も一覧と共通にするので、
+ * **手元（IndexedDB）の Item そのもの**を渡す。応答をそのまま描くと、
+ * 完了にしたりタグを外したりしても結果の行が古いままになる。
+ *
+ * まだ手元に無いとき（他の端末で作られた直後など）は、応答から最小限を
+ * 組み立てて出す。並べるものが消えるよりは、読めるほうがよい。
+ */
+function itemOf(hit: SearchHit): ItemDto | null {
+  if (!hit.item) return null
+
+  const local = itemStore.byId(hit.item.id)
+  if (local) return local
+
+  return {
+    ...hit.item,
+    title: hit.title,
+    url: null,
+    body: null,
+    recurrenceRule: null,
+    recurrenceBasis: null,
+    seriesId: null,
+    completedAt: null,
+    createdAt: hit.date,
+    updatedAt: hit.date,
+  }
+}
+
 /**
  * 描くのに要るものを1行ぶんにまとめる。
  *
- * 期限も日付も、そのまま置くと1行につき何度も組み立て直すことになる
- * （表示するかの判定・色・文字で3回）。
+ * 手元の Item を引き当てるのも日付を組み立てるのも、そのまま置くと
+ * 1行につき何度も繰り返すことになる。
  */
 const rows = computed(() =>
   hits.value.map((hit) => ({
     /** カーソル（useListCursor）が行を見分ける鍵。 */
     id: hit.id,
     hit,
+    /** カードに渡すタスク。日記の行では null。 */
+    item: itemOf(hit),
     /*
-     * 期限。一覧のカード（`ItemCard`）と同じ相対表現・同じ色にする。
-     * 探し当てたタスクが、一覧で見ているのと同じ顔つきで並ぶようにするため。
-     */
-    due: hit.item ? formatDue(hit.item) : null,
-    /*
-     * 行の頭に出す日付。タスク名で当たった行は**作成日を出さない**。
-     * いつ作ったかは探すときの手がかりにならず、右端の期限と2つの日付が
-     * 並んで読み取りにくくなる。作業記録と日記の日付は、抜粋がいつ
-     * 書かれたものかを示すので残す。
+     * 行に添える日付。タスク名で当たった行は**作成日を出さない**。
+     * いつ作ったかは探すときの手がかりにならず、カード右端の期限と
+     * 2つの日付が並んで読み取りにくくなる。作業記録と日記の日付は、
+     * 抜粋がいつ書かれたものかを示すので残す。
      */
     date: hit.kind === 'item' ? '' : formatAppDate(hit.date),
   })),
 )
+
+/** 結果に出てくるタスクの id（出てきた順、重複を除く）。 */
+const taskIds = computed(() => [
+  ...new Set(hits.value.flatMap((hit) => (hit.item ? [hit.item.id] : []))),
+])
 
 // --- カーソルと分割表示 -------------------------------------------------
 //
@@ -193,6 +231,21 @@ const rows = computed(() =>
 // ようにするため、いちいち詳細画面へ移らずに済ませたい。
 
 const { cursor, cursorRow, moveCursor, focusRow, listEl } = useListCursor(rows)
+
+/** カーソルが指しているタスク。日記の行にいる間は null（操作の対象も空になる）。 */
+const focusedItemId = computed(() => cursorRow.value?.hit.item?.id ?? null)
+
+/**
+ * 一覧とまったく同じ操作を、検索結果に対しても効かせる。
+ *
+ * 絞り込みは検索（サーバー）が済ませているので、出す Item は id で直に渡す。
+ * カーソルは行の側（`useListCursor`）が持ち、タスクを指している間だけ
+ * ここへ届く。あとは選択も編集も取り消しも、一覧と同じ道具がそのまま働く。
+ */
+const list = useItemList({
+  status: 'all',
+  external: { ids: taskIds, focusedId: focusedItemId },
+})
 
 const split = useSplitLayout()
 
@@ -225,6 +278,12 @@ const selectedId = computed(() =>
  */
 const detailOpen = computed(() => split.value && Boolean(cursorRow.value))
 
+/** 右ペインに出す日記の日付。タスクの行を指している間は無い。 */
+const selectedDiaryDate = computed(() => {
+  const row = cursorRow.value
+  return split.value && row && row.hit.kind === 'diary' ? row.hit.date : null
+})
+
 // カーソルが実際に動いたら、押して選んだものは解除してカーソルに追従させる
 watch(
   () => cursorRow.value?.id,
@@ -242,12 +301,12 @@ watch(selectedId, (id) => {
   router.replace({ query })
 })
 
+type Row = (typeof rows.value)[number]
+
 /**
  * 行を開く。広い画面のタスクは右ペインに出し、それ以外はそのページへ移る。
- *
- * 日記には埋め込める詳細が無いので、広い画面でもページを開く。
  */
-function open(row: (typeof rows.value)[number]) {
+function open(row: Row) {
   focusRow(row.id)
   if (split.value && row.hit.item) {
     pinnedId.value = row.hit.item.id
@@ -257,18 +316,80 @@ function open(row: (typeof rows.value)[number]) {
 }
 
 /**
- * 行を押した（マウス・指）。
+ * タスクを開く（`ItemActions` から。操作シートの「詳細を開く」）。
  *
- * 行はリンクのままにしておき、右ペインで開けるときだけ遷移を止める。
+ * 行からの `open` と違い、渡ってくるのは Item そのもの。行き先の決め方は
+ * 同じで、広い画面なら右ペイン、狭ければ詳細画面。
+ */
+function openItem(item: ItemDto) {
+  if (split.value) {
+    pinnedId.value = item.id
+    return
+  }
+  void navigateTo(`/items/${item.id}`)
+}
+
+/**
+ * 日記の行を押した（マウス・指）。
+ *
+ * 行はリンクのままにしておき、右ペインで読めるときだけ遷移を止める。
  * ⌘ + クリックや中クリックで別タブに開けるようにしておきたいため。
  */
-function onRowClick(row: (typeof rows.value)[number], event: MouseEvent) {
+function onDiaryClick(row: Row, event: MouseEvent) {
   focusRow(row.id)
-  if (!split.value || !row.hit.item) return
+  if (!split.value) return
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   event.preventDefault()
-  pinnedId.value = row.hit.item.id
 }
+
+/**
+ * チェックの四角を押した。
+ *
+ * 一覧と同じく、チェックと合わせて**カーソルもその行へ動かす**。押した行が
+ * 色付きにならないと、続けて押すキー操作の起点が読み取れない。
+ */
+function selectRow(row: Row) {
+  focusRow(row.id)
+  if (row.hit.item) list.toggleSelect(row.hit.item.id)
+}
+
+/**
+ * タスクを開いたうえで、詳細の欄へ移る（`r` / `u` / `y`）。
+ *
+ * 右ペインが出ていればその欄へ。出ていない狭い画面では、編集できる場所が
+ * 詳細画面しかないのでそちらへ移動し、どこへ入りたかったかを URL で渡す
+ * （一覧と同じ。docs/08-todo-management.md 8.4）。
+ */
+const FOCUS_QUERY = { Title: 'title', Url: 'url', Body: 'body' } as const
+
+const detail = ref<{
+  focusTitle: () => void
+  focusUrl: () => void | Promise<void>
+  focusBody: () => void
+} | null>(null)
+
+async function focusDetail(field: 'Title' | 'Url' | 'Body') {
+  const target = list.cursorItem.value
+  if (!target) return
+
+  if (!split.value) {
+    await navigateTo({
+      path: `/items/${target.id}`,
+      query: { focus: FOCUS_QUERY[field] },
+    })
+    return
+  }
+
+  pinnedId.value = target.id
+  await nextTick()
+  detail.value?.[`focus${field}`]()
+}
+
+/** タスクへの操作（`ItemActions`）。カードのスワイプ・長押しをそちらへ渡す。 */
+const actions = ref<{
+  toggleComplete: (item: ItemDto) => void
+  openSheet: (item: ItemDto) => void
+} | null>(null)
 
 /*
  * 結果の中を送るショートカット。一覧（ItemListView）と同じ打鍵にする。
@@ -418,76 +539,102 @@ useShortcuts(shortcuts)
       <p v-else-if="!hits.length" class="page__placeholder">見つかりませんでした。</p>
 
       <!--
-        タスクの行は、一覧のカード（ItemCard）と同じ読み取り方にする。
-        左端の帯で重要度、タイトルの後ろにタグ、右端に期限。探し当てたものが
-        一覧で見ているのと違う顔つきだと、同じタスクだと結び付けるのに一拍かかる。
+        タスクの行は、一覧とまったく同じカード（ItemCard）で出す。探し当てた
+        ものが一覧で見ているのと違う顔つきだと、同じタスクだと結び付けるのに
+        一拍かかるうえ、そこからできることも別に覚えることになる。
       -->
-      <ul v-else ref="listEl" class="results">
-        <li v-for="(row, index) in rows" :key="row.id" :data-item-id="row.id">
+      <div
+        v-else
+        ref="listEl"
+        class="results"
+        :class="{ 'results--selecting': list.selectedIds.value.size }"
+      >
+        <div
+          v-for="(row, index) in rows"
+          :key="row.id"
+          class="row"
+          :class="{ 'row--noted': row.item && row.hit.excerpt }"
+          :data-item-id="row.id"
+        >
+          <ItemCard
+            v-if="row.item"
+            :item="row.item"
+            :focused="index === cursor"
+            :selected="list.selectedIds.value.has(row.item.id)"
+            @focus="focusRow(row.id)"
+            @select="selectRow(row)"
+            @complete="actions?.toggleComplete(row.item)"
+            @open="open(row)"
+            @longpress="actions?.openSheet(row.item)"
+            @filter-tag="selectTag"
+          />
+
+          <!--
+            日記の行。カードと同じ密度で並べるが、左端の帯・チェック・期限は
+            出さない（どれも Item に付くもので、日記は持たない）。
+          -->
           <NuxtLink
-            class="hit"
-            :class="[
-              row.hit.item ? `hit--priority-${row.hit.item.priority ?? 'none'}` : '',
-              { 'hit--focused': index === cursor },
-            ]"
+            v-else
+            class="diary-hit"
+            :class="{ 'diary-hit--focused': index === cursor }"
             :to="row.hit.path"
-            @click="onRowClick(row, $event)"
+            @click="onDiaryClick(row, $event)"
           >
-            <div class="hit__head">
-              <time v-if="row.date" class="hit__date" :datetime="row.hit.date">
-                {{ row.date }}
-              </time>
-              <span class="hit__kind">{{ KIND_LABELS[row.hit.kind] }}</span>
-            </div>
-
-            <div class="hit__body">
-              <span class="hit__title">{{ row.hit.title }}</span>
-              <!--
-                タグは押せない。行そのものが行き先へのリンクなので、中に別の
-                押しどころを入れ子にできない（絞り込みは上のタグ行から）。
-              -->
-              <span
-                v-for="name in row.hit.item?.tags ?? []"
-                :key="name"
-                class="hit__tag"
-                :style="{
-                  '--tag-color': tagColorVar(colorOf(name)),
-                  '--tag-text': tagTextColorVar(colorOf(name)),
-                }"
-              >
-                {{ name }}
-              </span>
-              <span
-                v-if="row.due && row.due.state !== 'none'"
-                class="hit__due"
-                :class="`hit__due--${row.due.state}`"
-              >
-                {{ row.due.label }}
-              </span>
-            </div>
-
-            <p v-if="row.hit.excerpt" class="hit__excerpt">{{ row.hit.excerpt }}</p>
+            <span class="diary-hit__date">{{ row.date }}</span>
+            <span class="diary-hit__kind">日記</span>
+            <span class="diary-hit__excerpt">{{ row.hit.excerpt }}</span>
           </NuxtLink>
-        </li>
-      </ul>
+
+          <!--
+            作業記録で当たった行。何がどこに書いてあって当たったのかは、
+            カードだけでは分からないので下に添える。
+          -->
+          <p v-if="row.item && row.hit.excerpt" class="note-line">
+            <span class="note-line__date">{{ row.date }}</span>
+            <span class="note-line__kind">{{ KIND_LABELS[row.hit.kind] }}</span>
+            <span class="note-line__text">{{ row.hit.excerpt }}</span>
+          </p>
+        </div>
+      </div>
 
       <template #detail>
         <!-- id が変わったら作り直す。前のタスクの編集状態を持ち越さないため -->
         <ItemDetail
           v-if="selectedId"
           :key="selectedId"
+          ref="detail"
           :item-id="selectedId"
           embedded
           @changed="refresh()"
         />
         <!--
-          日記の行。埋め込める詳細が無いので、ここでは開かずページへ移る。
-          枠だけは残す（送るたびに幅が跳ねないように）。
+          日記は読むだけで出す。ここで書けるようにはしない（書く場所は
+          日記のページ）。探しているあいだに中身を確かめられれば足りる。
         -->
-        <p v-else class="detail-note">日記はページを開いて読みます（<kbd>Enter</kbd>）。</p>
+        <DiaryPreview
+          v-else-if="selectedDiaryDate"
+          :key="selectedDiaryDate"
+          :date="selectedDiaryDate"
+        />
       </template>
     </ListDetailSplit>
   </div>
+
+  <!--
+    タスクへの操作（ショートカット・ダイアログ・操作シート・選択中の帯）。
+    一覧と同じものを使う（app/components/ItemActions.vue）。
+  -->
+  <ItemActions
+    ref="actions"
+    :list="list"
+    :completed="view === 'completed'"
+    switchable
+    :open="openItem"
+    :focus-detail="focusDetail"
+    @update:completed="
+      (value) => setQuery({ completed: value ? 'true' : undefined })
+    "
+  />
 </template>
 
 <style scoped>
@@ -634,152 +781,109 @@ useShortcuts(shortcuts)
   font-size: 0.8125rem;
 }
 
+/*
+ * 結果は一覧と同じ密度で並べる。1件ずつ浮かせず、罫線だけで区切る
+ * （ItemCard がその形なので、間を空けるとカードだけが浮いて見える）。
+ */
 .results {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
+  min-width: 0;
 }
 
-.hit {
-  position: relative;
-  display: grid;
-  gap: 0.1875rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  /* 左端は重要度の帯（::before）の場所を空ける */
-  padding: 0.75rem 0.75rem 0.75rem 0.875rem;
-  color: inherit;
-  text-decoration: none;
+/* 下端に浮かせた操作の帯（SelectionBar）のぶん、最後のカードの下を空ける */
+.results--selecting {
+  padding-bottom: 4rem;
 }
 
 /*
- * 重要度は左端の帯で示す（一覧のカードと同じ。docs/08-todo-management.md 8.1）。
- * 読まずに優先度が分かるようにするため。タスクに紐づかない行（日記）には
- * 付かないので、帯そのものを出さない。
+ * 抜粋を添える行（作業記録で当たったもの）は、カードとの間の罫線を消して
+ * ひと続きに見せる。区切られていると、下の1行が次の結果に見えてしまう。
  */
-.hit--priority-none::before,
-.hit--priority-1::before,
-.hit--priority-2::before,
-.hit--priority-3::before {
-  content: '';
-  position: absolute;
-  left: 0.25rem;
-  top: 0.5rem;
-  bottom: 0.5rem;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--priority-none);
-}
-
-.hit--priority-1::before {
-  background: var(--priority-1);
-}
-
-.hit--priority-2::before {
-  background: var(--priority-2);
-}
-
-.hit--priority-3::before {
-  background: var(--priority-3);
+.row--noted :deep(.card) {
+  border-bottom: 0;
 }
 
 /*
- * カーソル位置。キーボード操作の対象がどれかを、行の背景色で示す
- * （一覧のカードと同じ。`ItemCard` の card--focused）。
+ * 日記の行。カードと同じ高さ・同じ罫線で並べるが、左端の帯・チェック・
+ * 期限は出さない（どれも Item に付くもので、日記は持たない）。
  */
-.hit--focused {
-  background: var(--cursor-bg);
-  border-color: var(--accent);
-}
-
-.hit__head {
+.diary-hit {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
+  min-width: 0;
+  padding: 0.375rem 0.75rem 0.375rem 0.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+/* カーソル位置。一覧のカードと同じ塗りで示す */
+.diary-hit--focused {
+  background: var(--cursor-bg);
+}
+
+.diary-hit__date {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-hit__kind {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.375rem;
   color: var(--text-muted);
   font-size: 0.75rem;
 }
 
-.hit__date {
-  font-variant-numeric: tabular-nums;
-}
-
-.hit__kind {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 0.375rem;
+.diary-hit__excerpt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.875rem;
 }
 
 /*
- * タイトル・タグ・期限を1行に並べる（一覧のカードに倣う）。入りきらない
- * ときだけ折り返し、期限は右端に寄せて、行のどこに出るかを一定にする。
+ * 作業記録で当たった行に添える1行。カードの下に、字下げして小さく置く。
+ * どこに書いてあって当たったのかは、カードだけでは分からないため。
  */
-.hit__body {
+.note-line {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  font-size: 0.9375rem;
-}
-
-.hit__title {
-  font-weight: 600;
-}
-
-/* 一覧のタグ（ItemCard の card__tag）と同じ塗りつぶしピル */
-.hit__tag {
-  flex-shrink: 0;
-  background: var(--tag-color);
-  border-radius: 999px;
-  padding: 0 0.375rem;
-  color: var(--tag-text);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-/* 期限は右端へ。色分けも一覧のカードと同じにする */
-.hit__due {
-  margin-left: auto;
-  flex-shrink: 0;
-  white-space: nowrap;
+  gap: 0.5rem;
+  margin: 0;
+  min-width: 0;
+  padding: 0 0.75rem 0.375rem 2.125rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 0.8125rem;
+}
+
+.note-line__date {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
-.hit__due--overdue {
-  color: var(--danger);
-  font-weight: 600;
-}
-
-.hit__due--today {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.hit__excerpt {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-
-/* 日記の行を指している間、右ペインに出す断り書き */
-.detail-note {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-}
-
-.detail-note kbd {
-  font: inherit;
+.note-line__kind {
+  flex: 0 0 auto;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 0.25rem;
+  border-radius: 999px;
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+}
+
+.note-line__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -12,8 +12,6 @@ import {
 } from '~~/shared/types/item'
 import type { ListView } from '~~/shared/types/smart-list'
 import { groupItems } from '~/utils/item-order'
-import { describeUrlOpen, openableUrls } from '~/utils/item-url'
-import type { Recurrence } from '~~/shared/types/recurrence'
 import { normalizeTagName } from '~~/shared/types/tag'
 
 const props = withDefaults(
@@ -116,22 +114,6 @@ const list = useItemList({
  * 各グループの中の順序は並びのまま変えない。
  */
 const groupedItems = computed(() => groupItems(list.items.value, list.groupBy.value))
-
-const helpOpen = ref(false)
-const dueOpen = ref(false)
-const tagOpen = ref(false)
-const tagFocusRemoval = ref(false)
-const recurrenceOpen = ref(false)
-
-/**
- * 操作シート（ItemActionSheet）を開いている対象。
- *
- * 長押しは触れたその1件、チェックからはチェックしたもの全部が対象。
- * どちらも同じシートを出すが、対象の決め方だけが違う。
- */
-const sheetFor = ref<
-  { mode: 'longpress'; item: ItemDto } | { mode: 'selection' } | null
->(null)
 
 // --- 分割表示（docs/03-functional-spec.md 3.1） ---------------------------
 //
@@ -242,26 +224,6 @@ async function focusDetail(field: 'Title' | 'Url' | 'Body') {
 }
 
 /**
- * タスクの URL を別タブで開く（`Shift` + `u`）。
- *
- * チェックしたタスクがあれば**その全部**を新しいタブで開く（他の操作と同じく
- * 選択中の全件が対象。docs/08-todo-management.md 8.4）。チェックが無ければ
- * カーソルのタスク1件。開けるのは http(s) のみで、保存時にも同じ条件で弾いている。
- *
- * 開くのは押した打鍵の流れの中で行う。待ってから開くと、利用者の操作から
- * 離れた開き方になり、ブラウザにポップアップとして止められる。
- */
-function openUrl() {
-  const targets = list.targets.value
-  if (targets.length === 0) return
-
-  const found = openableUrls(targets)
-  for (const url of found.urls) window.open(url, '_blank', 'noopener,noreferrer')
-
-  list.message.value = describeUrlOpen(found)
-}
-
-/**
  * チェックの四角を押した（マウス・指）。
  *
  * チェックと合わせて**カーソルもその行へ動かす**。押した行が色付きにならないと、
@@ -322,8 +284,10 @@ function showCompleted(value: boolean) {
 }
 
 /**
- * ショートカット定義（docs/08-todo-management.md 8.4）。
- * ヘルプ（`?`）はこの配列から生成する。
+ * 一覧の中を移動するショートカット（docs/08-todo-management.md 8.4）。
+ *
+ * 編集・選択・削除は `ItemActions` が持つ（検索結果と共通）。ここに残すのは
+ * 「何を1本の並びとして送るか」を知っていないと書けないものだけ。
  */
 const shortcuts = computed<Shortcut[]>(() => [
   {
@@ -350,327 +314,30 @@ const shortcuts = computed<Shortcut[]>(() => [
       if (target) open(target)
     },
   },
-  ...(switchable.value
-    ? [
-        {
-          keys: ['h'],
-          label: '完了 / 未完了を切り替え',
-          group: '移動',
-          run: () => showCompleted(!completed.value),
-        } satisfies Shortcut,
-      ]
-    : []),
-  {
-    keys: ['i'],
-    label: 'タスクを選択',
-    group: '選択',
-    run: () => list.toggleSelect(),
-  },
-  {
-    prefix: '*',
-    keys: ['a'],
-    label: '全タスクを選択',
-    group: '選択',
-    run: () => list.selectAll(),
-  },
-  {
-    prefix: '*',
-    keys: ['n'],
-    label: 'すべてのタスクの選択を解除',
-    group: '選択',
-    run: () => list.clearSelection(),
-  },
-  {
-    prefix: '*',
-    keys: ['t'],
-    label: '期限が今日のタスクを選択',
-    group: '選択',
-    run: () => list.selectByDue('today'),
-  },
-  {
-    prefix: '*',
-    keys: ['o'],
-    label: '期限が明日のタスクを選択',
-    group: '選択',
-    run: () => list.selectByDue('tomorrow'),
-  },
-  {
-    prefix: '*',
-    keys: ['v'],
-    label: '期限切れのタスクを選択',
-    group: '選択',
-    run: () => list.selectByDue('overdue'),
-  },
-  {
-    // 完了側を見ているときは戻す操作のほうが要る。RTM も同じキーで両方を担う
-    keys: ['c'],
-    label: completed.value ? '未完了に戻す' : '完了にする',
-    group: '編集',
-    run: () => (completed.value ? list.setStatus('backlog') : list.complete()),
-  },
-  {
-    keys: ['b'],
-    label: '未着手にする',
-    group: '編集',
-    run: () => list.setStatus('backlog'),
-  },
-  {
-    keys: ['w'],
-    label: '対応中にする',
-    group: '編集',
-    run: () => list.setStatus('in_progress'),
-  },
-  {
-    keys: ['d'],
-    label: '期日を変更',
-    group: '編集',
-    run: () => {
-      if (list.targets.value.length > 0) dueOpen.value = true
-    },
-  },
-  {
-    keys: ['p', 'P'],
-    display: 'p',
-    label: '延期（明日にする）',
-    group: '編集',
-    run: () => list.postpone(),
-  },
-  {
-    keys: ['1'],
-    label: '優先度を1に設定',
-    group: '編集',
-    run: () => list.setPriority(1),
-  },
-  {
-    keys: ['2'],
-    label: '優先度を2に設定',
-    group: '編集',
-    run: () => list.setPriority(2),
-  },
-  {
-    keys: ['3'],
-    label: '優先度を3に設定',
-    group: '編集',
-    run: () => list.setPriority(3),
-  },
-  {
-    keys: ['4'],
-    label: '優先度を設定しない',
-    group: '編集',
-    run: () => list.setPriority(null),
-  },
-  {
-    keys: ['s'],
-    label: 'タグを変更',
-    group: '編集',
-    run: () => openTags(false),
-  },
-  {
-    keys: ['r'],
-    label: '名称を変更',
-    group: '編集',
-    run: () => focusDetail('Title'),
-  },
-  {
-    keys: ['u'],
-    label: 'URL を変更',
-    group: '編集',
-    run: () => focusDetail('Url'),
-  },
-  {
-    keys: ['y'],
-    label: '今日の作業記録を書く',
-    group: '編集',
-    run: () => focusDetail('Body'),
-  },
-  {
-    keys: ['U'],
-    display: 'u',
-    shift: true,
-    label: 'URL を開く',
-    group: 'その他',
-    run: () => openUrl(),
-  },
-  {
-    keys: ['f'],
-    label: 'くり返し設定を変更',
-    group: '編集',
-    run: () => {
-      if (list.targets.value.length > 0) recurrenceOpen.value = true
-    },
-  },
-  {
-    keys: ['Delete', 'Backspace'],
-    display: 'Delete',
-    label: '削除',
-    group: '編集',
-    run: () => list.remove(),
-  },
   {
     /*
-     * 写すのは標準のコピーと同じ打鍵にする（小文字の `c` は完了）。
-     * ただし文字を選んでいるなら、その選択を写したいはずなのでブラウザに譲る。
+     * 検索へ移る。app.vue には置かない。ページは非同期に読み込まれるので
+     * app.vue の登録のほうが先になり、検索画面自身の `/`（検索語を打ち直す）
+     * を追い越してしまう。
      */
-    keys: ['c'],
-    display: 'C',
-    meta: true,
-    label: 'タイトルと本文をコピー',
-    group: 'その他',
-    yieldToBrowser: hasTextSelection,
-    run: () => list.copy(),
-  },
-  {
-    keys: ['z'],
-    label: '元に戻す',
-    group: 'その他',
-    run: () => list.undo(),
-  },
-  {
     keys: ['/'],
     label: '検索',
     group: 'その他',
-    run: () => navigateTo('/search'),
-  },
-  {
-    keys: ['?', '/'],
-    display: '?',
-    shift: true,
-    label: 'ショートカット一覧',
-    group: 'その他',
-    run: () => {
-      helpOpen.value = true
-    },
-  },
-  {
-    keys: ['Escape'],
-    display: 'Esc',
-    label: 'キャンセル / 選択解除',
-    group: 'その他',
-    allowInInput: true,
-    run: () => {
-      if (
-        helpOpen.value ||
-        dueOpen.value ||
-        tagOpen.value ||
-        recurrenceOpen.value ||
-        sheetFor.value
-      ) {
-        helpOpen.value = false
-        dueOpen.value = false
-        tagOpen.value = false
-        recurrenceOpen.value = false
-        sheetFor.value = null
-        return
-      }
-      list.clearSelection()
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur()
-      }
-    },
+    run: () => void navigateTo('/search'),
   },
 ])
 
-const { groups } = useShortcuts(shortcuts)
-
-async function toggleComplete(item: ItemDto) {
-  list.focusItem(item.id)
-  list.clearSelection()
-  await nextTick()
-  if (item.status === 'closed') await list.setStatus('backlog')
-  else await list.complete()
-}
-
-async function applyDue(due: { date: Date; hasTime: boolean } | null) {
-  dueOpen.value = false
-  await list.setDue(due?.date ?? null, due?.hasTime ?? false)
-}
-
-function openTags(focusRemoval: boolean) {
-  if (list.targets.value.length === 0) return
-  tagFocusRemoval.value = focusRemoval
-  tagOpen.value = true
-}
-
-/** 対象に付いているタグ（複数選択時は和集合）。 */
-const targetTags = computed(() =>
-  list.targets.value.flatMap((item) => item.tags),
-)
-
-async function applyTags(changes: { add: string[]; remove: string[] }) {
-  tagOpen.value = false
-  await list.applyTags(changes.add, changes.remove)
-}
-
-/** 単一選択なら現在の設定を初期値に入れる。 */
-const currentRecurrence = computed(() => {
-  const targets = list.targets.value
-  if (targets.length !== 1) return null
-  const target = targets[0]!
-  if (!target.recurrenceRule || !target.recurrenceBasis) return null
-  return { rule: target.recurrenceRule, basis: target.recurrenceBasis }
-})
-
-async function applyRecurrence(recurrence: Recurrence | null) {
-  recurrenceOpen.value = false
-  await list.setRecurrence(recurrence)
-}
-
-/** 操作シートの対象。 */
-const sheetItems = computed<ItemDto[]>(() => {
-  const opened = sheetFor.value
-  if (!opened) return []
-  return opened.mode === 'longpress' ? [opened.item] : list.targets.value
-})
-
-/**
- * 操作シートから実行する。
- *
- * 長押しは触れた1件だけが対象なので、チェックを解いてカーソルを合わせてから
- * 実行する（操作は list.targets を見るため）。チェックからのときは、それが
- * そのまま対象なので何も動かさない。
- */
-async function fromSheet(action: () => unknown) {
-  const opened = sheetFor.value
-  sheetFor.value = null
-  if (!opened) return
-
-  if (opened.mode === 'longpress') {
-    list.focusItem(opened.item.id)
-    list.clearSelection()
-    await nextTick()
-  }
-  await action()
-}
-
-/**
- * 詳細を開く（シートに出るのは1件のときだけ）。
- *
- * 対象はシートを閉じる前に控える。閉じると sheetItems は空になる。
- */
-function openFromSheet() {
-  const target = sheetItems.value[0]
-  return fromSheet(() => target && open(target))
-}
-
-/** チェックしたタスクをまとめて完了にする（完了側を見ているときは戻す）。 */
-function completeSelection() {
-  return completed.value ? list.setStatus('backlog') : list.complete()
-}
+useShortcuts(shortcuts)
 
 /*
- * 選択中は下端に操作の帯（SelectionBar）が出る。同じ場所にある「＋」
- * （app.vue）と重ならないよう、選んでいる件数を知らせる。
+ * 操作（完了・期限・タグ・削除…）は ItemActions が持つ（検索結果と共通）。
+ * カードのスワイプと長押しだけはカードから届くので、そちらへ渡す。
  */
-const selectionCount = useSelectionCount()
-
-watchEffect(() => {
-  selectionCount.value = list.selectedIds.value.size
-})
-
-// 画面を離れたら帯も消える。「＋」を隠したままにしない
-onUnmounted(() => {
-  selectionCount.value = 0
-})
+const actions = ref<{
+  toggleComplete: (item: ItemDto) => void
+  openSheet: (item: ItemDto) => void
+  showHelp: () => void
+} | null>(null)
 
 defineExpose({
   create: list.create,
@@ -766,7 +433,7 @@ defineExpose({
               type="button"
               class="list__help"
               aria-label="キーボードショートカット"
-              @click="helpOpen = true"
+              @click="actions?.showHelp()"
             >
               ?
             </button>
@@ -809,9 +476,9 @@ defineExpose({
                 :ignore-status="view === 'all'"
                 @focus="list.focusItem(item.id)"
                 @select="selectItem(item)"
-                @complete="toggleComplete(item)"
+                @complete="actions?.toggleComplete(item)"
                 @open="open(item)"
-                @longpress="sheetFor = { mode: 'longpress', item }"
+                @longpress="actions?.openSheet(item)"
                 @filter-tag="selectTag"
               />
             </li>
@@ -835,60 +502,19 @@ defineExpose({
     </template>
   </ListDetailSplit>
 
-  <ShortcutHelp v-if="helpOpen" :groups="groups" @close="helpOpen = false" />
-
-    <DueDialog
-      v-if="dueOpen"
-      :count="list.targets.value.length"
-      @submit="applyDue"
-      @close="dueOpen = false"
-    />
-
-    <RecurrenceDialog
-      v-if="recurrenceOpen"
-      :count="list.targets.value.length"
-      :current="currentRecurrence"
-      @submit="applyRecurrence"
-      @close="recurrenceOpen = false"
-    />
-
-    <TagDialog
-      v-if="tagOpen"
-      :tags="targetTags"
-      :count="list.targets.value.length"
-      :focus-removal="tagFocusRemoval"
-      @apply="applyTags"
-      @close="tagOpen = false"
-    />
-
-    <ItemActionSheet
-      v-if="sheetFor"
-      :items="sheetItems"
-      @close="sheetFor = null"
-      @status="(value) => fromSheet(() => list.setStatus(value))"
-      @priority="(value) => fromSheet(() => list.setPriority(value))"
-      @postpone="fromSheet(() => list.postpone())"
-      @due="fromSheet(() => (dueOpen = true))"
-      @tags="fromSheet(() => openTags(false))"
-      @recurrence="fromSheet(() => (recurrenceOpen = true))"
-      @open="openFromSheet"
-      @remove="fromSheet(() => list.remove())"
-    />
-
-    <!--
-      チェックしたタスクをまとめて操作する帯。1件も選んでいなければ描かない
-      （docs/08-todo-management.md 8.4）。
-    -->
-    <SelectionBar
-      v-if="list.selectedIds.value.size"
-      :count="list.selectedIds.value.size"
-      :complete-label="completed ? '未完了に戻す' : '完了'"
-      @complete="completeSelection"
-      @due="dueOpen = true"
-      @tags="openTags(false)"
-      @more="sheetFor = { mode: 'selection' }"
-      @clear="list.clearSelection()"
-    />
+  <!--
+    タスクへの操作（ショートカット・ダイアログ・操作シート・選択中の帯）。
+    検索結果と同じものを使う（app/components/ItemActions.vue）。
+  -->
+  <ItemActions
+    ref="actions"
+    :list="list"
+    :completed="completed"
+    :switchable="switchable"
+    :open="open"
+    :focus-detail="focusDetail"
+    @update:completed="showCompleted"
+  />
 </template>
 
 <style scoped>

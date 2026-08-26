@@ -20,9 +20,32 @@ import { buildItemDraft } from '~/utils/item-draft'
 import { groupItems, nextFocusAfterRemoval } from '~/utils/item-order'
 import { endOfAppDay, startOfAppDay } from '~~/shared/utils/date'
 
+/**
+ * 一覧に出す Item を、絞り込みではなく**外から**与える（検索結果）。
+ *
+ * 検索の当たり外れを決めるのはサーバーで、手元の条件では作れない。
+ * 代わりに id の並びを渡し、手元の Item（＝一覧と同じ元）から引き当てる。
+ * こうすると、出す中身だけが違って**操作は一覧とまったく同じ**になる。
+ */
+interface ExternalItems {
+  /** 出す Item の id。渡した順に並べる（並び・グループ順は使わない）。 */
+  ids: MaybeRefOrGetter<string[]>
+  /**
+   * カーソルが指しているタスク。
+   *
+   * 検索結果にはタスク以外の行（日記）も混ざるので、カーソルは行の側が
+   * 持つ（`useListCursor`）。ここへはタスクを指している間だけ id が渡り、
+   * それ以外は null になって操作の対象が空になる。指していない行に
+   * 対して `c` や `Delete` が効いてしまうことがない。
+   */
+  focusedId: MaybeRefOrGetter<string | null>
+}
+
 interface Options {
   /** 対象の status。'all' なら絞り込まない。 */
   status: MaybeRefOrGetter<ItemStatus | 'all'>
+  /** 出す Item を外から与える（検索結果）。渡すと絞り込み・並びは使わない。 */
+  external?: ExternalItems
   /**
    * 表示方法（`open` / `completed` / `all`）。
    *
@@ -53,6 +76,9 @@ interface Options {
   onSortChange?: (value: SortKey) => void
   onGroupChange?: (value: GroupKey) => void
 }
+
+/** `useItemList` が返すもの。共通の操作部品（`ItemActions`）へ渡す。 */
+export type ItemList = ReturnType<typeof useItemList>
 
 /**
  * 一覧の絞り込み・カーソル・複数選択・編集操作をまとめたもの。
@@ -175,6 +201,18 @@ export function useItemList(options: Options) {
    * カーソルの移動順を一致させるため）。グループ内の順序は並びのまま。
    */
   const items = computed<LocalItem[]>(() => {
+    // 外から与えられていれば、その並びのまま出す（検索結果）
+    if (options.external) {
+      const byId = new Map(store.items.value.map((item) => [item.id, item]))
+      const found: LocalItem[] = []
+      for (const id of toValue(options.external.ids)) {
+        const item = byId.get(id)
+        // 消して、まだ送れていないものは一覧に出さない（belongsHere と同じ）
+        if (item && item.syncState !== 'pending_delete') found.push(item)
+      }
+      return found
+    }
+
     const sorted = sortItems(store.items.value.filter(belongsHere), sort.value)
     if (groupBy.value === 'none') return sorted
     return groupItems(sorted, groupBy.value).flatMap((group) =>
@@ -214,13 +252,20 @@ export function useItemList(options: Options) {
    * 動かす）ことは多く、そのたびに先頭へ飛ばされると続けて片付けられない。
    * **消える前にその下にあったもの**へ移す（`nextFocusAfterRemoval`）。
    */
-  const {
-    cursor,
-    cursorRow: cursorItem,
-    moveCursor,
-    focusRow: focusItem,
-    listEl,
-  } = useListCursor(items, { onMissing: nextFocusAfterRemoval })
+  const own = useListCursor(items, { onMissing: nextFocusAfterRemoval })
+  const { cursor, moveCursor, focusRow: focusItem, listEl } = own
+
+  /**
+   * カーソルが指している Item。
+   *
+   * 外から与えられているとき（検索結果）は、カーソルもそちらが持つ。
+   * タスク以外の行を指している間は null になり、操作の対象が空になる。
+   */
+  const cursorItem = computed<LocalItem | null>(() => {
+    if (!options.external) return own.cursorRow.value
+    const id = toValue(options.external.focusedId)
+    return (id && items.value.find((item) => item.id === id)) || null
+  })
 
   const selectedIds = ref<Set<string>>(new Set())
 
