@@ -704,6 +704,11 @@ function onOpenBracket(event: KeyboardEvent) {
  * `onOpenBracket` を参照。実際に入った文字（`activeText`）を直前の値と
  * 比べ、キャレット位置に半角 `[` が1文字だけ挿し込まれた場合だけ動く。
  * 全角の `「` に化けた場合はここも素通りする。
+ *
+ * **カーソルの後ろに文字が残っている行では足さない。** 書き終えた行の
+ * 途中に `[` を挿し込むのは、たいてい既にある文字を囲みたいときで、
+ * そこに `]` が入ると閉じ括弧が二重になる（囲みたい文字の手前で閉じる）。
+ * 行末に打つとき（＝これから中身を書くとき）だけ添える。
  */
 function maybeAutoCloseBracket(previousText: string) {
   const index = activeIndex.value
@@ -716,6 +721,8 @@ function maybeAutoCloseBracket(previousText: string) {
   const value = activeText.value
   if (value.length !== previousText.length + 1) return
   if (value[caret - 1] !== '[') return
+  // 行末（カーソルの後ろに文字が無い）ときだけ添える
+  if (value.slice(caret) !== '') return
   if (value.slice(0, caret - 1) !== previousText.slice(0, caret - 1)) return
   if (value.slice(caret) !== previousText.slice(caret - 1)) return
 
