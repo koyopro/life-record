@@ -15,11 +15,16 @@ import { caretAfterSplit, type LineSplit } from '~/utils/caret-shift'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import { writeToClipboard } from '~/utils/clipboard'
 import {
+  clampColumn,
   closestLineIn,
   lineElementAt,
   linePoint,
-  lineRangeFor,
-  type LineEdge,
+  linePointAt,
+  replaceSelection,
+  selectionText,
+  touchedLines,
+  type LineSelection,
+  type LineText,
 } from '~/utils/line-selection'
 
 /**
@@ -289,12 +294,25 @@ let desiredColumn: number | null = null
  * 複数行を選ぶ間は編集を抜けて（`deactivate`）表示側の行を
  * `Selection`/`Range` で直接選択する。
  *
- * `anchor` は固定端、`focus` は伸び縮みさせる端の行。`edge` は行のどこを
- * 端点にするかで、**選び始めたときのカーソル位置**で決まる（`LineEdge`）。
- * 行頭にカーソルがあるときの `Shift`+`↓` が「いまの行頭から次の行の行頭まで」
- * になるのは、これを `start` にしているため。
+ * `anchor` は固定端、`focus` は伸び縮みさせる端。`Shift`+矢印で始めた選択は
+ * **行だけでなく桁も持つ**（`kind: 'text'`）。ふつうの入力欄と同じく、行の
+ * 途中で `Shift`+`↓` を押せば、前後の行の同じ桁までが選ばれる。
  */
-let lineSelection: { anchor: number; focus: number; edge: LineEdge } | null = null
+let lineSelection: LineSelection | null = null
+
+/** 行の中身（記法込みの生テキストと、行頭を除いた中身）。 */
+function lineTexts(): LineText[] {
+  return parsed.value.map((line) => ({
+    prefix: line.prefix,
+    content: line.content,
+    raw: line.raw,
+  }))
+}
+
+/** 行の中身だけ（桁を行の長さに収めるために使う）。 */
+function lineContents(): string[] {
+  return parsed.value.map((line) => line.content)
+}
 
 function captureCaret() {
   const index = activeIndex.value
@@ -853,14 +871,12 @@ function wrappedHeight(el: HTMLTextAreaElement, upto: number): number {
 }
 
 /** キャレットが折り返しの最初の行にあるか。 */
-function isOnFirstRow(el: HTMLTextAreaElement): boolean {
-  const caret = el.selectionStart ?? 0
+function isOnFirstRow(el: HTMLTextAreaElement, caret = el.selectionStart ?? 0): boolean {
   return wrappedHeight(el, caret) <= wrappedHeight(el, 0)
 }
 
 /** キャレットが折り返しの最後の行にあるか。 */
-function isOnLastRow(el: HTMLTextAreaElement): boolean {
-  const caret = el.selectionEnd ?? el.value.length
+function isOnLastRow(el: HTMLTextAreaElement, caret = el.selectionEnd ?? el.value.length): boolean {
   return wrappedHeight(el, caret) >= wrappedHeight(el, el.value.length)
 }
 
@@ -1133,20 +1149,18 @@ function closestLine(node: Node | null): { el: Element; index: number } | null {
 }
 
 /**
- * 選んでいる行の、記法込みの生テキスト。選んでいなければ null。
+ * 選んでいる部分の、記法込みの生テキスト。選んでいなければ null。
  *
  * 複数行にまたがる選択を持ち出すときは、Scrapbox と同じく記法込みの
  * 生テキストを渡す。表示側は行頭（字下げ・`>` ・`code:`）を文字ではなく
- * 余白として見せているため、素直に写すとその部分が抜け落ちる。またぐ行の
- * 範囲だけ DOM から判定し（`selectedLineRange`）、中身はブラウザの選択文字列
- * ではなく model の生テキスト（`rawLines`）から組み立て直す。
+ * 余白として見せているため、素直に写すとその部分が抜け落ちる。選んでいる
+ * 範囲だけを判定し（`currentSelection`）、中身はブラウザの選択文字列では
+ * なく model の生テキストから組み立て直す。
  */
 function selectedLinesText(): string | null {
-  const range = selectedLineRange()
-  if (!range) return null
-  const start = Math.min(range.anchor, range.focus)
-  const end = Math.max(range.anchor, range.focus)
-  return rawLines.value.slice(start, end + 1).join('\n')
+  const selection = currentSelection()
+  if (!selection) return null
+  return selectionText(selection, lineTexts())
 }
 
 /** 行を選んでいる間のコピー（`Cmd`/`Ctrl`+`C`）。 */
@@ -1181,17 +1195,25 @@ function onCut(event: ClipboardEvent) {
  * （`Selection.setBaseAndExtent` を使うと、上へ伸ばす選択も表現できる）。
  * こう組み立てておくと、コピーは既存の `onCopy` がそのまま拾える。
  */
-async function applyLineSelection(anchor: number, focus: number, edge: LineEdge) {
+async function applyLineSelection(selection: LineSelection) {
   await nextTick()
-  const anchorEl = lineElementAt(editorRoot.value, anchor)
-  const focusEl = lineElementAt(editorRoot.value, focus)
+  const anchorLine = selection.kind === 'line' ? selection.anchor : selection.anchor.line
+  const focusLine = selection.kind === 'line' ? selection.focus : selection.focus.line
+  const anchorEl = lineElementAt(editorRoot.value, anchorLine)
+  const focusEl = lineElementAt(editorRoot.value, focusLine)
 
   if (anchorEl && focusEl) {
-    const forward = anchor <= focus
-    // 行まるごとのときだけ、伸ばす向きに合わせて端を選ぶ（行頭 → 行末）。
-    // 行頭・行末から伸ばす選択は、両端とも同じ側に置く
-    const from = linePoint(anchorEl, edge === 'line' ? (forward ? 'start' : 'end') : edge)
-    const to = linePoint(focusEl, edge === 'line' ? (forward ? 'end' : 'start') : edge)
+    // 行まるごとのときは、伸ばす向きに合わせて端を選ぶ（行頭 → 行末）。
+    // 桁を持つ選択は、その桁をそのまま端点にする
+    const forward = anchorLine <= focusLine
+    const from =
+      selection.kind === 'line'
+        ? linePoint(anchorEl, forward ? 'start' : 'end')
+        : linePointAt(anchorEl, selection.anchor.column)
+    const to =
+      selection.kind === 'line'
+        ? linePoint(focusEl, forward ? 'end' : 'start')
+        : linePointAt(focusEl, selection.focus.column)
     window.getSelection()?.setBaseAndExtent(from.node, from.offset, to.node, to.offset)
   }
 
@@ -1203,57 +1225,57 @@ async function applyLineSelection(anchor: number, focus: number, edge: LineEdge)
 }
 
 /**
- * 選択を始めるときの、端の置き方。
+ * 選択を1行分だけ伸ばす/縮める。
  *
- * **カーソルのある場所をそのまま端にする。**行頭にいるなら行頭から、行末に
- * いるなら行末から伸ばす。こうすると、行頭で `Shift`+`↓` を押したときに
- * 「いまの行頭から次の行の行頭まで」（＝いまの行だけ）になり、行末で押せば
- * 「いまの行末から次の行の行末まで」（＝次の行だけ）になる。ふつうの
- * テキスト入力欄と同じ動きで、1回押すごとに1行ずつ増える。
+ * 固定端（`anchor`）はそのままに、`focus` だけ動かす。桁を持つ選択
+ * （`Shift`+矢印）は、伸ばした先でも**同じ桁**を指す。行が短ければその行末
+ * までに収めるが、覚えている桁（`desired`）は変えないので、長い行まで
+ * 進めば元の桁へ戻る（`Shift` なしの上下移動と同じ）。
  *
- * 行の途中（折り返しのある行で、上端・下端の行にいるとき）は、どちらの端も
- * 選べないので伸ばす向きに合わせる。下へなら行末、上へなら行頭から伸ばす。
- */
-function edgeForCaret(el: HTMLTextAreaElement, delta: -1 | 1): LineEdge {
-  const start = el.selectionStart ?? 0
-  const end = el.selectionEnd ?? start
-  if (start === 0 && end === 0) return 'start'
-  if (start === el.value.length && end === el.value.length) return 'end'
-  return delta === 1 ? 'end' : 'start'
-}
-
-/**
- * 行の選択を1行分だけ伸ばす/縮める。
- *
- * 固定端（`anchor`）と端の置き方（`edge`）はそのままに、`focus` だけ動かす。
  * まだ1行を編集中なら、ここで抜けて表示側の選択に持ち替える。
+ * 伸ばした先がちょうど固定端に戻ったときは、何も選んでいない状態なので
+ * その行の編集へ戻す（ふつうの入力欄と同じ）。
  */
 async function extendLineSelection(delta: -1 | 1) {
   const selection = lineSelection
   if (!selection) return
 
+  const last = rawLines.value.length - 1
+
+  if (selection.kind === 'line') {
+    if (activeIndex.value !== null) deactivate()
+    const focus = Math.min(Math.max(selection.focus + delta, 0), last)
+    lineSelection = { ...selection, focus }
+    await applyLineSelection(lineSelection)
+    return
+  }
+
+  const line = Math.min(Math.max(selection.focus.line + delta, 0), last)
+  const focus = { line, column: clampColumn(selection.desired, lineContents(), line) }
+
+  // 何も選んでいない状態に戻ったら、その位置の編集へ戻す
+  if (focus.line === selection.anchor.line && focus.column === selection.anchor.column) {
+    lineSelection = null
+    window.getSelection()?.removeAllRanges()
+    void activate(focus.line, focus.column)
+    return
+  }
+
   if (activeIndex.value !== null) deactivate()
-
-  const focus = Math.min(
-    Math.max(selection.focus + delta, 0),
-    rawLines.value.length - 1,
-  )
   lineSelection = { ...selection, focus }
-
-  await applyLineSelection(selection.anchor, focus, selection.edge)
+  await applyLineSelection(lineSelection)
 }
 
 /** `Cmd`/`Ctrl`+`A` で本文全体を選択する。 */
 async function selectAllLines() {
   if (rawLines.value.length === 0) return
   if (activeIndex.value !== null) deactivate()
-  const last = rawLines.value.length - 1
-  lineSelection = { anchor: 0, focus: last, edge: 'line' }
-  await applyLineSelection(0, last, 'line')
+  lineSelection = { kind: 'line', anchor: 0, focus: rawLines.value.length - 1 }
+  await applyLineSelection(lineSelection)
 }
 
 /**
- * いま行として選ばれている範囲。選んでいなければ null。
+ * いま選んでいる範囲。選んでいなければ null。
  *
  * **コピー・切り取り・貼り付け・削除・字下げは、すべてここを通す。**
  * どれか1つだけ別の条件で範囲を決めていると、「コピーはできるのに
@@ -1270,7 +1292,7 @@ async function selectAllLines() {
  * 前後関係ではなく選んだ向き（`anchor` → `focus`）のまま返す。選び直すとき
  * （字下げのあとなど）に、上へ伸ばした選択をそのまま作り直せるようにする。
  */
-function selectedLineRange(): { anchor: number; focus: number } | null {
+function currentSelection(): LineSelection | null {
   if (activeIndex.value !== null) return null
 
   const selection = window.getSelection()
@@ -1280,6 +1302,10 @@ function selectedLineRange(): { anchor: number; focus: number } | null {
   const focus = closestLine(selection.focusNode)
   if (!anchor || !focus) return null
 
+  // キーボードで作った選択は桁まで分かっているので、そのまま使う
+  if (lineSelection) return lineSelection
+
+  // ここから先はマウスでなぞった選択。桁を持たないので行まるごととして扱う
   if (
     anchor.index === focus.index &&
     selection.toString().trim() !== anchor.el.textContent?.trim()
@@ -1287,9 +1313,7 @@ function selectedLineRange(): { anchor: number; focus: number } | null {
     return null
   }
 
-  // 端をどこに置いたかで、その行が範囲に入るかどうかが変わる。
-  // マウスでなぞった選択は行まるごととして扱う（`line`）
-  return lineRangeFor(anchor.index, focus.index, lineSelection?.edge ?? 'line')
+  return { kind: 'line', anchor: anchor.index, focus: focus.index }
 }
 
 /**
@@ -1297,7 +1321,10 @@ function selectedLineRange(): { anchor: number; focus: number } | null {
  * まとめて増減する（Scrapbox と同じ）。
  */
 function indentSelectedLines(delta: 1 | -1) {
-  const range = selectedLineRange()
+  const selection = currentSelection()
+  if (!selection) return
+
+  const range = touchedLines(selection, lineContents())
   if (!range) return
 
   const { anchor, focus } = range
@@ -1314,10 +1341,9 @@ function indentSelectedLines(delta: 1 | -1) {
   }
   commit(lines)
 
-  // 行の中身は変わっても番号は変わらないので、同じ範囲で選択し直す
-  const current = lineSelection
-  if (current) void applyLineSelection(current.anchor, current.focus, current.edge)
-  else void applyLineSelection(anchor, focus, 'line')
+  // 行の中身は変わっても番号も桁も変わらない（増えるのは行頭）ので、
+  // 同じ範囲で選択し直す
+  void applyLineSelection(lineSelection ?? { kind: 'line', anchor, focus })
 }
 
 /**
@@ -1328,22 +1354,16 @@ function indentSelectedLines(delta: 1 | -1) {
  * その手前）の編集に戻る。続けて書けるようにするため。
  */
 function removeSelectedLines() {
-  const range = selectedLineRange()
-  if (!range) return
+  const selection = currentSelection()
+  if (!selection) return
 
-  const start = Math.min(range.anchor, range.focus)
-  const end = Math.max(range.anchor, range.focus)
-
-  const lines = [...rawLines.value]
-  lines.splice(start, end - start + 1)
-  // 本文が空になっても、書ける行は1つ残す
-  if (lines.length === 0) lines.push('')
+  const { lines, caret } = replaceSelection(selection, lineTexts(), '')
 
   lineSelection = null
   window.getSelection()?.removeAllRanges()
 
   commit(lines)
-  void activate(Math.min(start, lines.length - 1), 'start', lines)
+  void activate(caret.line, caret.column, lines)
 }
 
 /**
@@ -1405,14 +1425,16 @@ function onContainerKeydown(event: KeyboardEvent) {
    */
   if (lineSelection && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
     event.preventDefault()
-    const { focus, edge } = lineSelection
+    const selection = lineSelection
     lineSelection = null
     window.getSelection()?.removeAllRanges()
-    // 行頭・行末から伸ばしていたなら、カーソルはその端にある。
-    // 行まるごとのときだけ、押した向きで決める
-    const toStart =
-      edge === 'line' ? event.key === 'ArrowUp' || event.key === 'ArrowLeft' : edge === 'start'
-    void activate(focus, toStart ? 'start' : 'end')
+    if (selection.kind === 'text') {
+      // 桁を持つ選択は、動かしていた端にカーソルがある
+      void activate(selection.focus.line, selection.focus.column)
+    } else {
+      const toStart = event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+      void activate(selection.focus, toStart ? 'start' : 'end')
+    }
     return
   }
 
@@ -1427,24 +1449,44 @@ function onContainerKeydown(event: KeyboardEvent) {
     return
   }
 
-  // まだ1行を編集中なら、行の端まで来ているときだけ複数行選択を始める。
+  // まだ1行を編集中なら、行の端まで来ているときだけ行をまたぐ選択を始める。
   // 行内をまだ選べるうちは、textarea の既定の選択に任せる
   const index = activeIndex.value
   const el = input.value
   if (index === null || !el) return
 
+  /*
+   * 入力欄の選択のうち、動かしている端（focus）と動かさない端（anchor）。
+   * すでに行の中で選んでいるなら、その向き（selectionDirection）を引き継ぐ。
+   */
+  const backward = el.selectionDirection === 'backward'
+  const anchorColumn = backward ? (el.selectionEnd ?? 0) : (el.selectionStart ?? 0)
+  const focusColumn = backward ? (el.selectionStart ?? 0) : (el.selectionEnd ?? 0)
+
   const atBoundary = vertical
     ? delta === -1
-      ? isOnFirstRow(el)
-      : isOnLastRow(el)
+      ? isOnFirstRow(el, focusColumn)
+      : isOnLastRow(el, focusColumn)
     : delta === -1
-      ? el.selectionStart === 0
-      : el.selectionEnd === el.value.length
+      ? focusColumn === 0
+      : focusColumn === el.value.length
 
   if (!atBoundary) return
 
   event.preventDefault()
-  lineSelection = { anchor: index, focus: index, edge: edgeForCaret(el, delta) }
+  /*
+   * 上下は**カーソルと同じ桁**まで伸ばす（ふつうの入力欄と同じ）。
+   * 左右は行をまたいだ先の端まで（→ なら次の行の行頭、← なら前の行の行末）。
+   * 桁を1つずつ動かすことはできないため（表示側には入力欄が無い）、
+   * 左右で始めた選択もその後は1行ずつ伸びる。
+   */
+  const desired = vertical ? focusColumn : delta === 1 ? 0 : Number.POSITIVE_INFINITY
+  lineSelection = {
+    kind: 'text',
+    anchor: { line: index, column: anchorColumn },
+    focus: { line: index, column: focusColumn },
+    desired,
+  }
   void extendLineSelection(delta)
 }
 
@@ -1737,23 +1779,18 @@ function onPaste(event: ClipboardEvent) {
    * 内容で置き換える。1行を編集している間は入力欄が受け取るので、ここは
    * 行を選んでいるときだけ。
    */
-  const range = selectedLineRange()
+  const selection = currentSelection()
   const text = event.clipboardData?.getData('text/plain')
-  if (!range || !text) return
+  if (!selection || !text) return
 
   event.preventDefault()
-  const start = Math.min(range.anchor, range.focus)
-  const end = Math.max(range.anchor, range.focus)
-  const pasted = text.replace(/\r\n?/g, '\n').split('\n')
-
-  const lines = [...rawLines.value]
-  lines.splice(start, end - start + 1, ...pasted)
+  const { lines, caret } = replaceSelection(selection, lineTexts(), text)
 
   lineSelection = null
   window.getSelection()?.removeAllRanges()
 
   commit(lines)
-  void activate(start + pasted.length - 1, 'end', lines)
+  void activate(caret.line, caret.column, lines)
 }
 
 function onPick(event: Event) {
