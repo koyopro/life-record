@@ -739,6 +739,20 @@ async function removeSection(section: SectionDto) {
     <template v-else>
       <NuxtLink v-if="!embedded" :to="listOrigin" class="page__back">← 一覧へ</NuxtLink>
 
+      <!--
+        分割表示（PC）の右ペインから、このタスクだけのページへ移る入口。
+        URL をそのまま渡したいときや、広い幅で読み書きしたいときのため
+        （`Shift`+`o` と同じ行き先）。
+      -->
+      <NuxtLink
+        v-else
+        :to="`/items/${item.id}`"
+        class="page__open"
+        title="このタスクだけのページを開く（Shift + o）"
+      >
+        単体で開く ↗
+      </NuxtLink>
+
       <header class="head">
         <div class="head__top">
           <!--
@@ -1089,6 +1103,14 @@ async function removeSection(section: SectionDto) {
   text-decoration: none;
   font-size: 0.875rem;
   justify-self: start;
+}
+
+/* 分割表示の右ペインから単体のページへ。戻る導線と入れ替わりで出す */
+.page__open {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  justify-self: end;
 }
 
 .page__error {

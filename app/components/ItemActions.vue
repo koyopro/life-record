@@ -73,6 +73,22 @@ function openUrl() {
   list.value.message.value = describeUrlOpen(found)
 }
 
+/**
+ * カーソルのタスクを、そのタスクだけのページで開く（`Shift`+`o`）。
+ *
+ * 分割表示（PC）の `o` は右ペインに出すだけなので、URL をそのまま渡したい
+ * ときや広い幅で読み書きしたいときの行き先を別に用意する。狭い画面では
+ * `o` と同じ行き先になる。
+ *
+ * 対象はカーソルの1件だけ。チェックした分を見ないのは、移れる先が1つしか
+ * ないため（`Shift`+`u` のようにタブを並べて開くのとは違う）。
+ */
+function openPage() {
+  const target = list.value.cursorItem.value
+  if (!target) return
+  void navigateTo(`/items/${target.id}`)
+}
+
 /** 未完了 / 完了 を切り替える（`h`）。固定されている一覧では何もしない。 */
 function showCompleted(value: boolean) {
   if (!props.switchable || value === props.completed) return
@@ -90,6 +106,13 @@ const shortcuts = computed<Shortcut[]>(() => [
         } satisfies Shortcut,
       ]
     : []),
+  {
+    keys: ['O'],
+    shift: true,
+    label: 'タスクを単体のページで開く',
+    group: '移動',
+    run: () => openPage(),
+  },
   {
     keys: ['i'],
     label: 'タスクを選択',
