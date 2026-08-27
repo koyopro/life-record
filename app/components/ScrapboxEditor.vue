@@ -1239,6 +1239,10 @@ async function applyLineSelection(selection: LineSelection) {
  * までに収めるが、覚えている桁（`desired`）は変えないので、長い行まで
  * 進めば元の桁へ戻る（`Shift` なしの上下移動と同じ）。
  *
+ * これ以上行を移れないとき（一番上の行で `↑`・一番下の行で `↓`）は、
+ * その行の端まで選ぶ。ふつうの入力欄と同じで、本文の先頭・末尾までが
+ * 選ばれることになる。
+ *
  * まだ1行を編集中なら、ここで抜けて表示側の選択に持ち替える。
  * 伸ばした先がちょうど固定端に戻ったときは、何も選んでいない状態なので
  * その行の編集へ戻す（ふつうの入力欄と同じ）。
@@ -1257,8 +1261,18 @@ async function extendLineSelection(delta: -1 | 1) {
     return
   }
 
-  const line = Math.min(Math.max(selection.focus.line + delta, 0), last)
-  const focus = { line, column: clampColumn(selection.desired, lineContents(), line) }
+  const contents = lineContents()
+  const target = selection.focus.line + delta
+  const line = Math.min(Math.max(target, 0), last)
+  const beyond = target < 0 || target > last
+  // 行を移れないときは行の端まで（↑ なら行頭、↓ なら行末）。
+  // 覚えている桁（`desired`）は変えないので、押し戻せば元の桁に戻る
+  const column = beyond
+    ? delta === -1
+      ? 0
+      : (contents[line]?.length ?? 0)
+    : clampColumn(selection.desired, contents, line)
+  const focus = { line, column }
 
   // 何も選んでいない状態に戻ったら、その位置の編集へ戻す
   if (focus.line === selection.anchor.line && focus.column === selection.anchor.column) {
@@ -1481,6 +1495,22 @@ function onContainerKeydown(event: KeyboardEvent) {
   if (!atBoundary) return
 
   event.preventDefault()
+
+  /*
+   * これ以上行を移れないとき（一番上の行で `↑`・一番下の行で `↓`）は、
+   * その行の端まで選ぶ。ふつうの入力欄と同じで、本文の先頭・末尾までが
+   * 選ばれることになる。
+   *
+   * 行をまたがないので、入力欄（textarea）の選択のまま扱う。表示側の選択に
+   * 持ち替えると、1行の中を選んだだけなのに編集から抜けてしまう。
+   */
+  if (index + delta < 0 || index + delta > rawLines.value.length - 1) {
+    const edge = delta === -1 ? 0 : el.value.length
+    const [start, end] = edge < anchorColumn ? [edge, anchorColumn] : [anchorColumn, edge]
+    el.setSelectionRange(start, end, delta === -1 ? 'backward' : 'forward')
+    return
+  }
+
   /*
    * 上下は**カーソルと同じ桁**まで伸ばす（ふつうの入力欄と同じ）。
    * 左右は行をまたいだ先の端まで（→ なら次の行の行頭、← なら前の行の行末）。
