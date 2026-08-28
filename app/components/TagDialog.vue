@@ -66,76 +66,86 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <form
-      class="sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-label="タグ"
-      @submit.prevent="apply"
-    >
-      <h2 class="sheet__title">
-        タグ<span v-if="count > 1"> ({{ count }}件)</span>
-      </h2>
+  <!--
+    ダイアログは body へ出す（Teleport）。
+    分割表示（PC）の詳細ペインは `position: sticky`（ListDetailSplit）で、
+    sticky は**それ自身が重なりの文脈（stacking context）を作る**。その中で
+    z-index を上げても、外の袖（z-index 18）や「＋」（10）より上には出られず、
+    ダイアログがそれらの下に潜って隠れてしまう。body へ出せば、宣言どおりの
+    重なり順（docs/03-functional-spec.md 3.1）になる。
+  -->
+  <Teleport to="body">
+    <div class="overlay" @click.self="emit('close')">
+      <form
+        class="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="タグ"
+        @submit.prevent="apply"
+      >
+        <h2 class="sheet__title">
+          タグ<span v-if="count > 1"> ({{ count }}件)</span>
+        </h2>
 
-      <input
-        ref="inputEl"
-        v-model="input"
-        class="sheet__input"
-        type="text"
-        placeholder="タグ名を空白区切りで入力"
-        autocomplete="off"
-        autocapitalize="off"
-        @keydown.esc.prevent="emit('close')"
-      />
+        <input
+          ref="inputEl"
+          v-model="input"
+          class="sheet__input"
+          type="text"
+          placeholder="タグ名を空白区切りで入力"
+          autocomplete="off"
+          autocapitalize="off"
+          @keydown.esc.prevent="emit('close')"
+        />
 
-      <p v-if="invalid" class="sheet__warning">
-        空白・カンマ・# はタグ名に使えません
-      </p>
-
-      <div v-if="suggestions.length" class="sheet__suggestions">
-        <button
-          v-for="tag in suggestions"
-          :key="tag.id"
-          type="button"
-          class="chip"
-          @click="pick(tag.name)"
-        >
-          {{ tag.name }}
-          <span class="chip__count">{{ tag.count }}</span>
-        </button>
-      </div>
-
-      <template v-if="currentTags.length">
-        <p class="sheet__label">
-          付いているタグ<span class="sheet__hint">（押すと外す）</span>
+        <p v-if="invalid" class="sheet__warning">
+          空白・カンマ・# はタグ名に使えません
         </p>
-        <div class="sheet__current">
+
+        <div v-if="suggestions.length" class="sheet__suggestions">
           <button
-            v-for="name in currentTags"
-            :key="name"
+            v-for="tag in suggestions"
+            :key="tag.id"
             type="button"
             class="chip"
-            :class="{ 'chip--removing': removing.has(name) }"
-            :aria-pressed="removing.has(name)"
-            @click="toggleRemoval(name)"
+            @click="pick(tag.name)"
           >
-            {{ name }}
-            <span aria-hidden="true">{{ removing.has(name) ? '↩' : '×' }}</span>
+            {{ tag.name }}
+            <span class="chip__count">{{ tag.count }}</span>
           </button>
         </div>
-      </template>
 
-      <div class="sheet__actions">
-        <button type="button" class="sheet__cancel" @click="emit('close')">
-          キャンセル
-        </button>
-        <button type="submit" class="sheet__submit" :disabled="!canApply">
-          適用
-        </button>
-      </div>
-    </form>
-  </div>
+        <template v-if="currentTags.length">
+          <p class="sheet__label">
+            付いているタグ<span class="sheet__hint">（押すと外す）</span>
+          </p>
+          <div class="sheet__current">
+            <button
+              v-for="name in currentTags"
+              :key="name"
+              type="button"
+              class="chip"
+              :class="{ 'chip--removing': removing.has(name) }"
+              :aria-pressed="removing.has(name)"
+              @click="toggleRemoval(name)"
+            >
+              {{ name }}
+              <span aria-hidden="true">{{ removing.has(name) ? '↩' : '×' }}</span>
+            </button>
+          </div>
+        </template>
+
+        <div class="sheet__actions">
+          <button type="button" class="sheet__cancel" @click="emit('close')">
+            キャンセル
+          </button>
+          <button type="submit" class="sheet__submit" :disabled="!canApply">
+            適用
+          </button>
+        </div>
+      </form>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>

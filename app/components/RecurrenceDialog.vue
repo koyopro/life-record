@@ -56,64 +56,74 @@ onMounted(() => input.value?.focus())
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <form
-      class="sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-label="繰り返しを設定"
-      @submit.prevent="submit"
-    >
-      <h2 class="sheet__title">
-        繰り返し<span v-if="count > 1"> ({{ count }}件)</span>
-      </h2>
-
-      <input
-        ref="input"
-        v-model="text"
-        class="sheet__input"
-        type="text"
-        placeholder="毎週月曜 / 毎月の最後の平日 / 完了の3日後"
-        autocomplete="off"
-        autocapitalize="off"
-        @keydown.esc.prevent="emit('close')"
-      />
-
-      <p
-        class="sheet__preview"
-        :class="{ 'sheet__preview--invalid': text.trim() && !parsed }"
+  <!--
+    ダイアログは body へ出す（Teleport）。
+    分割表示（PC）の詳細ペインは `position: sticky`（ListDetailSplit）で、
+    sticky は**それ自身が重なりの文脈（stacking context）を作る**。その中で
+    z-index を上げても、外の袖（z-index 18）や「＋」（10）より上には出られず、
+    ダイアログがそれらの下に潜って隠れてしまう。body へ出せば、宣言どおりの
+    重なり順（docs/03-functional-spec.md 3.1）になる。
+  -->
+  <Teleport to="body">
+    <div class="overlay" @click.self="emit('close')">
+      <form
+        class="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="繰り返しを設定"
+        @submit.prevent="submit"
       >
-        {{ preview }}
-      </p>
-      <p v-if="basisNote" class="sheet__note">{{ basisNote }}</p>
+        <h2 class="sheet__title">
+          繰り返し<span v-if="count > 1"> ({{ count }}件)</span>
+        </h2>
 
-      <div class="sheet__presets">
-        <button
-          v-for="preset in RECURRENCE_PRESETS"
-          :key="preset.input"
-          type="button"
-          class="chip"
-          @click="pick(preset.input)"
+        <input
+          ref="input"
+          v-model="text"
+          class="sheet__input"
+          type="text"
+          placeholder="毎週月曜 / 毎月の最後の平日 / 完了の3日後"
+          autocomplete="off"
+          autocapitalize="off"
+          @keydown.esc.prevent="emit('close')"
+        />
+
+        <p
+          class="sheet__preview"
+          :class="{ 'sheet__preview--invalid': text.trim() && !parsed }"
         >
-          {{ preset.label }}
-        </button>
-      </div>
+          {{ preview }}
+        </p>
+        <p v-if="basisNote" class="sheet__note">{{ basisNote }}</p>
 
-      <div class="sheet__actions">
-        <button type="button" class="sheet__clear" @click="emit('submit', null)">
-          繰り返しをやめる
-        </button>
-        <div class="sheet__right">
-          <button type="button" class="sheet__cancel" @click="emit('close')">
-            キャンセル
-          </button>
-          <button type="submit" class="sheet__submit" :disabled="!parsed">
-            設定
+        <div class="sheet__presets">
+          <button
+            v-for="preset in RECURRENCE_PRESETS"
+            :key="preset.input"
+            type="button"
+            class="chip"
+            @click="pick(preset.input)"
+          >
+            {{ preset.label }}
           </button>
         </div>
-      </div>
-    </form>
-  </div>
+
+        <div class="sheet__actions">
+          <button type="button" class="sheet__clear" @click="emit('submit', null)">
+            繰り返しをやめる
+          </button>
+          <div class="sheet__right">
+            <button type="button" class="sheet__cancel" @click="emit('close')">
+              キャンセル
+            </button>
+            <button type="submit" class="sheet__submit" :disabled="!parsed">
+              設定
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>

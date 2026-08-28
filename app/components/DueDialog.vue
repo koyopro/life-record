@@ -117,82 +117,92 @@ onMounted(() => input.value?.focus())
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <form
-      class="sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-label="期限を設定"
-      @submit.prevent="submit"
-    >
-      <h2 class="sheet__title">
-        期限を設定<span v-if="props.count > 1"> ({{ props.count }}件)</span>
-      </h2>
-
-      <input
-        id="due-input"
-        ref="input"
-        v-model="text"
-        class="sheet__input"
-        type="text"
-        placeholder="tod / tom / 明日 / 8/25 15:00"
-        autocomplete="off"
-        autocapitalize="off"
-        role="combobox"
-        aria-controls="due-presets"
-        :aria-expanded="presets.length > 0"
-        :aria-activedescendant="active ? `due-preset-${activeIndex}` : undefined"
-        @keydown="onKeydown"
-        @keydown.esc.prevent="emit('close')"
-      />
-
-      <ul
-        v-if="presets.length"
-        id="due-presets"
-        ref="list"
-        class="sheet__list"
-        role="listbox"
+  <!--
+    ダイアログは body へ出す（Teleport）。
+    分割表示（PC）の詳細ペインは `position: sticky`（ListDetailSplit）で、
+    sticky は**それ自身が重なりの文脈（stacking context）を作る**。その中で
+    z-index を上げても、外の袖（z-index 18）や「＋」（10）より上には出られず、
+    ダイアログがそれらの下に潜って隠れてしまう。body へ出せば、宣言どおりの
+    重なり順（docs/03-functional-spec.md 3.1）になる。
+  -->
+  <Teleport to="body">
+    <div class="overlay" @click.self="emit('close')">
+      <form
+        class="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="期限を設定"
+        @submit.prevent="submit"
       >
-        <li
-          v-for="(preset, index) in presets"
-          :id="`due-preset-${index}`"
-          :key="preset.label"
-          role="option"
-          :aria-selected="index === activeIndex"
+        <h2 class="sheet__title">
+          期限を設定<span v-if="props.count > 1"> ({{ props.count }}件)</span>
+        </h2>
+
+        <input
+          id="due-input"
+          ref="input"
+          v-model="text"
+          class="sheet__input"
+          type="text"
+          placeholder="tod / tom / 明日 / 8/25 15:00"
+          autocomplete="off"
+          autocapitalize="off"
+          role="combobox"
+          aria-controls="due-presets"
+          :aria-expanded="presets.length > 0"
+          :aria-activedescendant="active ? `due-preset-${activeIndex}` : undefined"
+          @keydown="onKeydown"
+          @keydown.esc.prevent="emit('close')"
+        />
+
+        <ul
+          v-if="presets.length"
+          id="due-presets"
+          ref="list"
+          class="sheet__list"
+          role="listbox"
         >
-          <button
-            type="button"
-            class="sheet__item"
-            :class="{ 'sheet__item--active': index === activeIndex }"
-            tabindex="-1"
-            @mouseenter="activeIndex = index"
-            @click="pick(index)"
+          <li
+            v-for="(preset, index) in presets"
+            :id="`due-preset-${index}`"
+            :key="preset.label"
+            role="option"
+            :aria-selected="index === activeIndex"
           >
-            <span>{{ preset.label }}</span>
-            <span class="sheet__date">{{ presetDate(preset) }}</span>
-          </button>
-        </li>
-      </ul>
+            <button
+              type="button"
+              class="sheet__item"
+              :class="{ 'sheet__item--active': index === activeIndex }"
+              tabindex="-1"
+              @mouseenter="activeIndex = index"
+              @click="pick(index)"
+            >
+              <span>{{ preset.label }}</span>
+              <span class="sheet__date">{{ presetDate(preset) }}</span>
+            </button>
+          </li>
+        </ul>
 
-      <p class="sheet__preview" :class="{ 'sheet__preview--invalid': text.trim() && !parsed }">
-        {{ preview }}
-      </p>
+        <p class="sheet__preview" :class="{ 'sheet__preview--invalid': text.trim() && !parsed }">
+          {{ preview }}
+        </p>
 
-      <div class="sheet__actions">
-        <button type="button" class="sheet__clear" @click="emit('submit', null)">
-          期限を外す
-        </button>
-        <div class="sheet__right">
-          <button type="button" class="sheet__cancel" @click="emit('close')">
-            キャンセル
+        <div class="sheet__actions">
+          <button type="button" class="sheet__clear" @click="emit('submit', null)">
+            期限を外す
           </button>
-          <button type="submit" class="sheet__submit" :disabled="!parsed">
-            設定
-          </button>
+          <div class="sheet__right">
+            <button type="button" class="sheet__cancel" @click="emit('close')">
+              キャンセル
+            </button>
+            <button type="submit" class="sheet__submit" :disabled="!parsed">
+              設定
+            </button>
+          </div>
         </div>
-      </div>
-    </form>
-  </div>
+      </form>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
