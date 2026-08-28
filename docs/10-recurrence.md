@@ -232,12 +232,41 @@ RTM と同様に自然言語で書けるようにする。日本語・英語の�
 | `*every monday` / `*毎週月曜` | `FREQ=WEEKLY;BYDAY=MO` | due |
 | `*every 2 weeks` / `*2週間ごと` | `FREQ=WEEKLY;INTERVAL=2` | due |
 | `*every month` / `*毎月` | `FREQ=MONTHLY` | due |
+| `*毎月15日` | `FREQ=MONTHLY;BYMONTHDAY=15` | due |
+| `*毎月の最後の平日` / `*every month on the last weekday` | `FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1` | due |
+| `*毎月の第2月曜` / `*every month on the 2nd monday` | `FREQ=MONTHLY;BYDAY=2MO` | due |
 | `*every year` / `*毎年` | `FREQ=YEARLY` | due |
 | `*after 3 days` / `*完了の3日後` / `*3日後` | `FREQ=DAILY;INTERVAL=3` | completion |
 | `*after 1 week` / `*完了の1週間後` / `*1週間後` | `FREQ=WEEKLY` | completion |
 
 - `完了の` は省略できる（`3日後` だけで `完了の3日後` と同じ）。「後」は
   due（毎〜）側では使わない語なので、省略しても曖昧にならない
+
+#### 月の中の並びで決まる指定
+
+「毎月の最後の平日」のように、**どの曜日かではなく、その月の何番目か**で日が
+決まる指定を受け付ける（RTM の「オン: 最後の・平日」に当たる）。月末が土日なら
+その前の金曜になる、という月ごとに日付が変わる繰り返しは、`BYMONTHDAY` では
+表せない。
+
+| 書き方 | 意味 |
+|---|---|
+| `最後の` / `最終` / `last` | その月の最後（`-1`） |
+| `最初の` / `first` | その月の最初（`1`） |
+| `第2` / `2番目の` / `2nd` | 2番目（`2`）。月に無い並び（6以上）は受け付けない |
+| `最後から2番目の` | 後ろから数える（`-2`） |
+| `平日` / `weekday` | 月〜金 |
+| `週末` / `weekend` | 土日 |
+| `月曜` / `monday` | その曜日 |
+
+RRULE では2通りの書き方になる。曜日が1つなら `BYDAY` に序数を付け（`BYDAY=-1MO`）、
+平日・週末のように**曜日の組**なら、その組の中の何番目かを `BYSETPOS` で表す
+（`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`）。どちらも RFC 5545 の書き方なので、
+RTM の書き出しをそのまま取り込める。
+
+**表示（`describeRecurrence`）と解釈（`parseRecurrence`）は往復できること。**
+設定ダイアログは、いまの設定を文にしてから入力欄へ入れる。読めない文を出すと、
+開き直しただけで設定を失う（取り込んだ規則で実際にそうなっていた）。
 - パースはサーバー側で行い、入力中のプレビューはクライアントでも同じロジックを動かす
 - 解釈できなかった場合は、繰り返しを設定せず警告を出す（黙って無視しない）
 - 実装候補: [rrule.js](https://github.com/jkbrzt/rrule)（RRULE の生成・次回発生日の計算・自然文表示に対応）。

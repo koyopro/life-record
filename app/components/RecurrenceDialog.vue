@@ -25,7 +25,8 @@ const parsed = computed(() =>
 )
 
 const preview = computed(() => {
-  if (!text.value.trim()) return '「毎週」「毎週月曜」「完了の3日後」のように書けます'
+  if (!text.value.trim())
+    return '「毎週月曜」「毎月の最後の平日」「完了の3日後」のように書けます'
   if (!parsed.value) return '繰り返しとして解釈できませんでした'
   return describeRecurrence(parsed.value)
 })
@@ -72,7 +73,7 @@ onMounted(() => input.value?.focus())
         v-model="text"
         class="sheet__input"
         type="text"
-        placeholder="毎週 / 毎週月曜 / 完了の3日後"
+        placeholder="毎週月曜 / 毎月の最後の平日 / 完了の3日後"
         autocomplete="off"
         autocapitalize="off"
         @keydown.esc.prevent="emit('close')"

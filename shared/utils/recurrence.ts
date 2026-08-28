@@ -60,6 +60,22 @@ const FREQ_BY_UNIT: Record<string, string> = {
 }
 
 /**
+ * 「平日」「週末」を曜日の組で表したもの（RTM の weekday / weekend）。
+ *
+ * 月の「最後の平日」のように、**どの曜日かではなく並びの何番目か**で決まる
+ * 指定に使う。RRULE では曜日の組（BYDAY）と、その中の何番目か（BYSETPOS）で
+ * 表す（`FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`）。
+ */
+const WEEKDAY_GROUPS: { label: string; keywords: string[]; codes: string[] }[] = [
+  {
+    label: '平日',
+    keywords: ['平日', '営業日', 'weekday'],
+    codes: ['MO', 'TU', 'WE', 'TH', 'FR'],
+  },
+  { label: '週末', keywords: ['週末', 'weekend'], codes: ['SA', 'SU'] },
+]
+
+/**
  * 自然言語の繰り返し表現を RRULE + basis に変換する。
  *
  * 日本語・英語の両方を受け付ける。解釈できない場合は null を返し、
@@ -123,6 +139,10 @@ function parseEvery(text: string): string | null {
     return `FREQ=MONTHLY;BYMONTHDAY=${day}`
   }
 
+  // 毎月の最後の平日 / 毎月の第2月曜 / 2ヶ月ごとの最後の金曜
+  const ordinal = parseMonthlyOrdinal(text)
+  if (ordinal) return ordinal
+
   // every day / 毎日
   const simpleMatch =
     /^every\s+(day|week|month|year)$/.exec(text) ??
@@ -133,6 +153,68 @@ function parseEvery(text: string): string | null {
   }
 
   return null
+}
+
+/**
+ * 月の中の並びで決まる指定（`毎月の最後の平日` `毎月の第2月曜`）。
+ *
+ * RTM の「オン: 最後の・平日」に当たるもの。曜日を直に書く指定（`毎週月曜`）と
+ * 違い、**その月の何番目か**で日が決まる。
+ */
+function parseMonthlyOrdinal(text: string): string | null {
+  const match =
+    /^(?:毎月|(\d+)\s*(?:ヶ|ケ|か|カ)?月ごと)の?(最後から\s*\d+\s*番目|最後|最終|最初|第\s*\d+|\d+\s*番目)の?(平日|営業日|週末|[月火水木金土日])(?:曜日?)?$/.exec(
+      text,
+    ) ??
+    /^every\s+(?:(\d+)\s+months?|month)\s+on\s+the\s+(last|first|\d+(?:st|nd|rd|th)?)\s+(weekday|weekend|[a-z]+day|mon|tue|wed|thu|fri|sat|sun)$/.exec(
+      text,
+    )
+  if (!match) return null
+
+  const interval = match[1] ? Number(match[1]) : 1
+  const position = toPosition(match[2]!)
+  const codes = toWeekdayCodes(match[3]!)
+  if (position === null || !codes) return null
+  if (!Number.isInteger(interval) || interval < 1 || interval > 366) return null
+
+  const parts = [`FREQ=MONTHLY`]
+  if (interval > 1) parts.push(`INTERVAL=${interval}`)
+
+  /*
+   * 曜日が1つなら BYDAY に序数を付けた形（`BYDAY=-1MO`）にする。RFC 5545 の
+   * 素直な書き方で、他のツールへ移したときにも読める。曜日が複数（平日・週末）
+   * のときは、その組の中の何番目かなので BYSETPOS で表すしかない。
+   */
+  if (codes.length === 1) parts.push(`BYDAY=${position}${codes[0]}`)
+  else parts.push(`BYDAY=${codes.join(',')}`, `BYSETPOS=${position}`)
+
+  return parts.join(';')
+}
+
+/** 「最後」「第2」などを、RRULE の序数（-1 / 2）にする。読めなければ null。 */
+function toPosition(text: string): number | null {
+  const value = text.replace(/\s+/g, '')
+  if (/^(最後|最終|last)$/.test(value)) return -1
+  if (/^(最初|first|1st)$/.test(value)) return 1
+
+  const fromEnd = /^最後から(\d+)番目$/.exec(value)
+  if (fromEnd) return -Number(fromEnd[1])
+
+  const nth = /^(?:第)?(\d+)(?:番目|st|nd|rd|th)?$/.exec(value)
+  if (!nth) return null
+
+  const number = Number(nth[1])
+  // 月の中に同じ曜日は最大5回。それ以上は当たる月が無く、指定として意味を持たない
+  return number >= 1 && number <= 5 ? number : null
+}
+
+/** 「平日」「月」などを BYDAY の曜日コードにする。読めなければ null。 */
+function toWeekdayCodes(text: string): string[] | null {
+  const group = WEEKDAY_GROUPS.find((entry) => entry.keywords.includes(text))
+  if (group) return group.codes
+
+  const day = WEEKDAYS[text]
+  return day ? [day] : null
 }
 
 function buildRule(freq: string, interval: number): string {
@@ -253,19 +335,32 @@ export function describeRecurrence(recurrence: Recurrence): string {
   }
 
   const parts: string[] = []
-  parts.push(
-    interval === 1
-      ? `毎${EVERY_UNITS[freq] ?? ''}`
-      : `${interval}${INTERVAL_UNITS[freq] ?? ''}ごと`,
-  )
 
-  const weekdays = toArray(options.byweekday)
-    .map((day) => WEEKDAY_LABELS[weekdayIndex(day)])
-    .filter(Boolean)
-  if (weekdays.length) parts.push(`${weekdays.join('・')}曜`)
+  /*
+   * 月の中の並びで決まる指定（`毎月の最後の平日`）は、単位と曜日を別々に
+   * 並べると意味が変わってしまう（「毎月 月・火・水・木・金曜」では、
+   * どの週かが抜け落ちる）。ひとまとまりの言い方にする。
+   */
+  const ordinal = describeMonthlyOrdinal(options)
+  if (ordinal) {
+    parts.push(
+      interval === 1 ? `毎月の${ordinal}` : `${interval}ヶ月ごとの${ordinal}`,
+    )
+  } else {
+    parts.push(
+      interval === 1
+        ? `毎${EVERY_UNITS[freq] ?? ''}`
+        : `${interval}${INTERVAL_UNITS[freq] ?? ''}ごと`,
+    )
 
-  const monthDays = toArray(options.bymonthday)
-  if (monthDays.length) parts.push(`${monthDays.join('・')}日`)
+    const weekdays = toArray(options.byweekday)
+      .map((day) => WEEKDAY_LABELS[weekdayIndex(day)])
+      .filter(Boolean)
+    if (weekdays.length) parts.push(`${weekdays.join('・')}曜`)
+
+    const monthDays = toArray(options.bymonthday)
+    if (monthDays.length) parts.push(`${monthDays.join('・')}日`)
+  }
 
   if (options.count) parts.push(`（${options.count}回まで）`)
   if (options.until) {
@@ -276,6 +371,56 @@ export function describeRecurrence(recurrence: Recurrence): string {
   }
 
   return parts.join(' ')
+}
+
+/**
+ * 月の中の並びで決まる指定を日本語にする（`最後の平日` `第2月曜`）。
+ * そういう指定でなければ null（＝ふつうの曜日・日付の指定）。
+ *
+ * 書き戻した文がそのまま `parseRecurrence` で読めるようにしておく。設定
+ * ダイアログは、いまの設定をこの文にしてから入力欄へ入れるため、読めないと
+ * 開き直しただけで設定を失う。
+ */
+function describeMonthlyOrdinal(
+  options: ReturnType<typeof parseOptions>,
+): string | null {
+  if (!options || options.freq !== RRule.MONTHLY) return null
+
+  const days = toArray(options.byweekday)
+  if (days.length === 0) return null
+
+  // 序数は BYSETPOS（曜日の組の中の何番目か）か、BYDAY 自身に付く（`-1MO`）
+  const position = toArray(options.bysetpos)[0] ?? nthOf(days[0]!)
+  if (!position) return null
+
+  const codes = days.map((day) => WEEKDAY_CODES[weekdayIndex(day)])
+  const group = WEEKDAY_GROUPS.find(
+    (entry) =>
+      entry.codes.length === codes.length &&
+      entry.codes.every((code) => codes.includes(code)),
+  )
+
+  if (group) return `${positionLabel(position)}の${group.label}`
+  if (days.length !== 1) return null
+
+  const weekday = `${WEEKDAY_LABELS[weekdayIndex(days[0]!)]}曜`
+  // 曜日は「第2月曜」、平日・週末は「2番目の平日」と言い分ける（RTM の言い方）
+  return position > 0
+    ? `第${position}${weekday}`
+    : `${positionLabel(position)}の${weekday}`
+}
+
+/** 序数の言い方。`-1` は「最後」、`2` は「2番目」。 */
+function positionLabel(position: number): string {
+  if (position === -1) return '最後'
+  if (position < -1) return `最後から${-position}番目`
+  if (position === 1) return '最初'
+  return `${position}番目`
+}
+
+/** BYDAY に付く序数（`-1MO` の -1）。持たない形なら undefined。 */
+function nthOf(day: number | { n?: number } | string): number | undefined {
+  return typeof day === 'object' ? (day.n ?? undefined) : undefined
 }
 
 /**
@@ -321,6 +466,7 @@ export const RECURRENCE_PRESETS: { label: string; input: string }[] = [
   { label: '隔週', input: '隔週' },
   { label: '毎月', input: '毎月' },
   { label: '毎年', input: '毎年' },
+  { label: '毎月の最後の平日', input: '毎月の最後の平日' },
   { label: '完了の3日後', input: '完了の3日後' },
   { label: '完了の1週間後', input: '完了の1週間後' },
 ]
