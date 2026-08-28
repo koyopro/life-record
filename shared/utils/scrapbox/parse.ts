@@ -61,6 +61,13 @@ function isAppDiaryPath(value: string): boolean {
 const DECORATION_SYMBOLS = "!\"#%&'()*+,\\-./{|}<>_~"
 const DECORATION_PATTERN = new RegExp(`^([${DECORATION_SYMBOLS}]+)\\s+([\\s\\S]+)$`)
 
+/**
+ * 区切りの罫線（Scrapbox と同じ、ハイフン4つ以上だけの行）。
+ *
+ * 3つ以下は取らない。文中の「---」のような書き方まで線になってしまうため。
+ */
+const RULE_PATTERN = /^-{4,}$/
+
 const URL_PATTERN = /^https?:\/\/\S+$/i
 const BARE_URL_PATTERN = /https?:\/\/[^\s\]]+/
 
@@ -123,6 +130,12 @@ export function parseScrapbox(input: string): Line[] {
         indent,
         nodes: parseInline(line.content),
       })
+      continue
+    }
+
+    // ハイフンだけの行は区切りの罫線。中身は解釈しない
+    if (RULE_PATTERN.test(rest)) {
+      lines.push({ ...split(raw, indent), type: 'rule', indent })
       continue
     }
 

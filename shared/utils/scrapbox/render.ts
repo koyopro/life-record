@@ -67,6 +67,9 @@ export function renderLine(line: Line, options: RenderOptions = {}): string {
       return `<span class="sb-code__name">${escapeHtml(line.content) || '&nbsp;'}</span>`
     case 'codeBody':
       return `<code class="sb-code__text">${escapeHtml(line.content) || '&nbsp;'}</code>`
+    case 'rule':
+      // ハイフンは線そのものになるので、文字としては出さない
+      return '<hr class="sb-rule" />'
     case 'quote':
     case 'text': {
       const html = renderInline(line.nodes, options)

@@ -9,7 +9,7 @@
  * 行と表示が1対1で対応している必要がある。
  */
 
-export type Line = TextLine | QuoteLine | CodeHeaderLine | CodeBodyLine
+export type Line = TextLine | QuoteLine | CodeHeaderLine | CodeBodyLine | RuleLine
 
 interface LineBase {
   /** 行頭の空白の数。箇条書きの階層になる。 */
@@ -37,6 +37,16 @@ export interface TextLine extends LineBase {
 export interface QuoteLine extends LineBase {
   type: 'quote'
   nodes: Inline[]
+}
+
+/**
+ * `----`（ハイフン4つ以上）だけの行。区切りの罫線として表示する。
+ *
+ * `content` は書かれたままのハイフン（カーソルを置けば元の文字を直せる）。
+ * 中身を解釈しないので `nodes` は持たない。
+ */
+export interface RuleLine extends LineBase {
+  type: 'rule'
 }
 
 /** `code:ファイル名` の行。`content` がファイル名にあたる。 */
