@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DUE_PRESETS, matchDuePresets } from '~/utils/due'
+import { dueAtOf, todayDueAt } from '~~/shared/utils/date'
 import { parseDueExpression } from '~~/shared/utils/smart-add'
 
 /** 候補の並び順そのものが挙動（`Enter` で確定するのは先頭）なので、名前の列で見る。 */
@@ -89,5 +90,33 @@ describe('曜日の指定', () => {
 
   it('「来週の月曜」は、来週の月曜のまま（さらに1週ずらさない）', () => {
     expect(dueDate('来週の月曜').getDate()).toBe(31)
+  })
+})
+
+/**
+ * カレンダーから選んだ日を期限にするときの値
+ * （docs/08-todo-management.md 8.5「カレンダーから選ぶ」）。
+ *
+ * 日付だけの期限は 23:59（アプリのタイムゾーン）。打って入れたときと
+ * 同じ値になっていないと、同じ「9月4日」でも入れ方で中身が変わる。
+ */
+describe('カレンダーで選んだ日の期限', () => {
+  it('その日の 23:59（日本時間）になる', () => {
+    expect(dueAtOf('2026-09-04').toISOString()).toBe('2026-09-04T14:59:00.000Z')
+  })
+
+  it('打って入れた同じ日と、同じ値になる', () => {
+    const typed = parseDueExpression('2026/09/04')
+
+    expect(typed?.cleared).toBe(false)
+    expect(typed && !typed.cleared && typed.date.toISOString()).toBe(
+      dueAtOf('2026-09-04').toISOString(),
+    )
+  })
+
+  it('「今日」の期限も同じ組み立てを通る', () => {
+    const now = new Date('2026-09-04T10:00:00+09:00')
+
+    expect(todayDueAt(now).toISOString()).toBe(dueAtOf('2026-09-04').toISOString())
   })
 })

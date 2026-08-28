@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import type { DuePreset } from '~/utils/due'
 import { parseDueExpression } from '~~/shared/utils/smart-add'
+import {
+  WEEKDAYS,
+  dueAtOf,
+  formatAppDate,
+  formatAppMonth,
+  monthGrid,
+  monthOf,
+  shiftAppMonth,
+  toAppDate,
+} from '~~/shared/utils/date'
 
 const props = defineProps<{ count: number }>()
 
@@ -75,7 +85,61 @@ function presetDate(preset: DuePreset): string {
   return `${result.date.getMonth() + 1}月${result.date.getDate()}日`
 }
 
+// --- カレンダー ---------------------------------------------------------
+//
+// 打って選ぶ（候補）だけでは、「再来週の水曜」のように日付そのものを見て
+// 決めたいときに数えることになる。日記の一覧（docs/03-functional-spec.md 3.3）
+// と同じ月の升目を、この場に出せるようにする。
+//
+// 候補とは入れ替えで出す。両方を積むとダイアログが縦に伸び、狭い画面では
+// 「設定」まで届かなくなるため。
+
+const calendarOpen = ref(false)
+const today = toAppDate()
+
+/** 表示している月。 */
+const month = ref(monthOf(today))
+
+/** いまの入力が指している日。カレンダーで印を付ける。 */
+const selected = computed(() => {
+  const value = parsed.value
+  return value && !value.cleared ? toAppDate(value.date) : null
+})
+
+/** 打った内容に合わせて、その日の月を出す（`9/4` と打てば9月へ）。 */
+watch(selected, (date) => {
+  if (date) month.value = monthOf(date)
+})
+
+const days = computed(() => monthGrid(month.value))
+
+function toggleCalendar() {
+  calendarOpen.value = !calendarOpen.value
+  if (!calendarOpen.value) return
+
+  // 候補を選んだ状態のまま隠すと、打った内容と違うものが確定してしまう
+  activeIndex.value = -1
+  month.value = monthOf(selected.value ?? today)
+}
+
+function shiftMonth(months: number) {
+  month.value = shiftAppMonth(month.value, months)
+}
+
+/**
+ * カレンダーの日を押したら、その日を期限にする。
+ *
+ * 候補（`pick`）と同じく、押した時点で確定する。日付だけの指定なので
+ * 時刻は持たせない（`dueAtOf` が 23:59 にそろえる）。
+ */
+function pickDate(date: string) {
+  emit('submit', { date: dueAtOf(date), hasTime: false })
+}
+
 function move(delta: -1 | 1) {
+  // カレンダーを出している間は候補を隠しているので、選び先も動かさない
+  if (calendarOpen.value) return
+
   const count = presets.value.length
   if (!count) return
   activeIndex.value = (activeIndex.value + delta + count) % count
@@ -156,7 +220,7 @@ onMounted(() => input.value?.focus())
         />
 
         <ul
-          v-if="presets.length"
+          v-if="presets.length && !calendarOpen"
           id="due-presets"
           ref="list"
           class="sheet__list"
@@ -182,6 +246,73 @@ onMounted(() => input.value?.focus())
             </button>
           </li>
         </ul>
+
+        <!--
+          カレンダー。候補と入れ替えで出す（縦に積むと「設定」まで届かなくなる）。
+          升目の作り（日曜始まり・前後の月も出す）は日記の一覧と同じ
+          （docs/03-functional-spec.md 3.3、monthGrid）。
+        -->
+        <div v-if="calendarOpen" class="calendar">
+          <div class="calendar__head">
+            <button
+              type="button"
+              class="calendar__nav"
+              aria-label="前の月"
+              @click="shiftMonth(-1)"
+            >
+              ‹
+            </button>
+            <span class="calendar__month" aria-live="polite">{{ formatAppMonth(month) }}</span>
+            <button
+              type="button"
+              class="calendar__nav"
+              aria-label="次の月"
+              @click="shiftMonth(1)"
+            >
+              ›
+            </button>
+          </div>
+
+          <div class="calendar__grid">
+            <span
+              v-for="(weekday, index) in WEEKDAYS"
+              :key="weekday"
+              class="calendar__weekday"
+              :class="{
+                'calendar__weekday--sun': index === 0,
+                'calendar__weekday--sat': index === 6,
+              }"
+            >
+              {{ weekday }}
+            </span>
+
+            <button
+              v-for="date in days"
+              :key="date"
+              type="button"
+              class="calendar__day"
+              :class="{
+                'calendar__day--outside': monthOf(date) !== month,
+                'calendar__day--today': date === today,
+                'calendar__day--selected': date === selected,
+              }"
+              :aria-label="formatAppDate(date)"
+              :aria-pressed="date === selected"
+              @click="pickDate(date)"
+            >
+              {{ Number(date.slice(8)) }}
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="sheet__calendar-toggle"
+          :aria-expanded="calendarOpen"
+          @click="toggleCalendar"
+        >
+          {{ calendarOpen ? '候補から選ぶ' : '🗓️ カレンダーから選ぶ' }}
+        </button>
 
         <p class="sheet__preview" :class="{ 'sheet__preview--invalid': text.trim() && !parsed }">
           {{ preview }}
@@ -281,6 +412,101 @@ onMounted(() => input.value?.focus())
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
+}
+
+/* カレンダー。日記の一覧（app/pages/diary/index.vue）と同じ作りにそろえる */
+.calendar {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.calendar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.calendar__month {
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar__nav {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.125rem;
+}
+
+.calendar__weekday {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding-bottom: 0.125rem;
+}
+
+.calendar__weekday--sun {
+  color: var(--danger);
+}
+
+.calendar__weekday--sat {
+  color: var(--saturday);
+}
+
+.calendar__day {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  /* 指でも押せる大きさ。7列に収まる範囲で最小限に留める */
+  min-height: 2.25rem;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar__day:hover {
+  background: var(--bg);
+}
+
+/* 前後の月の日。曜日の列を保つために出すが、当月とは区別する */
+.calendar__day--outside {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.calendar__day--today {
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.calendar__day--selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* カレンダーの開け閉め。候補と入れ替わることが分かるよう、文字も入れ替える */
+.sheet__calendar-toggle {
+  justify-self: start;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  min-height: 2rem;
 }
 
 .sheet__preview {
