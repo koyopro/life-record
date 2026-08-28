@@ -91,6 +91,12 @@ export function toText(data: ExportData): string {
 
     parts.push(`## ${item.title}`)
     parts.push(meta.join(' / '))
+    // メモは日付を持たないので、日付ごとの記録より前に置く
+    if (item.note) {
+      parts.push('')
+      parts.push('### メモ')
+      parts.push(item.note.replace(/\s+$/, ''))
+    }
     for (const section of item.sections) {
       parts.push('')
       parts.push(`### ${formatAppDate(section.date)}`)

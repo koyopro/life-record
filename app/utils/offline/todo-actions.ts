@@ -179,6 +179,7 @@ function pickItemFields(source: ItemDto): ItemDto {
     status: source.status,
     priority: source.priority,
     url: source.url,
+    note: source.note,
     dueAt: source.dueAt,
     dueHasTime: source.dueHasTime,
     body: source.body,

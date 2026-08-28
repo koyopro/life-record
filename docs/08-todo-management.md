@@ -250,6 +250,7 @@ RTM の[キーボードショートカット](https://www.rememberthemilk.com/he
 | `u` | URL を変更 | URLを変更 |
 | `Shift` + `u` | URL を開く（チェックしたもの全部） | URLを開く |
 | `y` | 今日の作業記録を書く（当日の枠へ移る） | ノートの追加 |
+| `m` | メモを書く（日付を持たない覚え書き。[02-data-model.md](02-data-model.md) 2.3） | |
 | `⌘` + `C` | タイトルと本文をコピー | |
 | `z` | 元に戻す | 元に戻す |
 | `Delete` / `Backspace` | 削除 | |

@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, gte, lte, ne, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, exists, gte, lte, ne, or, sql, type SQL } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { diaries, itemTags, items, sections, tags } from '~~/server/db/schema'
 import { assertAppDate } from '~~/server/utils/date'
@@ -15,7 +15,7 @@ const PER_KIND_LIMIT = 100
 const TOTAL_LIMIT = 100
 
 /**
- * Item.title / Section.body / Diary.body の横断検索
+ * Item.title・Item.note / Section.body / Diary.body の横断検索
  * （docs/03-functional-spec.md 3.6）。
  *
  * 件数が小さいうちは `ILIKE` の部分一致で足りる。日本語では標準の
@@ -88,7 +88,8 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
       .from(items)
       .where(
         all(
-          sql`${items.title} ILIKE ${pattern}`,
+          // メモも Item 自身の中身なので、タイトルと同じ扱いで拾う
+          or(sql`${items.title} ILIKE ${pattern}`, sql`${items.note} ILIKE ${pattern}`),
           openOnly,
           tagged,
           after ? gte(items.createdAt, after) : undefined,
@@ -107,7 +108,9 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
         date: toAppDate(row.createdAt),
         path: `/items/${row.id}`,
         title: row.title,
-        excerpt: '',
+        // タイトルで当たったなら、そこは行の見出しにもう出ている。
+        // メモで当たったときだけ、その周りを抜き出して見せる
+        excerpt: row.note ? excerptAround(row.note, q) : '',
         item: {
           id: row.id,
           status: row.status,

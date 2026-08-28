@@ -160,12 +160,18 @@ every day until 12/31   → FREQ=DAILY;UNTIL=20261231T000000Z
 | title | ○ | |
 | priority | ○ | |
 | url | ○ | 毎週見に行くページなど、回が変わっても行き先は同じことが多い |
+| note（メモ） | ○ | 回をまたいで残したい手順・前提の置き場（[02-data-model.md](02-data-model.md) 2.3）。写しを渡すので、次の回で書き換えても済んだ回はそのまま |
 | tags | ○ | [09-tags.md](09-tags.md) |
 | recurrence_rule / basis | ○ | |
 | series_id | ○ | |
 | due_at | 計算 | 10.4 のとおり |
 | status | × | 常に `backlog`（未着手）から始まる |
 | Section（作業記録） | × | 回ごとに独立させる。これがオカレンスを分ける主目的 |
+
+作業記録を引き継がないのは、**日付を持つものは日記に出る**ため
+（Diary と Section は日付だけで結び付く）。引き継ぐと、関係のない日の日記に
+過去の回の記録が現れてしまう。回をまたいで残したいことは、日付を持たない
+メモ（`Item.note`）に書く。
 
 新しいオカレンスの `status` は `backlog`（未着手）にする。
 

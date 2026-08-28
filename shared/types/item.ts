@@ -79,6 +79,11 @@ export interface ItemDto {
   priority: Priority | null
   /** 関連する URL。1件だけ持つ。 */
   url: string | null
+  /**
+   * タスクについての覚え書き（メモ）。日付を持たないので日記には出ない。
+   * 繰り返しの次回オカレンスへ引き継がれる（docs/02-data-model.md 2.3）。
+   */
+  note: string | null
   /** 期限。ISO 8601。 */
   dueAt: string | null
   /** 期限に時刻の指定があるか。false なら日付のみの期限。 */
@@ -142,6 +147,7 @@ export interface ItemDetailDto extends ItemDto {
 export interface ItemPatch {
   title?: string
   url?: string | null
+  note?: string | null
   status?: ItemStatus
   priority?: Priority | null
   dueAt?: string | null

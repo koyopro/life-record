@@ -46,6 +46,7 @@ export default defineEventHandler(async (event) => {
         status: snapshot.status,
         priority: snapshot.priority,
         url: snapshot.url ?? null,
+        note: snapshot.note ?? null,
         dueAt: snapshot.dueAt ? new Date(snapshot.dueAt) : null,
         dueHasTime: Boolean(snapshot.dueHasTime),
         // 繰り返しは rule と basis が揃っていなければ CHECK 制約に掛かる

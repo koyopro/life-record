@@ -50,6 +50,15 @@ export const items = pgTable(
      * 本文にも書けるが、一覧から直接開きたいものは分けて持つ。
      */
     url: text('url'),
+    /**
+     * そのタスクについての覚え書き（メモ）。日付を持たない。
+     *
+     * 日付付きの記録は Section（作業記録）が持つ。日付を持つものは日記に
+     * 出るため（Diary と Section は日付だけで結び付く）、回をまたいで
+     * 残したい手順・前提はこちらに書く。繰り返しの次回オカレンスへは
+     * これだけを引き継ぐ（docs/02-data-model.md 2.3、docs/10-recurrence.md 10.5）。
+     */
+    note: text('note'),
     /** 期限。作業日（Section.date）とは別概念。 */
     dueAt: timestamp('due_at', { withTimezone: true }),
     /**

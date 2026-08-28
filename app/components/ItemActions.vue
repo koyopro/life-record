@@ -26,8 +26,8 @@ const props = defineProps<{
   switchable?: boolean
   /** タスクを開く（広い画面なら右ペイン、狭ければ詳細画面）。 */
   open: (item: ItemDto) => void
-  /** 詳細の欄へ移る（`r` / `u` / `y`）。 */
-  focusDetail: (field: 'Title' | 'Url' | 'Body') => void | Promise<void>
+  /** 詳細の欄へ移る（`r` / `u` / `y` / `m`）。 */
+  focusDetail: (field: 'Title' | 'Url' | 'Body' | 'Note') => void | Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -236,6 +236,16 @@ const shortcuts = computed<Shortcut[]>(() => [
     label: '今日の作業記録を書く',
     group: '編集',
     run: () => props.focusDetail('Body'),
+  },
+  {
+    /*
+     * メモ（日付を持たない覚え書き）。作業記録と違って日記には出ず、
+     * 繰り返しの次回オカレンスへ引き継がれる（docs/02-data-model.md 2.3）。
+     */
+    keys: ['m'],
+    label: 'メモを書く',
+    group: '編集',
+    run: () => props.focusDetail('Note'),
   },
   {
     keys: ['U'],

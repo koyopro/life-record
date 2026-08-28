@@ -228,6 +228,7 @@ defineExpose({
   focusBody,
   focusTitle: () => focusEnd(titleInput.value),
   focusUrl,
+  focusNote,
 })
 
 /*
@@ -241,6 +242,7 @@ const FOCUS_TARGETS: Record<string, () => void | Promise<void>> = {
   title: () => focusEnd(titleInput.value),
   url: () => focusUrl(),
   body: () => focusBody(),
+  note: () => focusNote(),
 }
 
 const route = useRoute()
@@ -301,6 +303,51 @@ function onUrlKeydown(event: KeyboardEvent) {
   confirmOnEnter(event, urlSave)
 }
 
+// --- メモ（リアルタイム保存） -------------------------------------------
+//
+// 日付を持たない覚え書き（docs/02-data-model.md 2.3）。日付を持つと日記に
+// 出てしまうため（Diary と Section は日付だけで結び付く）、回をまたいで
+// 残したい手順・前提はこちらに書く。繰り返しの次回オカレンスへは、
+// 作業記録ではなくこれが引き継がれる（docs/10-recurrence.md 10.5）。
+
+const noteDraft = ref<string | null>(null)
+const note = computed({
+  get: () => noteDraft.value ?? item.value?.note ?? '',
+  set: (value: string) => {
+    noteDraft.value = value
+  },
+})
+
+const noteSave = useAutosave({
+  source: note,
+  // 空にしたら「無い」に戻す。行そのものは開いている間だけ残る
+  save: async (value) => {
+    await store.patch([id.value], { note: value.trim() ? value : null })
+  },
+})
+
+/** メモの●。ローカル保存が済んでいても、サーバーへ未送信なら伝える。 */
+const noteIndicatorState = computed<SaveDotState>(() =>
+  noteSave.state.value === 'idle' && unsynced.value ? 'unsynced' : noteSave.state.value,
+)
+
+const noteEditor = ref<{ focus: () => void } | null>(null)
+
+/**
+ * メモへ移る（一覧の `m`）。
+ *
+ * 空のタスクでは欄そのものを出していないので、先に出してから移る
+ * （URL 欄と同じ）。
+ */
+async function focusNote() {
+  if (!showNote.value) {
+    noteFieldOpen.value = true
+    // 描かれる前にフォーカスしても効かない
+    await nextTick()
+  }
+  noteEditor.value?.focus()
+}
+
 /**
  * 別画面での変更や再取得に追随する。編集中の内容は上書きしない。
  *
@@ -326,6 +373,13 @@ watch(item, (value) => {
   if (urlDraft.value === null || urlIdle) {
     urlDraft.value = null
     urlSave.markSynced()
+  }
+
+  const noteIdle =
+    noteSave.state.value === 'idle' || noteSave.state.value === 'saved'
+  if (noteDraft.value === null || noteIdle) {
+    noteDraft.value = null
+    noteSave.markSynced()
   }
 })
 
@@ -421,6 +475,9 @@ const detailMenuOpen = ref(false)
 /** URL 欄を出すか。値があれば常に出す。無くても「詳細を追加」から開いたら出す。 */
 const urlFieldOpen = ref(false)
 const showUrlRow = computed(() => Boolean(item.value?.url) || urlFieldOpen.value)
+/** メモ欄を出すか。URL と同じ扱い（書いてあるか、出したときだけ）。 */
+const noteFieldOpen = ref(false)
+const showNote = computed(() => Boolean(item.value?.note) || noteFieldOpen.value)
 
 function toggleDetailMenu() {
   priorityOpen.value = false
@@ -439,6 +496,11 @@ async function openUrlField() {
   urlInput.value?.focus()
 }
 
+async function openNoteField() {
+  detailMenuOpen.value = false
+  await focusNote()
+}
+
 const detailOptions = computed(() => {
   const options: { key: string; label: string; run: () => void }[] = []
   if (!recurrence.value) {
@@ -446,6 +508,9 @@ const detailOptions = computed(() => {
   }
   if (!showUrlRow.value) {
     options.push({ key: 'url', label: 'URL', run: openUrlField })
+  }
+  if (!showNote.value) {
+    options.push({ key: 'note', label: 'メモ', run: openNoteField })
   }
   return options
 })
@@ -456,6 +521,7 @@ watch(id, () => {
   priorityOpen.value = false
   detailMenuOpen.value = false
   urlFieldOpen.value = false
+  noteFieldOpen.value = false
 })
 
 /**
@@ -937,6 +1003,24 @@ async function removeSection(section: SectionDto) {
             </button>
           </div>
         </div>
+      </section>
+
+      <!--
+        メモ。日付を持たない覚え書きで、作業記録とは別のもの
+        （docs/02-data-model.md 2.3）。日記には出ず、繰り返しの次回へ
+        引き継がれる。書いていないタスクでは出さず、「詳細を追加」から出す。
+      -->
+      <section v-if="showNote" class="note">
+        <header class="note__head">
+          <h2 class="note__title">メモ</h2>
+          <SaveDot class="note__save" :state="noteIndicatorState" />
+        </header>
+        <ScrapboxEditor
+          ref="noteEditor"
+          v-model="note"
+          placeholder="くり返しても残しておきたいこと"
+          aria-label="メモ"
+        />
       </section>
 
       <!--
@@ -1539,6 +1623,25 @@ async function removeSection(section: SectionDto) {
 .log {
   display: grid;
   gap: 1rem;
+}
+
+/* メモ。作業記録と同じ見出しの作りにして、並びとして読めるようにする */
+.note {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.note__head {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.note__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .series__title {

@@ -19,6 +19,7 @@ export function itemDto(overrides: Partial<ItemDto> = {}): ItemDto {
     status: 'backlog',
     priority: null,
     url: null,
+    note: null,
     dueAt: null,
     dueHasTime: false,
     body: null,

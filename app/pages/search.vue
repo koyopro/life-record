@@ -186,6 +186,7 @@ function itemOf(hit: SearchHit): ItemDto | null {
     ...hit.item,
     title: hit.title,
     url: null,
+    note: null,
     body: null,
     recurrenceRule: null,
     recurrenceBasis: null,
@@ -360,15 +361,16 @@ function selectRow(row: Row) {
  * 詳細画面しかないのでそちらへ移動し、どこへ入りたかったかを URL で渡す
  * （一覧と同じ。docs/08-todo-management.md 8.4）。
  */
-const FOCUS_QUERY = { Title: 'title', Url: 'url', Body: 'body' } as const
+const FOCUS_QUERY = { Title: 'title', Url: 'url', Body: 'body', Note: 'note' } as const
 
 const detail = ref<{
   focusTitle: () => void
   focusUrl: () => void | Promise<void>
   focusBody: () => void
+  focusNote: () => void | Promise<void>
 } | null>(null)
 
-async function focusDetail(field: 'Title' | 'Url' | 'Body') {
+async function focusDetail(field: 'Title' | 'Url' | 'Body' | 'Note') {
   const target = list.cursorItem.value
   if (!target) return
 

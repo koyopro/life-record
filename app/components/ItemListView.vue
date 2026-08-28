@@ -191,6 +191,7 @@ interface DetailExposed {
   focusTitle: () => void
   focusUrl: () => void | Promise<void>
   focusBody: () => void
+  focusNote: () => void | Promise<void>
 }
 
 /** どの欄へ移りたいかを、詳細画面へ URL で渡すときの名前。 */
@@ -198,18 +199,19 @@ const FOCUS_QUERY = {
   Title: 'title',
   Url: 'url',
   Body: 'body',
+  Note: 'note',
 } as const
 
 const detail = ref<DetailExposed | null>(null)
 
 /**
- * 詳細の指定した欄へフォーカスする（`r` / `u` / `y`）。
+ * 詳細の指定した欄へフォーカスする（`r` / `u` / `y` / `m`）。
  *
  * 右ペインが出ていればその欄へ。出ていない狭い画面では、
  * 編集できる場所が詳細画面しかないのでそちらへ移動する。
  * 移動しただけでは欄に入れないので、どこへ入りたかったかを URL で渡す。
  */
-async function focusDetail(field: 'Title' | 'Url' | 'Body') {
+async function focusDetail(field: 'Title' | 'Url' | 'Body' | 'Note') {
   const target = list.cursorItem.value
   if (!target) return
 

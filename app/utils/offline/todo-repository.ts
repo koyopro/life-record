@@ -52,6 +52,7 @@ export function toLocalItem(item: ItemDto, syncState: SyncState = 'synced'): Loc
     status: item.status,
     priority: item.priority,
     url: item.url,
+    note: item.note,
     dueAt: item.dueAt,
     dueHasTime: item.dueHasTime,
     body: item.body,

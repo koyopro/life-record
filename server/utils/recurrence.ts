@@ -62,6 +62,13 @@ export async function createNextOccurrence(
        * 毎回貼り直すのは手間が大きい。
        */
       url: completed.url,
+      /*
+       * メモも引き継ぐ（10.5）。回をまたいで残したい手順・前提の置き場
+       * として持たせているもので、これが引き継がれないと置く意味がない。
+       * 引き継ぐのは**写し**で、共有ではない。次の回で書き換えても、
+       * 済んだ回に書いてあったことは当時のまま残る。
+       */
+      note: completed.note,
       dueAt: due,
       dueHasTime: completed.dueHasTime,
       recurrenceRule: completed.recurrenceRule,

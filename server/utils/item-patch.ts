@@ -7,11 +7,12 @@ import {
 } from '~~/shared/types/item'
 import { isRecurrenceBasis, type RecurrenceBasis } from '~~/shared/types/recurrence'
 import { isValidRule } from '~~/shared/utils/recurrence'
-import { TITLE_MAX_LENGTH } from '~~/shared/utils/text'
+import { BODY_MAX_LENGTH, TITLE_MAX_LENGTH } from '~~/shared/utils/text'
 
 export interface ItemUpdateValues {
   title?: string
   url?: string | null
+  note?: string | null
   status?: ItemPatch['status']
   priority?: number | null
   dueAt?: Date | null
@@ -77,6 +78,27 @@ export function toUpdateValues(patch: unknown): ItemUpdateValues {
       values.url = url
     } else {
       throw createError({ statusCode: 400, message: '不正な URL です' })
+    }
+  }
+
+  /*
+   * メモ（docs/02-data-model.md 2.3）。日付を持たない覚え書きなので、
+   * 中身は作業記録と同じ扱い（記法も長さの上限も同じ）。
+   * 空にしたら「無い」に戻す。行が消えて「詳細を追加」から出し直せる
+   */
+  if ('note' in input) {
+    if (input.note === null || input.note === '') {
+      values.note = null
+    } else if (typeof input.note === 'string') {
+      if (input.note.length > BODY_MAX_LENGTH) {
+        throw createError({
+          statusCode: 400,
+          message: `メモは ${BODY_MAX_LENGTH} 文字までです`,
+        })
+      }
+      values.note = input.note
+    } else {
+      throw createError({ statusCode: 400, message: '不正なメモです' })
     }
   }
 

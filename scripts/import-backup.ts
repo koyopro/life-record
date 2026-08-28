@@ -68,6 +68,8 @@ function toItemRow(item: ItemDetailDto): typeof items.$inferInsert {
     status: item.status,
     priority: item.priority,
     url: item.url,
+    // メモは後から足したもの。古い書き出しには無い
+    note: item.note ?? null,
     dueAt: item.dueAt ? new Date(item.dueAt) : null,
     dueHasTime: item.dueHasTime,
     recurrenceRule: item.recurrenceRule,

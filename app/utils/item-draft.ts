@@ -35,6 +35,8 @@ export function buildItemDraft(text: string, now: Date = new Date()): DraftResul
       status: 'backlog',
       priority: parsed.priority,
       url: parsed.url,
+      // メモは詳細から書くもの。追加の時点では持たない
+      note: null,
       // サーバー（items.post.ts）と同じく、期限の指定がなければ今日にする。
       // `^なし` / `^x` で明示的に外していれば、その指定に従う。
       dueAt: parsed.dueCleared ? null : (parsed.dueAt ?? todayDueAt(now)).toISOString(),

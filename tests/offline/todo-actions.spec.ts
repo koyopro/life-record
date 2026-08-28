@@ -38,3 +38,37 @@ describe('withPatch の completedAt', () => {
     expect(next.completedAt).toBeNull()
   })
 })
+
+/**
+ * メモ（docs/02-data-model.md 2.3）。
+ *
+ * オフラインでも書けるよう、ローカルにも同じ内容を当てる。空にしたときは
+ * サーバー（item-patch.ts）と同じく「無い」に戻す。
+ */
+describe('withPatch のメモ', () => {
+  it('書いた内容をローカルにも当て、未送信の印を付ける', () => {
+    const local = toLocalItem(itemDto({ note: null }))
+
+    const next = withPatch(local, { note: '鍵は3階' }, '2026-08-19T03:00:00.000Z')
+
+    expect(next.note).toBe('鍵は3階')
+    expect(next.syncState).toBe('pending_update')
+  })
+
+  it('null にしたら消える', () => {
+    const local = toLocalItem(itemDto({ note: '鍵は3階' }))
+
+    const next = withPatch(local, { note: null }, '2026-08-19T03:00:00.000Z')
+
+    expect(next.note).toBeNull()
+  })
+
+  it('メモを変えても、他の項目はそのまま', () => {
+    const local = toLocalItem(itemDto({ note: null, url: 'https://example.com' }))
+
+    const next = withPatch(local, { note: '毎回ここを見る' }, '2026-08-19T03:00:00.000Z')
+
+    expect(next.url).toBe('https://example.com')
+    expect(next.title).toBe(local.title)
+  })
+})
