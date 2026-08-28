@@ -9,7 +9,14 @@
  * 行と表示が1対1で対応している必要がある。
  */
 
-export type Line = TextLine | QuoteLine | CodeHeaderLine | CodeBodyLine | RuleLine
+export type Line =
+  | TextLine
+  | QuoteLine
+  | CodeHeaderLine
+  | CodeBodyLine
+  | RuleLine
+  | TableHeaderLine
+  | TableRowLine
 
 interface LineBase {
   /** 行頭の空白の数。箇条書きの階層になる。 */
@@ -47,6 +54,28 @@ export interface QuoteLine extends LineBase {
  */
 export interface RuleLine extends LineBase {
   type: 'rule'
+}
+
+/** `table:名前` の行。`content` が表の名前にあたる。 */
+export interface TableHeaderLine extends LineBase {
+  type: 'tableHeader'
+}
+
+/**
+ * 表の行。`content` を**タブで区切ったもの**が桁（セル）。
+ *
+ * 桁の幅（`columns`）は表の中の全行で同じものを持つ。行ごとに中身から
+ * 決めると、行と行で桁がそろわず表として読めなくなるため（1行 = 1要素の
+ * 決まりから、行はそれぞれ別の要素として描かれる。docs/11-scrapbox-notation.md）。
+ */
+export interface TableRowLine extends LineBase {
+  type: 'tableRow'
+  /** セルの中身。行の中の記法（リンクなど）も解釈する。 */
+  cells: Inline[][]
+  /** 桁ごとの幅。全角を2・半角を1として数えた文字数。 */
+  columns: number[]
+  /** 表の最後の行か。見た目をまとめるために使う。 */
+  last: boolean
 }
 
 /** `code:ファイル名` の行。`content` がファイル名にあたる。 */

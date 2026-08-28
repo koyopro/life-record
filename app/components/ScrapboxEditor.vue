@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { lineClass, renderLine } from '~~/shared/utils/scrapbox/render'
+import { lineClass, renderLine, tableColumns } from '~~/shared/utils/scrapbox/render'
 import {
   codeBodyOf,
   continuationPrefix,
@@ -803,9 +803,9 @@ function onForwardDelete(event: KeyboardEvent) {
     el.selectionStart === el.value.length && el.selectionEnd === el.value.length
   if (!atEnd) return
 
-  // コードブロック中の空行では、改行を消して次の行と繋げるのではなく、
-  // その行の字下げを落として、そこでコードブロックを抜けさせる
-  if (activeText.value === '' && activeLine.value?.type === 'codeBody') {
+  // コードブロック・表の中の空行では、改行を消して次の行と繋げるのではなく、
+  // その行の字下げを落として、そこでブロックを抜けさせる
+  if (activeText.value === '' && isBlockBody(activeLine.value)) {
     event.preventDefault()
     replaceActivePrefix('')
     return
@@ -992,9 +992,9 @@ function moveBlock(event: KeyboardEvent, delta: -1 | 1) {
   const lines = [...rawLines.value]
   const all = parseScrapbox(lines.join('\n'))
 
-  // コードブロックの中に段落の階層は無い。外に出さず、中だけで入れ替える
-  if (all[index]?.type === 'codeBody') {
-    if (all[index + delta]?.type === 'codeBody') moveLine(event, delta)
+  // コードブロック・表の中に段落の階層は無い。外に出さず、中だけで入れ替える
+  if (isBlockBody(all[index])) {
+    if (isBlockBody(all[index + delta])) moveLine(event, delta)
     return
   }
 
@@ -1034,24 +1034,38 @@ function moveBlock(event: KeyboardEvent, delta: -1 | 1) {
 function blockLength(all: Line[], index: number): number {
   const start = all[index]
   if (!start) return 0
-  // コードブロックの中身に階層は無いので、その行だけで1つ
-  if (start.type === 'codeBody') return 1
+  // ブロックの中身に階層は無いので、その行だけで1つ
+  if (isBlockBody(start)) return 1
 
   const base = indentOf(start.raw)
-  let inCode = start.type === 'codeHeader'
+  let inBlock = isBlockHeader(start)
   let end = index + 1
   while (end < all.length) {
     const line = all[end]!
-    // コードブロックの中身は空行でも中断しない（字下げが浅くても続き）
-    if (inCode && line.type === 'codeBody') {
+    // ブロックの中身は空行でも中断しない（字下げが浅くても続き）
+    if (inBlock && isBlockBody(line)) {
       end++
       continue
     }
     if (indentOf(line.raw) <= base) break
-    inCode = line.type === 'codeHeader'
+    inBlock = isBlockHeader(line)
     end++
   }
   return end - index
+}
+
+/**
+ * 見出しとひとまとまりで扱う行か（コードブロックの中身・表の行）。
+ *
+ * どちらも見出し（`code:` / `table:`）にぶら下がる中身で、行の中に階層を
+ * 持たない。段落の移動や空行での抜け方を、同じ規則で扱う。
+ */
+function isBlockBody(line: Line | null | undefined): boolean {
+  return line?.type === 'codeBody' || line?.type === 'tableRow'
+}
+
+function isBlockHeader(line: Line | null | undefined): boolean {
+  return line?.type === 'codeHeader' || line?.type === 'tableHeader'
 }
 
 /**
@@ -1065,8 +1079,8 @@ function previousSiblingStart(all: Line[], index: number): number {
   const base = indentOf(all[index]!.raw)
   for (let start = index - 1; start >= 0; start--) {
     const line = all[start]!
-    // コードブロックの中身は、見出しと一緒に動かすので単体では見ない
-    if (line.type === 'codeBody') continue
+    // ブロックの中身は、見出しと一緒に動かすので単体では見ない
+    if (isBlockBody(line)) continue
     const indent = indentOf(line.raw)
     if (indent > base) continue
     return indent === base ? start : -1
@@ -1081,6 +1095,24 @@ function onTab(event: KeyboardEvent) {
   event.preventDefault()
 
   const prefix = activePrefix.value
+
+  /*
+   * 表の行では、`Tab` は**桁の区切り**を入れる（docs/11-scrapbox-notation.md）。
+   * 表は行の中身をタブで区切って桁に分けるので、ここで字下げを増やすと
+   * 桁を足す手が無くなる。字下げのほうは `Shift`+`Tab` で減らせる
+   * （基準より浅くすれば表から抜ける）。
+   */
+  if (!event.shiftKey && activeLine.value?.type === 'tableRow') {
+    const el = input.value
+    if (!el) return
+    const start = el.selectionStart ?? activeText.value.length
+    const end = el.selectionEnd ?? start
+    const value = activeText.value
+
+    replaceActiveLine(`${value.slice(0, start)}\t${value.slice(end)}`)
+    void setCaret(start + 1, start + 1)
+    return
+  }
 
   if (event.shiftKey) {
     // 全角スペースでの字下げも半角と同じく1段として外せるようにする（indentOf と揃える）
@@ -1946,7 +1978,11 @@ defineExpose({
         v-show="index !== activeIndex"
         :key="index"
         :class="lineClass(line)"
-        :style="{ order: index, '--sb-indent': line.indent }"
+        :style="{
+          order: index,
+          '--sb-indent': line.indent,
+          '--sb-table-cols': tableColumns(line) ?? undefined,
+        }"
         :data-line-index="index"
         @click="onLineClick($event, index)"
       >
@@ -2338,6 +2374,91 @@ defineExpose({
  */
 .editor :deep(.sb-line--code-header.sb-line--indented)::before {
   left: calc(var(--sb-code-bleed) - 0.75rem);
+}
+
+/*
+ * 表（`table:名前`）。
+ *
+ * 1行 = 1要素の決まり（docs/11-scrapbox-notation.md 11.5）から、行はそれぞれ
+ * 別の要素として描かれる。本物の `<table>` にはできないので、行ごとに grid で
+ * 桁に割り、**割り方（`--sb-table-cols`）を表の中の全行で同じにする**ことで
+ * 桁をそろえる。割り方は記法を読むときに決める（parse.ts の columnWidths）。
+ */
+.editor :deep(.sb-line--table-header),
+.editor :deep(.sb-line--table-row) {
+  /* 箱そのものを字下げの分だけ寄せる（引用・コードブロックと同じ考え方） */
+  margin-left: calc(var(--sb-indent, 0) * var(--sb-step));
+  padding-left: 0;
+}
+
+.editor :deep(.sb-line--table-header) {
+  /* 見出しの文字は、セルの内側と同じ位置から始める */
+  padding-left: 0.5rem;
+}
+
+.editor :deep(.sb-table__name) {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* 見出しは表の1項目として中黒を出す。箱が margin で寄っているぶんを戻す */
+.editor :deep(.sb-line--table-header.sb-line--indented)::before {
+  left: -0.75rem;
+}
+
+.editor :deep(.sb-line--table-row) {
+  display: grid;
+  /* 割り方が無いとき（桁の無い行）は1桁として出す */
+  grid-template-columns: var(--sb-table-cols, minmax(0, 1fr));
+  /* 表は中身の幅に収める。行いっぱいに広げると最後の桁だけが間延びする */
+  width: fit-content;
+  max-width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  /* 行が連なって1つの表に見えるよう、上の枠線は1行目だけが持つ */
+  border-top: 0;
+}
+
+.editor :deep(.sb-line--table-header + .sb-line--table-row) {
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+.editor :deep(.sb-line--table-last) {
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+/* 行そのものは表の中身なので、中黒は出さない（見出しだけが項目） */
+.editor :deep(.sb-line--table-row)::before {
+  content: none;
+}
+
+.editor :deep(.sb-table__cell) {
+  padding: 0.125rem 0.5rem;
+  /* 桁の幅は決め打ちなので、入りきらない中身は折り返す */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  /* 数字は桁をそろえる。表で読みたいのはたいてい数字の並び */
+  font-variant-numeric: tabular-nums;
+  border-left: 1px solid var(--border);
+}
+
+.editor :deep(.sb-table__cell:first-child) {
+  border-left: 0;
+}
+
+/*
+ * 編集中の行は、桁に割らずそのまま出す。入力欄にはタブを含む生の1行が
+ * 入っているので、桁に割ると入力欄が最初の桁に押し込められてしまう。
+ */
+.editor__editing.sb-line--table-row {
+  display: block;
+  /* 入力欄は打つ場所なので、桁の幅ではなく行の幅いっぱいに使う */
+  width: auto;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 /*

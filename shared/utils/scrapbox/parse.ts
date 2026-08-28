@@ -120,6 +120,59 @@ export function parseScrapbox(input: string): Line[] {
       continue
     }
 
+    /*
+     * 表（`table:名前`）。続く「1段以上深い行」がその表の行になる。
+     *
+     * 行はここでまとめて読む。桁の幅は**表の中の全行で同じ**でなければ
+     * ならず（行ごとに決めると桁がそろわない）、そのためには先に全行を
+     * 見る必要があるため。
+     */
+    if (rest.startsWith(TABLE_MARKER)) {
+      lines.push({
+        ...split(raw, indent + TABLE_MARKER.length),
+        type: 'tableHeader',
+        indent,
+      })
+
+      const rows: { raw: string; base: number }[] = []
+      let next = i + 1
+      while (next < rawLines.length) {
+        const rowRaw = rawLines[next]!
+        const rowIndent = indentOf(rowRaw)
+        const rowRest = rowRaw.slice(rowIndent)
+        // 空行は、表の基準の字下げ（見出し + 1）と同じ間だけ続きとみなす
+        // （コードブロックと同じ扱い。docs/11-scrapbox-notation.md 11.6）
+        const inTable = rowRest.trim() ? rowIndent > indent : rowIndent === indent + 1
+        if (!inTable) break
+
+        // 基準より深い字下げはセルの中身なので、そのまま残す
+        rows.push({ raw: rowRaw, base: Math.min(indent + 1, rowIndent) })
+        next += 1
+      }
+
+      const cells = rows.map((row) =>
+        row.raw
+          .slice(row.base)
+          .split('\t')
+          .map((cell) => parseInline(cell)),
+      )
+      const columns = columnWidths(cells)
+
+      rows.forEach((row, index) => {
+        lines.push({
+          ...split(row.raw, row.base),
+          type: 'tableRow',
+          indent,
+          cells: cells[index]!,
+          columns,
+          last: index === rows.length - 1,
+        })
+      })
+
+      i = next - 1
+      continue
+    }
+
     // 引用の `>` と、それに続く空白ひとつまでが行頭
     const quote = /^> ?/.exec(rest)
     if (quote) {
@@ -151,6 +204,73 @@ export function parseScrapbox(input: string): Line[] {
 }
 
 const CODE_MARKER = 'code:'
+const TABLE_MARKER = 'table:'
+
+/**
+ * 桁ごとの幅（全角を2・半角を1として数えた文字数）。
+ *
+ * 表示は等幅ではないので、これは**目安**でしかない。ただし表の中の全行が
+ * 同じ値を使うため、目安が多少ずれても桁はそろう。入りきらないセルは
+ * 折り返す（幅を content から決めると行ごとにずれるため、広げはしない）。
+ */
+function columnWidths(rows: Inline[][][]): number[] {
+  const widths: number[] = []
+  for (const cells of rows) {
+    cells.forEach((cell, index) => {
+      const width = displayWidth(inlineText(cell))
+      widths[index] = Math.max(widths[index] ?? MIN_COLUMN_WIDTH, width)
+    })
+  }
+  // 桁がいくら長くても、画面からはみ出させない（入りきらない分は折り返す）
+  return widths.map((width) => Math.min(width, MAX_COLUMN_WIDTH))
+}
+
+/** 桁の幅の下限・上限（全角を2として数えた文字数）。 */
+const MIN_COLUMN_WIDTH = 2
+const MAX_COLUMN_WIDTH = 40
+
+/**
+ * 全角を2・半角を1として数えた文字数。
+ *
+ * 東アジアの文字（漢字・かな・全角記号）と絵文字を2つぶんとして数える。
+ */
+const WIDE_CHARACTER =
+  /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\u{1F300}-\u{1FAFF}]/u
+
+function displayWidth(text: string): number {
+  let width = 0
+  for (const char of text) width += WIDE_CHARACTER.test(char) ? 2 : 1
+  return width
+}
+
+/**
+ * セルの**見た目の文字**（記法を取り除いた中身）。桁の幅を数えるのに使う。
+ *
+ * 書いたままの文字数で数えると、リンク（`[URL 見出し]`）を含む桁だけが
+ * 実際よりずっと広くなる。画像・アイコンは文字ではないので、目安として
+ * 全角1文字ぶんの幅として数える。
+ */
+function inlineText(nodes: Inline[]): string {
+  return nodes
+    .map((node) => {
+      switch (node.type) {
+        case 'text':
+        case 'code':
+          return node.value
+        case 'decoration':
+        case 'link':
+          return inlineText(node.nodes)
+        case 'pageLink':
+          return node.title
+        case 'hashtag':
+          return `#${node.name}`
+        case 'image':
+        case 'icon':
+          return '　'
+      }
+    })
+    .join('')
+}
 
 /** 行を、余白に置き換える行頭と中身に分ける。 */
 function split(raw: string, at: number): { raw: string; prefix: string; content: string } {
@@ -178,14 +298,15 @@ export function codeBodyOf(lines: Line[], index: number): string {
  * 続きの行へ引き継ぐ行頭。
  *
  * Scrapbox と同じく字下げを引き継ぐ。引用の `>` も引き継ぐ（複数行の引用は
- * 各行に `>` を書く記法のため）。`code:` だけは、続きの行がもう1つの
- * コードブロックにならないよう落とし、代わりに中身と同じ基準の字下げ（+1）に
- * する。そうしないと、空のまま `Enter` や `Delete` を押しただけで
- * コードブロックを抜けてしまう（空行の判定を参照）。
+ * 各行に `>` を書く記法のため）。`code:` と `table:` だけは、続きの行が
+ * もう1つのブロックにならないよう落とし、代わりに中身と同じ基準の
+ * 字下げ（+1）にする。そうしないと、空のまま `Enter` や `Delete` を
+ * 押しただけでブロックを抜けてしまう（空行の判定を参照）。
  */
 export function continuationPrefix(line: Line | null): string {
-  const stripped = (line?.prefix ?? '').replace(/code:$/, '')
-  return line?.type === 'codeHeader' ? `${stripped} ` : stripped
+  const stripped = (line?.prefix ?? '').replace(/(?:code:|table:)$/, '')
+  const header = line?.type === 'codeHeader' || line?.type === 'tableHeader'
+  return header ? `${stripped} ` : stripped
 }
 
 /**
@@ -212,7 +333,7 @@ export function linesFromInput(text: string, line: Line | null): string[] {
  * 意味の単位で外す。
  */
 export function dropPrefixUnit(prefix: string): string {
-  const marker = /(?:> ?|code:)$/.exec(prefix)
+  const marker = /(?:> ?|code:|table:)$/.exec(prefix)
   if (marker) return prefix.slice(0, -marker[0].length)
   return prefix.slice(0, -1)
 }

@@ -70,6 +70,16 @@ export function renderLine(line: Line, options: RenderOptions = {}): string {
     case 'rule':
       // ハイフンは線そのものになるので、文字としては出さない
       return '<hr class="sb-rule" />'
+    case 'tableHeader':
+      // `table:` は行頭として余白に置き換えるので、ここでは名前だけを出す
+      return `<span class="sb-table__name">${escapeHtml(line.content) || '&nbsp;'}</span>`
+    case 'tableRow':
+      return line.cells
+        .map(
+          (cell) =>
+            `<span class="sb-table__cell">${renderInline(cell, options) || '&nbsp;'}</span>`,
+        )
+        .join('')
     case 'quote':
     case 'text': {
       const html = renderInline(line.nodes, options)
@@ -84,12 +94,32 @@ export function lineClass(line: Line): string {
   const classes = ['sb-line', `sb-line--${kebab(line.type)}`]
   if (line.indent > 0) classes.push('sb-line--indented')
   if (line.type === 'codeBody' && line.last) classes.push('sb-line--code-last')
+  if (line.type === 'tableRow' && line.last) classes.push('sb-line--table-last')
   return classes.join(' ')
 }
 
-/** 字下げは CSS 変数で渡す。数値なので属性に入れても安全。 */
+/** 字下げと桁の幅は CSS 変数で渡す。どちらも数値から作るので属性に入れても安全。 */
 export function indentStyle(line: Line): string {
-  return line.indent > 0 ? ` style="--sb-indent:${line.indent}"` : ''
+  const declarations = [
+    line.indent > 0 ? `--sb-indent:${line.indent}` : '',
+    tableColumns(line) ? `--sb-table-cols:${tableColumns(line)}` : '',
+  ].filter(Boolean)
+
+  return declarations.length ? ` style="${declarations.join(';')}"` : ''
+}
+
+/**
+ * 表の行の桁割り（`grid-template-columns` の値）。表の行でなければ null。
+ *
+ * 幅は文字数の目安（全角=2・半角=1）から作る。表示は等幅ではないので
+ * ぴったりにはならないが、**表の中の全行が同じ値を使う**ので桁はそろう。
+ * `parse.ts` の columnWidths を参照。
+ */
+export function tableColumns(line: Line): string | null {
+  if (line.type !== 'tableRow') return null
+  return line.columns
+    .map((width) => `calc(${width} * 0.5em + 1.25rem)`)
+    .join(' ')
 }
 
 function kebab(value: string): string {
