@@ -280,3 +280,17 @@ export function searchEmoji(query: string, limit = 8): EmojiEntry[] {
   }
   return [...starts, ...includes].slice(0, limit)
 }
+
+/**
+ * アイコンを選んだときに本文へ差し込む文字列（docs/11-scrapbox-notation.md 11.8）。
+ *
+ * `:name:` の後ろに**半角スペースを1つ足す**。閉じの `:` が次に打つ文字と
+ * くっついたままだと、候補は `:` から始まる語を見て出すため、続けて打った
+ * 文字がそのまま次のアイコン名の入力として拾われてしまう。アイコンを続けて
+ * 置くときも、間に区切りが要る。
+ *
+ * すでに後ろが空白なら足さない（押すたびに空白が増えないようにする）。
+ */
+export function iconInsertion(name: string, following = ''): string {
+  return /^\s/.test(following) ? `:${name}:` : `:${name}: `
+}

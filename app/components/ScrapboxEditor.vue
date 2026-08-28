@@ -9,7 +9,7 @@ import {
   parseScrapbox,
 } from '~~/shared/utils/scrapbox/parse'
 import type { Line } from '~~/shared/utils/scrapbox/types'
-import { searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
+import { iconInsertion, searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { caretAfterSplit, type LineSplit } from '~/utils/caret-shift'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
@@ -523,19 +523,24 @@ function updateEmojiTrigger() {
 /**
  * 候補を選び、`:` からキャレットまでを置き換える。
  *
- * 絵文字は文字そのものに、登録したアイコンは `:name:` に置き換える。
- * アイコンには文字が無いため、本文には名前を残しておく必要がある。
+ * 絵文字は文字そのものに、登録したアイコンは `:name: `（後ろに半角スペース）に
+ * 置き換える。アイコンには文字が無いため、本文には名前を残しておく必要がある。
  */
 function selectEmoji(entry: PickerEntry) {
   const start = emojiStart.value
   const el = input.value
   if (start === null || !el) return
 
-  const inserted = entry.kind === 'emoji' ? entry.char : `:${entry.name}:`
-
   const caret = el.selectionStart ?? activeText.value.length
   const value = activeText.value
-  const next = value.slice(0, start) + inserted + value.slice(caret)
+  const following = value.slice(caret)
+
+  // アイコンは閉じの `:` の後ろに半角スペースを足す（iconInsertion）。
+  // 足さないと、続けて打った文字が次のアイコン名として拾われてしまう
+  const inserted =
+    entry.kind === 'emoji' ? entry.char : iconInsertion(entry.name, following)
+
+  const next = value.slice(0, start) + inserted + following
   replaceActiveLine(next)
 
   const newCaret = start + inserted.length

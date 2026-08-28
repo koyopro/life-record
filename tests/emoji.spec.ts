@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { searchEmoji } from '~~/shared/utils/emoji'
+import { iconInsertion, searchEmoji } from '~~/shared/utils/emoji'
 
 /**
  * 本文エディタの絵文字候補（`:` で出す、docs/11-scrapbox-notation.md とは別枠）。
@@ -30,5 +30,26 @@ describe('searchEmoji', () => {
 
   it('limit を超えない', () => {
     expect(searchEmoji('a', 2)).toHaveLength(2)
+  })
+})
+
+/**
+ * アイコンを選んだときに差し込む文字列（docs/11-scrapbox-notation.md 11.8）。
+ *
+ * 閉じの `:` が次の文字とくっついたままだと、候補は `:` から始まる語を見て
+ * 出すため、続けて打った文字が次のアイコン名として拾われてしまう。
+ */
+describe('iconInsertion', () => {
+  it('閉じの `:` の後ろに半角スペースを足す', () => {
+    expect(iconInsertion('star')).toBe(':star: ')
+  })
+
+  it('行の途中（後ろに文字が続く）でも足す', () => {
+    expect(iconInsertion('star', 'のあと')).toBe(':star: ')
+  })
+
+  it('後ろがすでに空白なら足さない（選ぶたびに増やさない）', () => {
+    expect(iconInsertion('star', ' つづき')).toBe(':star:')
+    expect(iconInsertion('star', '\u3000つづき')).toBe(':star:')
   })
 })
