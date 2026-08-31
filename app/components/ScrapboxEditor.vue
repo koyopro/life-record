@@ -105,6 +105,18 @@ const activeImages = computed(() =>
   activeLine.value ? renderInline(imagesIn(activeLine.value)) : '',
 )
 /**
+ * 画像の行へ移るときに控えておく、その行の高さ（px）。測っていなければ 0。
+ *
+ * 敷く画像（`activeImages`）は**作り直した `<img>`** なので、ブラウザが
+ * 大きさを入れるのは早くても次のフレームになる（同じ絵を持っていても
+ * その場では入らない。控えから `blob:` へ差し替わるならさらに後）。その間
+ * だけ行が文字1行分に縮み、**カーソルを当てた瞬間に下の行がずれて見える**。
+ *
+ * そこで、差し替わる前に出ている行の高さを測っておき、最初のフレームから
+ * 下限として当てる。敷いた画像に大きさが入れば、そちらが高さを決める。
+ */
+const mediaFloor = ref(0)
+/**
  * 入力欄。行ごとに作り直さず、1つを使い回す。
  *
  * 行を移るたびに textarea を作り直すと、Enter で行を分けた直後に
@@ -260,6 +272,8 @@ async function activate(
 
   const target = Math.min(Math.max(index, 0), lines.length - 1)
   const line = lineAt(lines, target)
+  // 表示が入力欄に差し替わる前に測る（DOM が変わるのは nextTick のあと）
+  mediaFloor.value = measureLineHeight(target, line)
   activeIndex.value = target
   activeLine.value = line
   activeText.value = line.content
@@ -275,6 +289,23 @@ async function activate(
     caret === 'end' ? el.value.length : caret === 'start' ? 0 : caret
   el.setSelectionRange(position, position)
   resize()
+}
+
+/**
+ * いま画面に出ているその行の高さ。画像のある行へ移るときだけ測る（`mediaFloor`）。
+ *
+ * 本文を書き換えた直後は、まだ書き換え前の行が出ている（DOM が変わるのは
+ * このあと）。別の行を測って高さを詰めてしまわないよう、**画像の数が合う
+ * ときだけ**使う。合わなければ 0 を返し、敷いた画像に大きさが入るのを待つ
+ * （これまでどおりの動き）。
+ */
+function measureLineHeight(index: number, line: Line): number {
+  const count = imagesIn(line).length
+  if (count === 0) return 0
+
+  const el = lineElementAt(editorRoot.value, index)
+  if (!el || el.querySelectorAll('img.sb-image').length !== count) return 0
+  return el.getBoundingClientRect().height
 }
 
 /** 本文の中のカーソル位置（行と、行頭を除いた中身での位置）。 */
@@ -349,6 +380,7 @@ function deactivate() {
   captureCaret()
   activeIndex.value = null
   activeLine.value = null
+  mediaFloor.value = 0
   closeEmojiPicker()
   lastDateInsert = null
 }
@@ -1932,6 +1964,10 @@ defineExpose({
 
         外枠は表示側の行と同じクラス・同じ字下げにする。行頭は入力欄に
         入れず余白で表すため、両者が揃っていないと文字の開始位置がずれる。
+
+        高さの下限（`mediaFloor`）は、敷いた画像に大きさが入るまでのつなぎ。
+        画像を敷いている間だけ当て、行から画像が消えたら外す（空いたままの
+        余白が残らないように）。
       -->
       <div
         v-show="activeIndex !== null"
@@ -1940,7 +1976,11 @@ defineExpose({
           activeLine ? lineClass(activeLine) : '',
           { 'editor__editing--media': activeImages !== '' },
         ]"
-        :style="{ order: activeIndex ?? 0, '--sb-indent': activeLine?.indent ?? 0 }"
+        :style="{
+          order: activeIndex ?? 0,
+          '--sb-indent': activeLine?.indent ?? 0,
+          minHeight: activeImages !== '' && mediaFloor > 0 ? `${mediaFloor}px` : undefined,
+        }"
         :data-line-index="activeIndex ?? undefined"
       >
         <!--
