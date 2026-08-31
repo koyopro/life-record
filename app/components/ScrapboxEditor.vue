@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { lineClass, renderLine, tableColumns } from '~~/shared/utils/scrapbox/render'
+import {
+  lineClass,
+  renderInline,
+  renderLine,
+  tableColumns,
+} from '~~/shared/utils/scrapbox/render'
 import {
   codeBodyOf,
   continuationPrefix,
   dropPrefixUnit,
+  imagesIn,
   indentOf,
   linesFromInput,
   parseScrapbox,
@@ -84,6 +90,20 @@ const activeLine = shallowRef<Line | null>(null)
 /** 編集中の行の中身。行頭は含まない。 */
 const activeText = ref('')
 const activePrefix = computed(() => activeLine.value?.prefix ?? '')
+/**
+ * 編集中の行に入っている画像の HTML。画像が無ければ空文字。
+ *
+ * カーソルのある行は記法をそのままのテキストに戻すため、そのままだと
+ * 画像のぶんの高さが消え、**その行より下がまとめて上がってしまう**。
+ * これを入力欄の裏に敷いて、表示しているときと同じ高さを残す
+ * （docs/11-scrapbox-notation.md 11.6「画像の行は高さを残す」）。
+ *
+ * 行まるごとではなく画像だけを敷くのは、打つたびに `<img>` を作り直さない
+ * ため。HTML が変わらなければ組み替えられない（高さも変わらない）。
+ */
+const activeImages = computed(() =>
+  activeLine.value ? renderInline(imagesIn(activeLine.value)) : '',
+)
 /**
  * 入力欄。行ごとに作り直さず、1つを使い回す。
  *
@@ -1916,57 +1936,78 @@ defineExpose({
       <div
         v-show="activeIndex !== null"
         class="editor__editing"
-        :class="activeLine ? lineClass(activeLine) : ''"
+        :class="[
+          activeLine ? lineClass(activeLine) : '',
+          { 'editor__editing--media': activeImages !== '' },
+        ]"
         :style="{ order: activeIndex ?? 0, '--sb-indent': activeLine?.indent ?? 0 }"
         :data-line-index="activeIndex ?? undefined"
       >
-        <textarea
-          ref="input"
-          class="editor__input"
-          rows="1"
-          :value="activeText"
-          :aria-label="`${props.ariaLabel} ${(activeIndex ?? 0) + 1}行目`"
-          @input="onInput"
-          @blur="deactivate"
-          @compositionstart="composing = true"
-          @compositionend="composing = false"
-          @keydown="onKeydown"
-          @keyup.left="updateEmojiTrigger"
-          @keyup.right="updateEmojiTrigger"
-          @keyup.home="updateEmojiTrigger"
-          @keyup.end="updateEmojiTrigger"
-          @click="updateEmojiTrigger"
-        />
+        <!--
+          入力欄と絵文字の候補はひとまとまりにする。候補は入力欄の真下に
+          出したいので、画像で背が高くなる外枠ではなく、こちらを基準にする。
+        -->
+        <div class="editor__field">
+          <textarea
+            ref="input"
+            class="editor__input"
+            rows="1"
+            :value="activeText"
+            :aria-label="`${props.ariaLabel} ${(activeIndex ?? 0) + 1}行目`"
+            @input="onInput"
+            @blur="deactivate"
+            @compositionstart="composing = true"
+            @compositionend="composing = false"
+            @keydown="onKeydown"
+            @keyup.left="updateEmojiTrigger"
+            @keyup.right="updateEmojiTrigger"
+            @keyup.home="updateEmojiTrigger"
+            @keyup.end="updateEmojiTrigger"
+            @click="updateEmojiTrigger"
+          />
+
+          <!--
+            絵文字候補（Notion に倣い `:` で出す）。押すときは mousedown を
+            preventDefault し、textarea の blur（＝行の編集解除）より前に
+            selectEmoji を確定させる。
+          -->
+          <ul v-if="emojiStart !== null" class="editor__emoji" role="listbox" aria-label="絵文字・アイコンの候補">
+            <li
+              v-for="(entry, i) in emojiMatches"
+              :key="entry.name"
+              class="editor__emoji-item"
+              :class="{ 'editor__emoji-item--active': i === emojiIndex }"
+              role="option"
+              :aria-selected="i === emojiIndex"
+              @mousedown.prevent="selectEmoji(entry)"
+            >
+              <img
+                v-if="entry.kind === 'icon'"
+                class="editor__emoji-icon"
+                :src="entry.path"
+                alt=""
+                loading="lazy"
+              />
+              <span v-else class="editor__emoji-char" aria-hidden="true">{{ entry.char }}</span>
+              <span class="editor__emoji-name">:{{ entry.name }}:</span>
+            </li>
+            <li v-if="!emojiMatches.length" class="editor__emoji-empty">
+              該当する絵文字・アイコンがありません
+            </li>
+          </ul>
+        </div>
 
         <!--
-          絵文字候補（Notion に倣い `:` で出す）。押すときは mousedown を
-          preventDefault し、textarea の blur（＝行の編集解除）より前に
-          selectEmoji を確定させる。
+          画像のぶんの高さ（activeImages）。入力欄と同じ升目に重ね、行の
+          高さだけを表示しているときのまま残す。中身は renderInline が
+          組み立てた HTML なので v-html でよい（11.10）。
         -->
-        <ul v-if="emojiStart !== null" class="editor__emoji" role="listbox" aria-label="絵文字・アイコンの候補">
-          <li
-            v-for="(entry, i) in emojiMatches"
-            :key="entry.name"
-            class="editor__emoji-item"
-            :class="{ 'editor__emoji-item--active': i === emojiIndex }"
-            role="option"
-            :aria-selected="i === emojiIndex"
-            @mousedown.prevent="selectEmoji(entry)"
-          >
-            <img
-              v-if="entry.kind === 'icon'"
-              class="editor__emoji-icon"
-              :src="entry.path"
-              alt=""
-              loading="lazy"
-            />
-            <span v-else class="editor__emoji-char" aria-hidden="true">{{ entry.char }}</span>
-            <span class="editor__emoji-name">:{{ entry.name }}:</span>
-          </li>
-          <li v-if="!emojiMatches.length" class="editor__emoji-empty">
-            該当する絵文字・アイコンがありません
-          </li>
-        </ul>
+        <span
+          v-if="activeImages !== ''"
+          class="editor__media"
+          aria-hidden="true"
+          v-html="activeImages"
+        />
       </div>
 
       <!--
@@ -2116,6 +2157,41 @@ defineExpose({
 
 .editor__editing {
   position: relative;
+}
+
+/*
+ * 画像のある行を編集している間も、表示しているときと同じ高さを取る。
+ *
+ * 入力欄（.editor__field）と画像（.editor__media）を同じ升目に重ね、
+ * 行の高さは背の高いほう＝画像に合わせる。高さが縮むと、カーソルを置いた
+ * だけでその行より下がまとめて上がってしまう
+ * （docs/11-scrapbox-notation.md 11.6「画像の行は高さを残す」）。
+ */
+.editor__editing--media {
+  display: grid;
+  /* 入力欄を升目いっぱいに伸ばさない。伸びると背景の色が画像の高さぶん広がる */
+  align-items: start;
+}
+
+.editor__editing--media > .editor__field,
+.editor__editing--media > .editor__media {
+  grid-area: 1 / 1;
+}
+
+/* 絵文字候補を入力欄の真下に出すための基準（画像で背が高くなる外枠ではなく） */
+.editor__field {
+  position: relative;
+}
+
+/*
+ * 高さを取るためだけの画像。場所は取るが見せない。
+ *
+ * 記法をそのままのテキストとして見せている行なので、画像まで重ねると
+ * 何を書き換えているのか分からなくなる（Scrapbox も空けたままにする）。
+ */
+.editor__media {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .editor__emoji {
@@ -2459,6 +2535,16 @@ defineExpose({
   width: auto;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
+}
+
+/*
+ * ただし桁の中に画像があるときは、升目に戻して入力欄と重ねる
+ * （`.editor__editing--media`。桁には割らないので、割り方の既定＝1桁のまま）。
+ * ここで `display: block` に戻してしまうと、画像のぶんの高さが行の下に
+ * 足され、カーソルを置いただけで下の行が押し下げられる。
+ */
+.editor__editing.sb-line--table-row.editor__editing--media {
+  display: grid;
 }
 
 /*

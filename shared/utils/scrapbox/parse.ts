@@ -585,15 +585,38 @@ export function firstImageSrc(input: string): string | null {
   return null
 }
 
-function firstImageIn(nodes: Inline[]): ImageNode | null {
+/**
+ * 行の中の画像を、書かれた順に取り出す。
+ *
+ * カーソルを置いた行でも画像のぶんの高さを確保するために使う
+ * （docs/11-scrapbox-notation.md 11.6「画像の行は高さを残す」）。
+ */
+export function imagesIn(line: Line): ImageNode[] {
+  switch (line.type) {
+    case 'text':
+    case 'quote':
+      return collectImages(line.nodes)
+    // 表は桁ごとに中身を持つ。どの桁の画像も行の高さを決める
+    case 'tableRow':
+      return line.cells.flatMap((cell) => collectImages(cell))
+    default:
+      return []
+  }
+}
+
+function collectImages(nodes: Inline[]): ImageNode[] {
+  const found: ImageNode[] = []
   for (const node of nodes) {
-    if (node.type === 'image') return node
+    if (node.type === 'image') found.push(node)
     if (node.type === 'decoration' || node.type === 'link') {
-      const found = firstImageIn(node.nodes)
-      if (found) return found
+      found.push(...collectImages(node.nodes))
     }
   }
-  return null
+  return found
+}
+
+function firstImageIn(nodes: Inline[]): ImageNode | null {
+  return collectImages(nodes)[0] ?? null
 }
 
 /** Gyazo の共有ページ（`gyazo.com/<id>`）・画像ID（`i.gyazo.com/<id>`）の URL。 */

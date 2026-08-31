@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstImageSrc, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import { firstImageSrc, imagesIn, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 
 const GYAZO_ID = '733b193a4485f26c8acc45d03b412c8f'
 
@@ -45,5 +45,48 @@ describe('Gyazo の画像リンク', () => {
     expect(firstImageSrc(`メモ\n[https://gyazo.com/${GYAZO_ID}]\n続き`)).toBe(
       `https://i.gyazo.com/${GYAZO_ID}.png`,
     )
+  })
+})
+
+/**
+ * カーソルのある行でも、画像を出しているときと同じだけ高さを取る
+ * （docs/11-scrapbox-notation.md 11.6「画像の行は高さを残す」）。
+ * そのために、行に入っている画像だけを取り出せるようにしている。
+ */
+describe('imagesIn', () => {
+  const imagesOf = (input: string) => imagesIn(parseScrapbox(input)[0]!)
+
+  it('行の画像を書かれた順に返す', () => {
+    expect(imagesOf(`[/images/a.png] と [/images/b.png]`)).toEqual([
+      { type: 'image', src: '/images/a.png', large: false },
+      { type: 'image', src: '/images/b.png', large: false },
+    ])
+  })
+
+  it('装飾の中の画像も見つける', () => {
+    expect(imagesOf(`[* [/images/a.png]]`)).toEqual([
+      { type: 'image', src: '/images/a.png', large: false },
+    ])
+  })
+
+  it('横幅いっぱいの記法も画像として返す', () => {
+    expect(imagesOf(`[[/images/a.png]]`)).toEqual([
+      { type: 'image', src: '/images/a.png', large: true },
+    ])
+  })
+
+  it('表の行は、どの桁の画像も返す', () => {
+    const lines = parseScrapbox(['table:図', ' [/images/a.png]\t説明', ' 次\t[/images/b.png]'].join('\n'))
+    expect(imagesIn(lines[1]!)).toEqual([
+      { type: 'image', src: '/images/a.png', large: false },
+    ])
+    expect(imagesIn(lines[2]!)).toEqual([
+      { type: 'image', src: '/images/b.png', large: false },
+    ])
+  })
+
+  it('画像のない行では空になる', () => {
+    expect(imagesOf('ただの文 [https://example.com リンク]')).toEqual([])
+    expect(imagesOf('code:a.js')).toEqual([])
   })
 })
