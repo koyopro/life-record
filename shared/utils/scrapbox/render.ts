@@ -118,13 +118,18 @@ export function indentStyle(line: Line): string {
 export function tableColumns(line: Line): string | null {
   if (line.type !== 'tableRow') return null
   /*
+   * 幅の単位は `ch`（数字1文字の幅）。半角1文字ぶんの幅そのものなので、
+   * 数えた文字数（半角=1・全角=2）をそのまま掛ければ、**中身が折り返さずに
+   * 収まる**幅になる。`em` で見積もると数字や英字のほうが広く、`2025/08/03`
+   * のような桁が入りきらずに折り返してしまう。
+   *
    * 上限だけを決めた桁（`minmax(0, …)`）にする。決め打ちの幅だけだと、
    * 狭い画面で表が入りきらないときにセルが枠からはみ出す。上限にしておけば、
-   * 収まらないぶんは詰められて（中身は折り返して）枠の中に留まる。
-   * 詰め方は幅と行数だけで決まるので、詰まっても行どうしの桁はそろう。
+   * 収まらないぶんは詰められて枠の中に留まる。詰め方は幅と画面の広さだけで
+   * 決まるので、詰まっても行どうしの桁はそろう。
    */
   return line.columns
-    .map((width) => `minmax(0, calc(${width} * 0.5em + 1.25rem))`)
+    .map((width) => `minmax(0, calc(${width} * 1ch + 1.25rem))`)
     .join(' ')
 }
 

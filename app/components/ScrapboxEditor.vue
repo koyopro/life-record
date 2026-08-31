@@ -2523,9 +2523,16 @@ defineExpose({
 
 .editor :deep(.sb-table__cell) {
   padding: 0.125rem 0.5rem;
-  /* 桁の幅は決め打ちなので、入りきらない中身は折り返す */
+  /*
+   * セルの中では折り返さない（`pre` は空白も残す）。桁の幅は中身が収まる
+   * ように決めてあるので、ふつうは切れない。狭い画面で桁が詰まったときだけ、
+   * 折り返して行の高さを変えるのではなく「…」で省く。表として読むときは、
+   * 桁の高さがそろっているほうが追いやすいため。
+   */
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
   /* 数字は桁をそろえる。表で読みたいのはたいてい数字の並び */
   font-variant-numeric: tabular-nums;
   border-left: 1px solid var(--border);
