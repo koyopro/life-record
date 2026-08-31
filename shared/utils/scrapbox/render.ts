@@ -152,6 +152,7 @@ function renderNode(node: Inline, options: RenderOptions): string {
       if (node.italic) classes.push('sb-deco--italic')
       if (node.strike) classes.push('sb-deco--strike')
       if (node.underline) classes.push('sb-deco--underline')
+      if (node.highlight) classes.push('sb-deco--highlight')
       return `<span class="${classes.join(' ')}">${inner}</span>`
     }
 

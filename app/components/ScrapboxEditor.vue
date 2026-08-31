@@ -2629,6 +2629,19 @@ defineExpose({
 .editor :deep(.sb-deco--strike) {
   text-decoration: line-through;
 }
+/*
+ * `[& 目印]`。文字に色を敷いて目立たせる。
+ *
+ * 明暗どちらでも同じ色にする。目印として付けたものが、テーマを変えただけで
+ * 目立たなくなると意味がないため（タグの色と同じ考え方）。色は Scrapbox で
+ * UserCSS として使っていたものをそのまま持ってくる。
+ */
+.editor :deep(.sb-deco--highlight) {
+  color: #fff;
+  background: #99cc99;
+  padding: 0.1em 0.2em;
+}
+
 .editor :deep(.sb-deco--underline) {
   text-decoration: underline;
 }

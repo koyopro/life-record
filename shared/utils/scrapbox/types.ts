@@ -130,6 +130,8 @@ export interface DecorationNode {
   italic: boolean
   strike: boolean
   underline: boolean
+  /** `&`。目印として色を敷く（docs/11-scrapbox-notation.md 11.3）。 */
+  highlight: boolean
   nodes: Inline[]
 }
 

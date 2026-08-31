@@ -57,6 +57,8 @@ function isAppDiaryPath(value: string): boolean {
  *
  * Scrapbox は `!"#%&'()*+,-./{|}<>_~` を受け付け、CSS クラスとして出力する。
  * このサービスでは意味を与えているものだけを解釈し、残りは無視する。
+ * `&` は目印（色を敷く）に割り当てている。Scrapbox 側でも UserCSS で
+ * 同じ記号に同じ見た目を与えて使っていたため。
  */
 const DECORATION_SYMBOLS = "!\"#%&'()*+,\\-./{|}<>_~"
 const DECORATION_PATTERN = new RegExp(`^([${DECORATION_SYMBOLS}]+)\\s+([\\s\\S]+)$`)
@@ -495,6 +497,7 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
         italic: false,
         strike: false,
         underline: false,
+        highlight: false,
         nodes: parseInline(content),
       },
     ]
@@ -511,6 +514,7 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
         italic: symbols.includes('/'),
         strike: symbols.includes('-'),
         underline: symbols.includes('_'),
+        highlight: symbols.includes('&'),
         nodes: parseInline(decoration[2]!),
       },
     ]
