@@ -98,8 +98,11 @@ describe('桁の幅', () => {
   it('桁割りは CSS の grid-template-columns として渡す', () => {
     const lines = parseScrapbox(SAMPLE)
 
+    // 上限だけを決めた桁にする（狭い画面で枠からはみ出させない）
     expect(tableColumns(lines[1]!)).toBe(
-      'calc(10 * 0.5em + 1.25rem) calc(4 * 0.5em + 1.25rem) calc(4 * 0.5em + 1.25rem)',
+      'minmax(0, calc(10 * 0.5em + 1.25rem))' +
+        ' minmax(0, calc(4 * 0.5em + 1.25rem))' +
+        ' minmax(0, calc(4 * 0.5em + 1.25rem))',
     )
     expect(tableColumns(lines[0]!)).toBeNull()
   })

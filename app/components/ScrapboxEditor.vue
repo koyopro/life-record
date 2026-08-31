@@ -2511,6 +2511,16 @@ defineExpose({
   content: none;
 }
 
+/*
+ * 表示側の中身は、入力欄と外枠を共通にするため span 1つにまとめて差し込んで
+ * いる（`v-html`）。その包みが桁の割り当てを受け取ってしまうと、セルが
+ * ぜんぶ最初の桁に押し込まれて折り返す。桁はセルに割り当てたいので、
+ * 包みは無いものとして扱う。
+ */
+.editor :deep(.sb-line--table-row) > span:not(.sb-table__cell) {
+  display: contents;
+}
+
 .editor :deep(.sb-table__cell) {
   padding: 0.125rem 0.5rem;
   /* 桁の幅は決め打ちなので、入りきらない中身は折り返す */

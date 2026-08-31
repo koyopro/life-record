@@ -117,8 +117,14 @@ export function indentStyle(line: Line): string {
  */
 export function tableColumns(line: Line): string | null {
   if (line.type !== 'tableRow') return null
+  /*
+   * 上限だけを決めた桁（`minmax(0, …)`）にする。決め打ちの幅だけだと、
+   * 狭い画面で表が入りきらないときにセルが枠からはみ出す。上限にしておけば、
+   * 収まらないぶんは詰められて（中身は折り返して）枠の中に留まる。
+   * 詰め方は幅と行数だけで決まるので、詰まっても行どうしの桁はそろう。
+   */
   return line.columns
-    .map((width) => `calc(${width} * 0.5em + 1.25rem)`)
+    .map((width) => `minmax(0, calc(${width} * 0.5em + 1.25rem))`)
     .join(' ')
 }
 
