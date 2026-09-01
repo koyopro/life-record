@@ -91,15 +91,33 @@ export function parseRecurrence(input: string): Recurrence | null {
   const afterMatch =
     /^after\s+(?:(\d+)\s*)?(day|days|week|weeks|month|months|year|years)$/.exec(
       text,
-    ) ?? /^(?:完了(?:の)?\s*)?(?:(\d+))?\s*(日|週間|週|月|年)後$/.exec(text)
+    ) ?? /^(?:完了(?:の)?\s*)?(?:(\d+))?\s*(日|週間|週|(?:ヶ|ケ|か|カ)?月|年)後$/.exec(text)
 
   if (afterMatch) {
-    const freq = FREQ_BY_UNIT[afterMatch[2]!]
+    const freq = freqOfUnit(afterMatch[2]!)
     if (!freq) return null
     return {
       rule: buildRule(freq, Number(afterMatch[1] ?? 1)),
       basis: 'completion',
     }
+  }
+
+  /*
+   * 完了日起点で、**曜日で決まる**もの（RTM の「月曜日以降」＝ after monday）。
+   *
+   * 完了した日から見て次に来るその曜日が期限になる。間隔（完了の1週間後）では
+   * 表せないので別に受ける。間隔の形より後に見るのは、「日後」「月後」が
+   * 単位（1日後・1ヶ月後）として先に読まれるようにするため。
+   */
+  const afterWeekdayMatch =
+    /^after\s+(weekday|weekend|[a-z]+day|mon|tue|wed|thu|fri|sat|sun)$/.exec(text) ??
+    /^完了(?:後)?の次の(平日|営業日|週末|[月火水木金土日])(?:曜日?)?$/.exec(text) ??
+    /^(平日|営業日|週末|[月火水木金土日])(?:曜日?)?(?:以降|後)$/.exec(text)
+
+  if (afterWeekdayMatch) {
+    const codes = toWeekdayCodes(afterWeekdayMatch[1]!)
+    if (!codes) return null
+    return { rule: `FREQ=WEEKLY;BYDAY=${codes.join(',')}`, basis: 'completion' }
   }
 
   // --- 期限日起点（every / 毎〜） ---
@@ -122,9 +140,9 @@ function parseEvery(text: string): string | null {
   if (/^隔週$/.test(text)) return buildRule('WEEKLY', 2)
   const intervalMatch =
     /^every\s+(\d+)\s*(day|days|week|weeks|month|months|year|years)$/.exec(text) ??
-    /^(\d+)\s*(日|週間|週|月|年)ごと$/.exec(text)
+    /^(\d+)\s*(日|週間|週|(?:ヶ|ケ|か|カ)?月|年)ごと$/.exec(text)
   if (intervalMatch) {
-    const freq = FREQ_BY_UNIT[intervalMatch[2]!]
+    const freq = freqOfUnit(intervalMatch[2]!)
     if (!freq) return null
     return buildRule(freq, Number(intervalMatch[1]))
   }
@@ -215,6 +233,17 @@ function toWeekdayCodes(text: string): string[] | null {
 
   const day = WEEKDAYS[text]
   return day ? [day] : null
+}
+
+/**
+ * 単位（`日` `週間` `ヶ月`）から FREQ を引く。
+ *
+ * 月は「ヶ月」「か月」とも書く。**表示では「完了の1ヶ月後」「2ヶ月ごと」と
+ * 出している**ので、ここで受けないと書き戻した文を読めない（設定ダイアログは
+ * いまの設定を文にして入力欄へ入れるため、開き直しただけで設定を失う）。
+ */
+function freqOfUnit(unit: string): string | undefined {
+  return FREQ_BY_UNIT[unit.replace(/^(?:ヶ|ケ|か|カ)/, '')]
 }
 
 function buildRule(freq: string, interval: number): string {
@@ -331,6 +360,13 @@ export function describeRecurrence(recurrence: Recurrence): string {
   const freq = options.freq ?? -1
 
   if (recurrence.basis === 'completion') {
+    /*
+     * 曜日で決まるもの（`月曜日以降`）は間隔では表せない。「完了の1週間後」と
+     * 出すと、完了した曜日の1週間後という**別の意味**になってしまう。
+     */
+    const weekday = describeCompletionWeekday(options)
+    if (weekday) return `完了後の次の${weekday}`
+
     return `完了の${interval}${INTERVAL_UNITS[freq] ?? ''}後`
   }
 
@@ -374,6 +410,40 @@ export function describeRecurrence(recurrence: Recurrence): string {
 }
 
 /**
+ * 完了日起点で、曜日で決まる指定の言い方（`月曜` `平日`）。
+ * そういう指定でなければ null（＝間隔だけで表せる、これまでどおりのもの）。
+ *
+ * 書き戻した文が `parseRecurrence` でそのまま読めるようにしておく
+ * （`describeMonthlyOrdinal` と同じ理由）。
+ */
+function describeCompletionWeekday(
+  options: ReturnType<typeof parseOptions>,
+): string | null {
+  if (!options || options.freq !== RRule.WEEKLY) return null
+  if ((options.interval ?? 1) !== 1) return null
+
+  const days = toArray(options.byweekday)
+  if (days.length === 0) return null
+
+  const codes = days.map((day) => WEEKDAY_CODES[weekdayIndex(day)]!)
+  const group = weekdayGroupLabel(codes)
+  if (group) return group
+  if (days.length !== 1) return null
+
+  return `${WEEKDAY_LABELS[weekdayIndex(days[0]!)]}曜`
+}
+
+/** 曜日の組をまとめた言い方（`平日` `週末`）。当てはまらなければ null。 */
+function weekdayGroupLabel(codes: string[]): string | null {
+  const group = WEEKDAY_GROUPS.find(
+    (entry) =>
+      entry.codes.length === codes.length &&
+      entry.codes.every((code) => codes.includes(code)),
+  )
+  return group ? group.label : null
+}
+
+/**
  * 月の中の並びで決まる指定を日本語にする（`最後の平日` `第2月曜`）。
  * そういう指定でなければ null（＝ふつうの曜日・日付の指定）。
  *
@@ -393,14 +463,10 @@ function describeMonthlyOrdinal(
   const position = toArray(options.bysetpos)[0] ?? nthOf(days[0]!)
   if (!position) return null
 
-  const codes = days.map((day) => WEEKDAY_CODES[weekdayIndex(day)])
-  const group = WEEKDAY_GROUPS.find(
-    (entry) =>
-      entry.codes.length === codes.length &&
-      entry.codes.every((code) => codes.includes(code)),
-  )
+  const codes = days.map((day) => WEEKDAY_CODES[weekdayIndex(day)]!)
+  const group = weekdayGroupLabel(codes)
 
-  if (group) return `${positionLabel(position)}の${group.label}`
+  if (group) return `${positionLabel(position)}の${group}`
   if (days.length !== 1) return null
 
   const weekday = `${WEEKDAY_LABELS[weekdayIndex(days[0]!)]}曜`

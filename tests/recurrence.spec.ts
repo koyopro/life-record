@@ -76,6 +76,63 @@ describe('月の中の並びで決まる指定', () => {
 })
 
 /**
+ * 完了日起点で、曜日で決まる繰り返し（docs/10-recurrence.md 10.7）。
+ *
+ * RTM の「月曜日以降」（after monday）。完了した日から見て次に来るその曜日が
+ * 次回の期限になる。間隔（完了の1週間後）とは別のものなので、間隔として
+ * 表示すると意味が変わってしまう。
+ */
+describe('完了後の次の月曜', () => {
+  it('RTM の言い方（月曜日以降 / 月曜日後）を受け取る', () => {
+    for (const input of ['月曜日以降', '月曜日後', '月曜以降', 'after monday']) {
+      expect(parseRecurrence(input)).toEqual({
+        rule: 'FREQ=WEEKLY;BYDAY=MO',
+        basis: 'completion',
+      })
+    }
+  })
+
+  it('曜日の組（平日・週末）も同じように受け取る', () => {
+    expect(parseRecurrence('平日以降')).toEqual({
+      rule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',
+      basis: 'completion',
+    })
+    expect(parseRecurrence('週末以降')?.rule).toBe('FREQ=WEEKLY;BYDAY=SA,SU')
+  })
+
+  it('曜日を落として「完了の1週間後」と出さない（RTM の書き出しは INTERVAL=1 付き）', () => {
+    expect(
+      describeRecurrence({ rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO', basis: 'completion' }),
+    ).toBe('完了後の次の月曜')
+    expect(
+      describeRecurrence({ rule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', basis: 'completion' }),
+    ).toBe('完了後の次の平日')
+  })
+
+  it('曜日を持たないものは、これまでどおり間隔で出す', () => {
+    expect(describeRecurrence({ rule: 'FREQ=WEEKLY', basis: 'completion' })).toBe(
+      '完了の1週間後',
+    )
+  })
+
+  it('完了した日から見て、次に来るその曜日が期限になる', () => {
+    const recurrence = parseRecurrence('月曜日以降')!
+    // 2026-09-02 は水曜。次の月曜は 9/7
+    const completed = new Date('2026-09-02T10:00:00+09:00')
+
+    const next = nextDueAt(recurrence, completed, completed)
+
+    expect(next?.getMonth()).toBe(8)
+    expect(next?.getDate()).toBe(7)
+  })
+
+  it('「日後」「月後」は曜日ではなく単位のまま（完了の1日後 / 1ヶ月後）', () => {
+    expect(parseRecurrence('日後')?.rule).toBe('FREQ=DAILY')
+    expect(parseRecurrence('月後')?.rule).toBe('FREQ=MONTHLY')
+  })
+})
+
+/**
  * 書き戻した文がそのまま読めること。
  *
  * 設定ダイアログは、いまの設定を文にしてから入力欄へ入れる。読めない文を
@@ -97,6 +154,29 @@ describe('表示と解釈の往復', () => {
 
     expect(describeRecurrence(recurrence)).toBe(text)
     expect(parseRecurrence(text)?.rule).toBe(rule)
+  })
+
+  const completionCases = [
+    ['FREQ=DAILY;INTERVAL=3', '完了の3日後'],
+    ['FREQ=WEEKLY', '完了の1週間後'],
+    // 「ヶ月」は表示でだけ使う言い方。読めないと、開き直しただけで設定を失う
+    ['FREQ=MONTHLY', '完了の1ヶ月後'],
+    ['FREQ=WEEKLY;BYDAY=MO', '完了後の次の月曜'],
+    ['FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '完了後の次の平日'],
+  ] as const
+
+  it.each(completionCases)('%s → %s → 同じ規則に戻る（完了日起点）', (rule, text) => {
+    const recurrence = { rule, basis: 'completion' } as const
+
+    expect(describeRecurrence(recurrence)).toBe(text)
+    expect(parseRecurrence(text)).toEqual(recurrence)
+  })
+
+  it('「2ヶ月ごと」も読み直せる', () => {
+    const recurrence = { rule: 'FREQ=MONTHLY;INTERVAL=2', basis: 'due' } as const
+
+    expect(describeRecurrence(recurrence)).toBe('2ヶ月ごと')
+    expect(parseRecurrence('2ヶ月ごと')).toEqual(recurrence)
   })
 
   it('RTM の書き出し（INTERVAL=1 付き）も同じ言い方になる', () => {
