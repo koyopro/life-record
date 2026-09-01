@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
-use url_rules::{route, Route};
+use url_rules::{batched, route, Route};
 
 /// 「再読み込み」のメニュー項目。押されたかを id で見分ける。
 const RELOAD_MENU_ID: &str = "reload";
@@ -34,19 +34,37 @@ fn main() {
                  * 移動の直前に呼ばれる。false を返すとその移動は起きない。
                  * 外部サイトが WebView の中に出ないのは、ここで止めているため。
                  */
-                .on_navigation(move |url| match route(&origin, url) {
-                    Route::InApp => true,
-                    Route::Os => {
-                        // 開く先は指定しない。macOS のユーザー設定（既定の
-                        // ブラウザ・メールソフト）にそのまま従う
-                        if let Err(error) = handle.opener().open_url(url.as_str(), None::<&str>) {
-                            eprintln!("URL を開けなかった: {url} ({error})");
+                .on_navigation(move |url| {
+                    /*
+                     * まとめて渡された分（`open-external.js`）。移動は1つしか
+                     * 持てないので、続けて開こうとした URL は1回の移動に
+                     * まとめて渡ってくる（docs/16-macos-app.md 16.3）。
+                     *
+                     * 1つずつ判定にかけ、外部のものだけを OS へ渡す。入れ物の
+                     * URL そのものへは移動しない。
+                     */
+                    if let Some(targets) = batched(&origin, url) {
+                        for target in targets {
+                            match route(&origin, &target) {
+                                Route::Os => open_in_os(&handle, &target),
+                                // まとめて開けるのは外部の URL だけ。アプリの
+                                // 中の URL へ移ると、他の分まで道連れになる
+                                _ => eprintln!("まとめては開かない URL: {target}"),
+                            }
                         }
-                        false
+                        return false;
                     }
-                    Route::Blocked => {
-                        eprintln!("開かない URL: {url}");
-                        false
+
+                    match route(&origin, url) {
+                        Route::InApp => true,
+                        Route::Os => {
+                            open_in_os(&handle, url);
+                            false
+                        }
+                        Route::Blocked => {
+                            eprintln!("開かない URL: {url}");
+                            false
+                        }
                     }
                 })
                 /*
@@ -84,6 +102,15 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("Tauri アプリの起動に失敗した");
+}
+
+/// macOS の既定のアプリ（ブラウザ・メールなど）で開く。
+///
+/// 開く先は指定しない。ユーザーの設定にそのまま従う。
+fn open_in_os(app: &AppHandle, url: &Url) {
+    if let Err(error) = app.opener().open_url(url.as_str(), None::<&str>) {
+        eprintln!("URL を開けなかった: {url} ({error})");
+    }
 }
 
 /// 「View > 再読み込み」（⌘R）を足したメニュー。

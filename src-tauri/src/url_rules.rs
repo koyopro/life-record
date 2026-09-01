@@ -27,6 +27,13 @@ const OS_SCHEMES: [&str; 5] = ["mailto", "tel", "sms", "facetime", "facetime-aud
 /// WebView が自分のために使うスキーム。素通しする。
 const IN_APP_SCHEMES: [&str; 3] = ["tauri", "asset", "about"];
 
+/// まとめて渡された URL を受け取る道（`open-external.js`）。
+///
+/// 移動は1つしか持てないので、window.open() が続けて呼ばれた分は1回の移動に
+/// まとめて渡ってくる（docs/16-macos-app.md 16.3）。ここへの移動は必ず
+/// 取り消すため、この道のページは要らない。
+const BATCH_PATH: &str = "/__open-external";
+
 /// 認証のために経由する host。別 origin だがアプリの中で開く。
 ///
 /// デプロイ先を Vercel の Deployment Protection で守っているため、最初の
@@ -35,6 +42,28 @@ const IN_APP_SCHEMES: [&str; 3] = ["tauri", "asset", "about"];
 /// ブラウザ側に付いてしまい、WebView は何度起動しても白いままになる。
 /// 認証をアプリの中で終わらせるために、この host だけ例外として通す。
 const AUTH_HOSTS: [&str; 1] = ["vercel.com"];
+
+/// まとめて渡された URL（`open-external.js`）。その道でなければ None。
+///
+/// 拾うのは**自分と同じ origin から来たもの**だけ。外部のページがこの道を
+/// 騙っても、そこからの移動は別 origin なので拾わない。
+///
+/// 取り出すだけで、開く・開かないは決めない。1つずつ `route` にかけるのは
+/// 呼ぶ側（main.rs）。**判定を通ったものしか開かない**決まりは、まとめて
+/// 渡ってきたものでも変わらない（docs/16-macos-app.md 16.5）。
+pub fn batched(app: &Url, target: &Url) -> Option<Vec<Url>> {
+    if !same_origin(app, target) || target.path() != BATCH_PATH {
+        return None;
+    }
+
+    Some(
+        target
+            .query_pairs()
+            .filter(|(key, _)| key == "url")
+            .filter_map(|(_, value)| Url::parse(&value).ok())
+            .collect(),
+    )
+}
 
 /// `target` をどこで開くか。`app` は Life Record 自身の URL。
 pub fn route(app: &Url, target: &Url) -> Route {
@@ -186,5 +215,72 @@ mod tests {
     fn webview_schemes_pass_through() {
         assert_eq!(route_str("about:blank"), Route::InApp);
         assert_eq!(route_str("tauri://localhost/"), Route::InApp);
+    }
+
+    fn batched_str(target: &str) -> Option<Vec<Url>> {
+        batched(&app(), &Url::parse(target).unwrap())
+    }
+
+    /// 自分の origin の、まとめて渡す道。`query` だけを変えて試す
+    fn batch_of(query: &str) -> Option<Vec<Url>> {
+        batched_str(&format!(
+            "https://life-record.example.com/__open-external?{query}"
+        ))
+    }
+
+    /// まとめて渡された分は、書かれた順に1つずつへ戻す
+    #[test]
+    fn batch_is_split_into_each_url() {
+        assert_eq!(
+            batch_of("url=https%3A%2F%2Fa.test%2F1&url=https%3A%2F%2Fb.test%2F2"),
+            Some(vec![
+                Url::parse("https://a.test/1").unwrap(),
+                Url::parse("https://b.test/2").unwrap(),
+            ])
+        );
+    }
+
+    /// 1件でも同じ形で受け取れる
+    #[test]
+    fn batch_of_one_is_a_batch() {
+        assert_eq!(
+            batch_of("url=https%3A%2F%2Fa.test%2F"),
+            Some(vec![Url::parse("https://a.test/").unwrap()])
+        );
+    }
+
+    /// ふつうの移動は、まとめて渡されたものではない
+    #[test]
+    fn ordinary_navigation_is_not_a_batch() {
+        assert_eq!(batched_str("https://life-record.example.com/items/1"), None);
+        assert_eq!(batched_str("https://example.com/"), None);
+    }
+
+    /// 別 origin が道を騙っても拾わない（開くのは自分が渡したものだけ）
+    #[test]
+    fn batch_from_other_origin_is_ignored() {
+        assert_eq!(
+            batched_str("https://evil.test/__open-external?url=https%3A%2F%2Fa.test%2F"),
+            None
+        );
+    }
+
+    /// 読めない URL・別の名前の値は落とす（残りはそのまま渡す）
+    #[test]
+    fn batch_keeps_only_readable_urls() {
+        assert_eq!(
+            batch_of("url=not%20a%20url&other=https%3A%2F%2Fb.test%2F&url=https%3A%2F%2Fa.test%2F"),
+            Some(vec![Url::parse("https://a.test/").unwrap()])
+        );
+    }
+
+    /// まとめて渡っても、開いてよいかは1つずつ `route` が決める
+    #[test]
+    fn batched_urls_still_go_through_route() {
+        let targets =
+            batch_of("url=file%3A%2F%2F%2Fetc%2Fpasswd&url=https%3A%2F%2Fa.test%2F").unwrap();
+
+        let routes: Vec<Route> = targets.iter().map(|url| route(&app(), url)).collect();
+        assert_eq!(routes, vec![Route::Blocked, Route::Os]);
     }
 }
