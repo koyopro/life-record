@@ -350,6 +350,40 @@ describe('オンライン復帰', () => {
   })
 })
 
+/**
+ * 取得（GET）と保存（PATCH）は別々に飛ぶので、**保存より前に出した取得の応答が
+ * 保存の後で届く**ことがある（docs/15-client-state.md 14.2 の 4）。その応答を
+ * そのまま当てると、直した題やメモが入力したそばから巻き戻って見える。
+ */
+describe('取り直しと保存が前後したとき', () => {
+  beforeEach(async () => {
+    const { resetLocalDatabase } = await import('../helpers')
+    await resetLocalDatabase()
+  })
+
+  it('取りに行った後に送り終えた分は、その応答で戻さない', async () => {
+    const item = itemDto({ note: 'もとのメモ', updatedAt: stamp() })
+    const remote = server([item])
+
+    // 取りに行った時点の写しと、その応答を作った時刻
+    const snapshot = [{ ...item }]
+    const fetchedAt = stamp()
+    await mergeServerItems(snapshot, new Date(), fetchedAt)
+
+    // メモを直して送る。サーバーはここで新しい updatedAt を打つ
+    await patchTodos([item.id], { note: '直したメモ' })
+    await sync(remote)
+    expect((await getItem(item.id))?.syncState).toBe('synced')
+
+    // 取りに行った応答が、送り終えた後になって届く
+    await mergeServerItems(snapshot, new Date(), fetchedAt)
+
+    const stored = await getItem(item.id)
+    expect(stored?.note).toBe('直したメモ')
+    expect(stored?.syncState).toBe('synced')
+  })
+})
+
 describe('競合', () => {
   beforeEach(async () => {
     const { resetLocalDatabase } = await import('../helpers')
