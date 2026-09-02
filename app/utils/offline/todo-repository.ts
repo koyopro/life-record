@@ -71,6 +71,9 @@ export function toLocalItem(item: ItemDto, syncState: SyncState = 'synced'): Loc
 /**
  * サーバーの一覧をローカルへ重ねる。
  *
+ * `serverFetchedAt` は、サーバーがその応答を作った時刻（`ItemListDto`）。
+ * これより後に送り終えた分は、応答のほうが古いので残す（`keepsLocal`）。
+ *
  * 正本はサーバーなので、原則としてサーバーの内容で置き換える。
  * ただし**まだ送れていない変更は上書きしない**。上書きすると、
  * オフライン中に書いたものが取り直しのたびに消えてしまう。
@@ -81,6 +84,7 @@ export function toLocalItem(item: ItemDto, syncState: SyncState = 'synced'): Loc
 export async function mergeServerItems(
   serverItems: ItemDto[],
   fetchedAt: Date = new Date(),
+  serverFetchedAt: string | null = null,
 ): Promise<void> {
   const db = await openLocalDatabase()
   const tx = db.transaction(['items', 'meta'], 'readwrite')
@@ -93,13 +97,14 @@ export async function mergeServerItems(
   for (const server of serverItems) {
     seen.add(server.id)
     const local = locals.get(server.id)
-    if (local && local.syncState !== 'synced') continue
+    if (local && keepsLocal(local, serverFetchedAt)) continue
     await items.put(toLocalItem(server))
   }
 
   for (const [id, local] of locals) {
     if (seen.has(id)) continue
-    if (local.syncState === 'synced') await items.delete(id)
+    if (keepsLocal(local, serverFetchedAt)) continue
+    await items.delete(id)
   }
 
   await tx.objectStore('meta').put({
@@ -108,6 +113,26 @@ export async function mergeServerItems(
   })
 
   await tx.done
+}
+
+/**
+ * 手元の内容を残すか。
+ *
+ * 1. まだ送れていないもの（送信待ち・送信中・送れなかったもの）
+ * 2. 送れているが、**応答を作った時刻より後に送り終えた**もの
+ *
+ * 2 が要るのは、取得（GET）と保存（PATCH）が別々に飛ぶため。保存より前に出した
+ * 取得の応答が保存の後で届くことがあり、その内容にはこちらの保存が入っていない。
+ * 1 の守りは送り終わった瞬間に外れるので、これだけでは**入力したそばから
+ * 巻き戻る**（docs/15-client-state.md 14.2 の 4）。
+ *
+ * 比べるのはどちらもサーバーの時刻（同期済みの `updatedAt` はサーバーが打った
+ * もの）なので、端末の時計がずれていても狂わない。
+ */
+function keepsLocal(local: LocalItem, serverFetchedAt: string | null): boolean {
+  if (local.syncState !== 'synced') return true
+  if (!serverFetchedAt) return false
+  return local.updatedAt > serverFetchedAt
 }
 
 /** 最後にサーバーから取れた時刻。無ければ null。 */

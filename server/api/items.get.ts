@@ -15,13 +15,22 @@ import { assertUuid, orderByFor, toItemDtos } from '~~/server/utils/items'
 import {
   isItemStatus,
   isSortKey,
-  type ItemDto,
+  type ItemListDto,
   type SortKey,
 } from '~~/shared/types/item'
 import { normalizeTagName } from '~~/shared/types/tag'
 
 /** Item 一覧。status / タグで絞り込み、sort で並べ替える。 */
-export default defineEventHandler(async (event): Promise<ItemDto[]> => {
+export default defineEventHandler(async (event): Promise<ItemListDto> => {
+  /*
+   * 応答を作った時刻。**読む前**に打つ。
+   *
+   * 受け取る側は「この時刻より後に送り終えた分は、この応答より新しい」と
+   * 判断する（docs/15-client-state.md 14.2）。読んだ後に打つと、読んでから
+   * 打つまでの間に入った更新を、古い応答で戻してしまう。
+   */
+  const fetchedAt = new Date().toISOString()
+
   const query = getQuery(event)
   const conditions: SQL[] = []
 
@@ -88,5 +97,5 @@ export default defineEventHandler(async (event): Promise<ItemDto[]> => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(...orderByFor(sort))
 
-  return await toItemDtos(db, rows)
+  return { fetchedAt, items: await toItemDtos(db, rows) }
 })

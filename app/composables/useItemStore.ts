@@ -1,4 +1,4 @@
-import type { ItemDto, ItemPatch } from '~~/shared/types/item'
+import type { ItemDto, ItemListDto, ItemPatch } from '~~/shared/types/item'
 import type { LocalItem } from '~/utils/offline/local-database'
 import { requestFlush } from '~/utils/offline/flush-signal'
 import { isNetworkError } from '~/utils/offline/sync-runner'
@@ -75,17 +75,19 @@ export function useItemStore() {
     if (fetching.value) return false
     fetching.value = true
     try {
-      const list = await request<ItemDto[]>('/api/items', {
+      const list = await request<ItemListDto>('/api/items', {
         query: { status: 'all', sort: 'created' },
       })
       const now = new Date()
 
       if (import.meta.client) {
-        await mergeServerItems(list, now)
+        // 応答を作った時刻（list.fetchedAt）より後に送り終えた分は、この応答が
+        // まだ知らない。重ねる側で残す（docs/15-client-state.md 14.2 の 4）
+        await mergeServerItems(list.items, now, list.fetchedAt)
         await reload()
       } else {
         // サーバー描画。ここには IndexedDB が無いので、そのまま見せる
-        items.value = list.map((item) => toLocalItem(item))
+        items.value = list.items.map((item) => toLocalItem(item))
       }
 
       fetchedAt.value = now.toISOString()

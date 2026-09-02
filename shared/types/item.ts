@@ -119,6 +119,19 @@ export interface SectionDto {
   updatedAt: string
 }
 
+/**
+ * 一覧の取得（`GET /api/items`）の応答。
+ *
+ * 手元の控えと重ねるときに、**この応答より後に送り終えた分**を残せるよう、
+ * サーバーが応答を作った時刻を添える（`ItemDetailDto.fetchedAt` と同じ理由。
+ * docs/15-client-state.md 14.2）。
+ */
+export interface ItemListDto {
+  /** サーバーがこの応答を作った時刻（ISO 8601）。 */
+  fetchedAt: string
+  items: ItemDto[]
+}
+
 export interface ItemDetailDto extends ItemDto {
   /**
    * サーバーがこの応答を作った時刻（ISO 8601）。
@@ -127,8 +140,8 @@ export interface ItemDetailDto extends ItemDto {
    * 届く**ことがある。届いた応答が、こちらの保存より前のものかを判断する
    * ために持つ（docs/15-client-state.md 14.2）。
    *
-   * 入れるのは詳細の取得（`GET /api/items/:id`）だけ。書き出しなど、
-   * 手元の控えと突き合わせない用途では持たない。
+   * 入れるのは手元の控えと突き合わせる取得（詳細と一覧）だけ。書き出しなど、
+   * 突き合わせない用途では持たない。
    */
   fetchedAt?: string
   /** 日付昇順、同一日付内は position 昇順（docs/03-functional-spec.md 3.1）。 */
