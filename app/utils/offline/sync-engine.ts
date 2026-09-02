@@ -1,5 +1,5 @@
 import type { ItemDto } from '~~/shared/types/item'
-import type { PendingOperation } from './local-database'
+import type { LocalItem, PendingOperation } from './local-database'
 import {
   deleteItem,
   getItem,
@@ -153,8 +153,7 @@ export async function applyOutcome(
         )
       }
 
-      await handleConflict(operation, outcome, hooks, now())
-      return false
+      return await handleConflict(operation, outcome, hooks, now())
     }
 
     case 'retry': {
@@ -214,26 +213,46 @@ function sameValue(sent: unknown, current: unknown): boolean {
 }
 
 /**
- * 競合したときの処理。
+ * 競合したときの処理。**新しい方を採る**（docs/12-offline.md 12.5）。
+ * 列を止めるべきなら true を返す。
  *
- * サーバー側を正とする。ただし黙って捨てず、捨てたローカルの変更を
- * 記録して画面に出す（docs/12-offline.md 12.5）。この Item に積まれていた
- * 未送信の操作は、まとめて取り下げる（サーバー側を採ると決めた以上、
- * 後続の操作を送れば同じことを繰り返す）。
+ * 手元の変更のほうが後なら、サーバーの版を土台にして送り直す。送るのは
+ * 自分が変えた項目だけなので、他の端末が変えた別の項目はそのまま残る。
+ *
+ * サーバーのほうが新しければサーバーを採る。ただし黙って捨てず、捨てた
+ * ローカルの変更を記録して画面に出す。この Item に積まれていた未送信の操作も
+ * まとめて取り下げる（サーバー側を採ると決めた以上、後続の操作を送れば同じ
+ * ことを繰り返す）。
  */
 async function handleConflict(
   operation: PendingOperation,
   outcome: Extract<SyncOutcome, { type: 'conflict' }>,
   hooks: EngineHooks,
   now: Date,
-): Promise<void> {
+): Promise<boolean> {
   const itemId = operation.itemIds[0]
   if (!itemId) {
     await removeOperation(operation.seq)
-    return
+    return false
   }
 
   const local = await getItem(itemId)
+
+  if (outcome.server && local && isNewerThanServer(local, outcome.server)) {
+    // 内容は手元のまま、競合の基準（baseUpdatedAt）だけサーバーに合わせる
+    await markSynced(outcome.server, { keepPending: true })
+    hooks.onReachable?.(true)
+    /*
+     * 送り直しは間を空ける。すぐ投げ直すと、相手が変え続けている間ずっと
+     * 回り続ける。回数を数えるので、収まらなければ諦めて画面に出る。
+     */
+    await recordFailure(operation.seq, '他の端末の変更に合わせて送り直します', {
+      now,
+    })
+    await hooks.onLocalChange?.()
+    return true
+  }
+
   // 本文（作業記録）の操作は取り下げない。メタデータの競合とは別で、
   // 書いたものはサーバーに無い（取り下げると手元にしか残らない）
   await cancelOperations(
@@ -256,6 +275,19 @@ async function handleConflict(
 
   hooks.onReachable?.(true)
   await hooks.onLocalChange?.()
+  return false
+}
+
+/**
+ * 手元の変更のほうが、サーバーの版より後か。
+ *
+ * 手元の `updatedAt` は書き換えた時刻（この端末の時計）、サーバーの
+ * `updatedAt` は向こうが書き換えた時刻。**別の時計を比べる**ので、端末の
+ * 時計が大きくずれていると採る側が入れ替わりうる。それでも「新しい方を採る」
+ * ほうが、書いたものが黙って消えるより驚きが少ない（docs/12-offline.md 12.5）。
+ */
+function isNewerThanServer(local: LocalItem, server: ItemDto): boolean {
+  return local.updatedAt > server.updatedAt
 }
 
 /**

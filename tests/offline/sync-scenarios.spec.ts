@@ -416,15 +416,20 @@ describe('届いていた送信の送り直し', () => {
     expect(await listOperations()).toEqual([])
   })
 
-  it('違う内容が入っていれば、これまでどおり競合として扱う', async () => {
+  it('違う内容が入っていれば、新しい方を採る（ここではサーバー）', async () => {
     const item = itemDto({ note: 'もとのメモ', updatedAt: stamp() })
     const remote = server([item])
     await mergeServerItems([item], FRESH_FETCH)
 
-    // 他の端末が先に直した（こちらは知らない）
+    // この端末で直したのは、他の端末の変更より前
+    await patchTodos(
+      [item.id],
+      { note: '直したメモ' },
+      new Date('2026-08-17T00:00:00.000Z'),
+    )
+    // 他の端末が、その後に直した（こちらは知らない）
     remote.items.set(item.id, { ...item, note: '別の端末のメモ', updatedAt: stamp() })
 
-    await patchTodos([item.id], { note: '直したメモ' })
     await sync(remote)
 
     expect((await listConflicts()).length).toBe(1)
@@ -467,16 +472,51 @@ describe('競合', () => {
     await resetLocalDatabase()
   })
 
-  it('他の端末の変更が先にあると、サーバー側を採り、捨てた内容を記録する', async () => {
+  it('手元の変更のほうが新しければ、サーバーの版に載せ直して送り直す', async () => {
+    const item = itemDto({ title: 'もとの題', note: 'もとのメモ', updatedAt: stamp() })
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+
+    remote.down = true
+    await patchTodos([item.id], { note: 'この端末のメモ' })
+    remote.down = false
+
+    // 別の端末が、こちらより前に**別の項目**を変えていた
+    remote.items.set(item.id, {
+      ...item,
+      title: '別の端末で直した題',
+      updatedAt: stamp(),
+    })
+
+    // 1回目は競合。基準をサーバーに合わせて送り直す
+    await sync(remote)
+    await sync(remote)
+
+    // 自分が変えた項目は残り、相手が変えた項目もそのまま
+    expect(remote.items.get(item.id)?.note).toBe('この端末のメモ')
+    expect(remote.items.get(item.id)?.title).toBe('別の端末で直した題')
+    expect((await getItem(item.id))?.note).toBe('この端末のメモ')
+
+    // 捨てていないので、知らせも出さない
+    expect(await listConflicts()).toEqual([])
+    expect(await listOperations()).toEqual([])
+  })
+
+  it('サーバーの変更のほうが新しければ、サーバー側を採り、捨てた内容を記録する', async () => {
     const item = itemDto({ title: 'もとの題' })
     const remote = server([item])
     await mergeServerItems([item], FRESH_FETCH)
 
     remote.down = true
-    await patchTodos([item.id], { title: 'この端末で直した題' })
+    // この端末で直したのは、他の端末の変更より前
+    await patchTodos(
+      [item.id],
+      { title: 'この端末で直した題' },
+      new Date('2026-08-17T00:00:00.000Z'),
+    )
     remote.down = false
 
-    // 別の端末が先に変えた
+    // 別の端末が、その後に変えた
     remote.items.set(item.id, {
       ...item,
       title: '別の端末で直した題',
