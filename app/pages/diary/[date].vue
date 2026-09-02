@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { ItemDto } from '~~/shared/types/item'
 import type { Shortcut } from '~/composables/useShortcuts'
-import { formatAppDate, isAppDate, shiftAppDate } from '~~/shared/utils/date'
+import { formatAppDate, isAppDate, monthOf, shiftAppDate } from '~~/shared/utils/date'
+import { diaryMonthPath } from '~~/shared/utils/diary-month'
 import { groupWorkedOn, PINNED_TITLE, UNTAGGED_TITLE } from '~/utils/diary-worked-on'
 import { headOf } from '~~/shared/utils/diary'
 import { startItemLinkDrag } from '~/utils/item-drag'
@@ -97,13 +98,16 @@ useShortcuts(
 )
 
 /**
- * カレンダー（日記の一覧）へ移る。
+ * カレンダー（月のページ）へ移る。
  *
  * 任意の日付を選ぶのはこちらに任せる。ヘッダーは1行に収めたいので、
  * 日付の入力欄は置かない。
+ *
+ * 今月ではなく**いま見ている日の月**へ戻す。過去の日から抜けたときに
+ * 今月へ飛ぶと、読んでいた場所を見失うため。
  */
 function goToCalendar() {
-  return leaveTo('/diary')
+  return leaveTo(diaryMonthPath(monthOf(date.value)))
 }
 
 const { colorOf } = useTags()

@@ -56,6 +56,51 @@ describe('アプリ内のページへのリンク', () => {
     expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/2026-02-31' }])
   })
 
+  it('[/diary/month/YYYY-MM] は月のページへのリンクになる', () => {
+    const [line] = parseScrapbox('[/diary/month/2026-09 9月の振り返り]')
+    if (line!.type !== 'text') throw new Error('unreachable')
+    expect(line!.nodes).toEqual([
+      {
+        type: 'link',
+        href: '/diary/month/2026-09',
+        nodes: [{ type: 'text', value: '9月の振り返り' }],
+      },
+    ])
+  })
+
+  it('月のページのリンクは、表示文字列なしでも書ける', () => {
+    const [line] = parseScrapbox('[/diary/month/2026-09]')
+    if (line!.type !== 'text') throw new Error('unreachable')
+    expect(line!.nodes).toEqual([
+      {
+        type: 'link',
+        href: '/diary/month/2026-09',
+        nodes: [{ type: 'text', value: '/diary/month/2026-09' }],
+      },
+    ])
+  })
+
+  it('ありえない月はリンクにしない', () => {
+    const [line] = parseScrapbox('[/diary/month/2026-13]')
+    if (line!.type !== 'text') throw new Error('unreachable')
+    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/month/2026-13' }])
+  })
+
+  /*
+   * 月のページを `/diary/2026-09` にしなかった理由そのもの。この形なら、
+   * 月を指しているものを本文から部分一致で引いても（バックリンク）、
+   * その月の日記リンクを巻き込まない。
+   */
+  it('月のリンクは、その月の日記リンクの前方一致にならない', () => {
+    expect('/diary/2026-09-01'.includes('/diary/month/2026-09')).toBe(false)
+  })
+
+  it('月を日付の位置に書いても、日記のリンクにはならない', () => {
+    const [line] = parseScrapbox('[/diary/2026-09]')
+    if (line!.type !== 'text') throw new Error('unreachable')
+    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/2026-09' }])
+  })
+
   it('レンダリングすると、同じタブで開く内部リンクとして出る', () => {
     const [line] = parseScrapbox(`[/items/${ITEM_ID} タスクへ]`)
     if (line!.type !== 'text') throw new Error('unreachable')

@@ -18,6 +18,7 @@ import {
 import type { Line } from '~~/shared/utils/scrapbox/types'
 import { iconInsertion, searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
+import { insertDate, type DateInsertState } from '~/utils/date-insert'
 import { caretAfterSplit, type LineSplit } from '~/utils/caret-shift'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import { writeToClipboard } from '~/utils/clipboard'
@@ -793,52 +794,34 @@ function maybeAutoCloseBracket(previousText: string) {
   void setCaret(caret, caret)
 }
 
-/** 続けて `Ctrl` + `T` を押したとみなす間隔。この間なら日付をリンクへ差し替える。 */
-const DATE_INSERT_REPEAT_MS = 1500
-
-/** 直前に `Ctrl` + `T` で入れた日付の範囲。続けて押されたときの差し替えに使う。 */
-let lastDateInsert: { at: number; start: number; end: number } | null = null
+/** 直前に `Ctrl` + `T` で入れた範囲と、いまどの形か。 */
+let lastDateInsert: DateInsertState | null = null
 
 /**
  * `Ctrl` + `T` で今日の日付を挿入する。
  *
- * カーソルを動かさず・間を空けずにもう一度押すと、挿入した日付を
- * 日記へのリンク（`[/diary/YYYY-MM-DD]`）に差し替える。
- * 1回で常にリンクにはしない方針は、日付だけ書きたい場面
- * （期限のメモなど）を主にしているため。
+ * カーソルを動かさず・間を空けずにもう一度押すと、挿入したものを次の形
+ * （日記へのリンク → 月のページへのリンク → また日付…）に差し替える。
+ * どう巡るかは app/utils/date-insert.ts を参照。
  */
 function insertToday(event: KeyboardEvent) {
   const el = input.value
   if (activeIndex.value === null || !el) return
   event.preventDefault()
 
-  const now = Date.now()
-  const date = toAppDate()
   const start = el.selectionStart ?? activeText.value.length
-  const end = el.selectionEnd ?? start
-  const value = activeText.value
+  const { value, caret, state } = insertDate({
+    last: lastDateInsert,
+    value: activeText.value,
+    start,
+    end: el.selectionEnd ?? start,
+    date: toAppDate(),
+    now: Date.now(),
+  })
 
-  const upgrade =
-    lastDateInsert !== null &&
-    now - lastDateInsert.at <= DATE_INSERT_REPEAT_MS &&
-    start === lastDateInsert.end &&
-    end === lastDateInsert.end &&
-    value.slice(lastDateInsert.start, lastDateInsert.end) === date
-
-  if (upgrade) {
-    const { start: linkStart, end: linkEnd } = lastDateInsert!
-    const link = `[/diary/${date}]`
-    replaceActiveLine(value.slice(0, linkStart) + link + value.slice(linkEnd))
-    const caret = linkStart + link.length
-    void setCaret(caret, caret)
-    lastDateInsert = null
-    return
-  }
-
-  replaceActiveLine(value.slice(0, start) + date + value.slice(end))
-  const caret = start + date.length
+  replaceActiveLine(value)
   void setCaret(caret, caret)
-  lastDateInsert = { at: now, start, end: caret }
+  lastDateInsert = state
 }
 
 /**

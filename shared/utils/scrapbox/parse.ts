@@ -1,5 +1,5 @@
 import type { Line, Inline, ImageNode } from './types'
-import { isAppDate } from '../date'
+import { isAppDate, isAppMonth } from '../date'
 
 /**
  * Scrapbox 記法のパーサ（docs/11-scrapbox-notation.md）。
@@ -44,12 +44,25 @@ const ICON_PATTERN = /^:([a-zA-Z0-9_-]+):/
  */
 const APP_ITEM_PATH = /^\/items\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** このサービスの日記を指すパス。 */
+/** このサービスの日記（1日）を指すパス。 */
 const APP_DIARY_PATH = /^\/diary\/(\d{4}-\d{2}-\d{2})$/
 
+/**
+ * このサービスの日記の月のページを指すパス。
+ *
+ * 日付と同じ `/diary/2026-09` にはしない。`/diary/2026-09` は日付リンク
+ * `/diary/2026-09-01` の前方一致になり、月を指しているものを本文から
+ * 逆に引く（バックリンク）ときに、その月の日記リンクまで巻き込むため
+ * （docs/11-scrapbox-notation.md 11.11）。
+ */
+const APP_DIARY_MONTH_PATH = /^\/diary\/month\/(\d{4}-\d{2})$/
+
 function isAppDiaryPath(value: string): boolean {
-  const match = APP_DIARY_PATH.exec(value)
-  return match !== null && isAppDate(match[1])
+  const day = APP_DIARY_PATH.exec(value)
+  if (day !== null) return isAppDate(day[1])
+
+  const month = APP_DIARY_MONTH_PATH.exec(value)
+  return month !== null && isAppMonth(month[1])
 }
 
 /**
