@@ -31,6 +31,8 @@ function comparatorFor(sort: SortKey): Compare {
       return chain(byDueAsc, byPriority, byCreatedAsc)
     case 'created':
       return byCreatedDesc
+    case 'updated':
+      return byUpdatedDesc
   }
 }
 
@@ -81,6 +83,15 @@ const byDueDesc: Compare = (a, b) =>
 const byCreatedAsc: Compare = (a, b) => compareText(a.createdAt, b.createdAt)
 
 const byCreatedDesc: Compare = (a, b) => compareText(b.createdAt, a.createdAt)
+
+/**
+ * 直近さわったものが上。
+ *
+ * 未送信の変更を抱えている間、手元の `updatedAt` はこの端末の時計で先に
+ * 進んでいる（`patchTodos`）。サーバーが打ち直した時刻とは少しずれるが、
+ * どちらも「さわった順」なので並びは変わらない。
+ */
+const byUpdatedDesc: Compare = (a, b) => compareText(b.updatedAt, a.updatedAt)
 
 /**
  * 一覧から消えた Item の代わりに、カーソルを置く先の id。

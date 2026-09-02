@@ -64,6 +64,26 @@ describe('sortItems', () => {
 
     expect(sorted.map((i) => i.id)).toEqual(['新しい', '古い'])
   })
+
+  it('更新日降順は、直近さわったものが上（追加した順ではない）', () => {
+    const sorted = sortItems(
+      [
+        itemDto({
+          id: '古く直した',
+          createdAt: '2026-08-20T00:00:00.000Z',
+          updatedAt: '2026-08-20T00:00:00.000Z',
+        }),
+        itemDto({
+          id: '直近直した',
+          createdAt: '2026-08-01T00:00:00.000Z',
+          updatedAt: '2026-09-01T00:00:00.000Z',
+        }),
+      ],
+      'updated',
+    )
+
+    expect(sorted.map((i) => i.id)).toEqual(['直近直した', '古く直した'])
+  })
 })
 
 describe('toSortKey', () => {

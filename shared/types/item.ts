@@ -38,6 +38,7 @@ export const SORT_KEYS = [
   'dueDesc',
   'due',
   'created',
+  'updated',
 ] as const
 export type SortKey = (typeof SORT_KEYS)[number]
 
@@ -47,6 +48,8 @@ export const SORT_LABELS: Record<SortKey, string> = {
   dueDesc: '期限日降順',
   due: '期限日昇順',
   created: '追加日降順',
+  // 直近さわったものが上。書きかけ・直したばかりのものを拾い直すため
+  updated: '更新日降順',
 }
 
 /**
