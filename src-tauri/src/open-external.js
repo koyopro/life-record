@@ -1,18 +1,19 @@
 /*
- * 別のタブ・ウィンドウを開こうとする移動を、同じウィンドウの移動に置き換える。
+ * 別のタブ・ウィンドウを開こうとする移動を、Rust 側の判定へ載せる。
  *
  * 普通のリンクや location の書き換えは、Rust 側の on_navigation が必ず通る。
  * だが target="_blank" と window.open() は WKWebView では「新しいウィンドウを
- * 作ってよいか」の問い合わせになり、そこを通らないことがある。この2つだけを
- * ここで拾い、同じウィンドウの移動へ直して Rust 側の判定に載せる。
+ * 作ってよいか」の問い合わせになり、そこを通らないことがある。この2つ（と
+ * ⌘+クリック）をここで拾い、同じウィンドウの移動へ直して判定に載せる。
  *
- * 外部 URL ならその移動は取り消され、macOS の既定のブラウザが開く。
- * 開く・開かないを決めるのはあくまで Rust 側で、ここでは判定しない。
+ * **どこで開くかはここでは決めない。**外部 URL なら Rust 側が移動を取り消して
+ * 既定のブラウザへ渡し、アプリの中の URL なら新しいタブを開く
+ * （docs/16-macos-app.md 16.3・16.10）。
  *
  * 一度に何件も渡されることがある（一覧の `Shift`+`u` は、チェックしたタスクの
  * 数だけ window.open() を呼ぶ）。移動は1つしか持てないので、続けて location を
  * 書き換えると最後の1つに上書きされ、1件しか開かない。同じ流れで渡された分は
- * **1回の移動にまとめ**、Rust 側で1つずつ判定して開く。
+ * **1回の移動にまとめる**。
  *
  * このファイルは Tauri のウィンドウにだけ注入される。ブラウザで開く Web 版
  * には入らないので、そちらのふるまいは変わらない。
@@ -22,12 +23,12 @@
   window.__lifeRecordOpenExternal = true
 
   /**
-   * まとめて渡すための道（Rust 側の `url_rules.rs` と揃える）。
+   * 渡すための道（Rust 側の `url_rules.rs` と揃える）。
    *
    * ここへの移動は必ず取り消されるので、この道のページは要らない。
    * 自分と同じ origin に置くのは、外部のページが騙っても拾わないため。
    */
-  var BATCH_PATH = '/__open-external'
+  var HANDOFF_PATH = '/__open'
 
   /** まだ渡していない URL。同じ流れで呼ばれた分がここにたまる。 */
   var queued = []
@@ -52,17 +53,17 @@
     var urls = queued
     queued = []
     if (urls.length === 0) return
-    window.location.href = urls.length === 1 ? urls[0] : batchUrl(urls)
+    window.location.href = handoffUrl(urls)
   }
 
-  /** 何件かをまとめて渡すための URL。読むのは Rust 側だけ。 */
-  function batchUrl(urls) {
+  /** 渡すための URL。読むのは Rust 側だけ。 */
+  function handoffUrl(urls) {
     var query = urls
       .map(function (url) {
         return 'url=' + encodeURIComponent(url)
       })
       .join('&')
-    return new URL(BATCH_PATH + '?' + query, window.location.href).href
+    return new URL(HANDOFF_PATH + '?' + query, window.location.href).href
   }
 
   /** 別のタブ・ウィンドウで開こうとしているリンクか。 */
@@ -84,7 +85,10 @@
     if (!element || typeof element.closest !== 'function') return
 
     var anchor = element.closest('a[href]')
-    if (!anchor || !opensNewWindow(anchor)) return
+    if (!anchor) return
+
+    // 別のタブで開く指定（target）か、⌘+クリック。ブラウザと同じ手触りにする
+    if (!opensNewWindow(anchor) && !event.metaKey) return
 
     event.preventDefault()
     // anchor.href は相対でも絶対 URL として読める

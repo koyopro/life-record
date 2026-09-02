@@ -14,6 +14,11 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 url = "2"
 
+# タブの差し込み・切り替えだけ AppKit に直に頼む（docs/16-macos-app.md 16.4）。
+# tao / wry がすでに使っている版に合わせるので、依存そのものは増えない。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
 [profile.release]
 # 個人用の配布物なので、起動の速さより .app の小ささを取る
 codegen-units = 1

@@ -27,12 +27,12 @@ const OS_SCHEMES: [&str; 5] = ["mailto", "tel", "sms", "facetime", "facetime-aud
 /// WebView が自分のために使うスキーム。素通しする。
 const IN_APP_SCHEMES: [&str; 3] = ["tauri", "asset", "about"];
 
-/// まとめて渡された URL を受け取る道（`open-external.js`）。
+/// 「別のところで開きたい」と渡される道（`open-external.js`）。
 ///
-/// 移動は1つしか持てないので、window.open() が続けて呼ばれた分は1回の移動に
-/// まとめて渡ってくる（docs/16-macos-app.md 16.3）。ここへの移動は必ず
-/// 取り消すため、この道のページは要らない。
-const BATCH_PATH: &str = "/__open-external";
+/// 別のタブ・ウィンドウで開こうとした URL は、この道への移動として渡ってくる
+/// （docs/16-macos-app.md 16.3）。移動は1つしか持てないので、続けて開こうと
+/// した分もここに並ぶ。ここへの移動は必ず取り消すため、この道のページは要らない。
+const HANDOFF_PATH: &str = "/__open";
 
 /// 認証のために経由する host。別 origin だがアプリの中で開く。
 ///
@@ -43,16 +43,17 @@ const BATCH_PATH: &str = "/__open-external";
 /// 認証をアプリの中で終わらせるために、この host だけ例外として通す。
 const AUTH_HOSTS: [&str; 1] = ["vercel.com"];
 
-/// まとめて渡された URL（`open-external.js`）。その道でなければ None。
+/// 「別のところで開きたい」と渡された URL（`open-external.js`）。
+/// その道でなければ None。
 ///
 /// 拾うのは**自分と同じ origin から来たもの**だけ。外部のページがこの道を
 /// 騙っても、そこからの移動は別 origin なので拾わない。
 ///
-/// 取り出すだけで、開く・開かないは決めない。1つずつ `route` にかけるのは
-/// 呼ぶ側（main.rs）。**判定を通ったものしか開かない**決まりは、まとめて
-/// 渡ってきたものでも変わらない（docs/16-macos-app.md 16.5）。
-pub fn batched(app: &Url, target: &Url) -> Option<Vec<Url>> {
-    if !same_origin(app, target) || target.path() != BATCH_PATH {
+/// 取り出すだけで、どこで開くかは決めない。1つずつ `route` にかけるのは
+/// 呼ぶ側（main.rs）。**判定を通ったものしか開かない**決まりは、この道から
+/// 来たものでも変わらない（docs/16-macos-app.md 16.5）。
+pub fn handoff(app: &Url, target: &Url) -> Option<Vec<Url>> {
+    if !same_origin(app, target) || target.path() != HANDOFF_PATH {
         return None;
     }
 
@@ -217,22 +218,20 @@ mod tests {
         assert_eq!(route_str("tauri://localhost/"), Route::InApp);
     }
 
-    fn batched_str(target: &str) -> Option<Vec<Url>> {
-        batched(&app(), &Url::parse(target).unwrap())
+    fn handoff_str(target: &str) -> Option<Vec<Url>> {
+        handoff(&app(), &Url::parse(target).unwrap())
     }
 
-    /// 自分の origin の、まとめて渡す道。`query` だけを変えて試す
-    fn batch_of(query: &str) -> Option<Vec<Url>> {
-        batched_str(&format!(
-            "https://life-record.example.com/__open-external?{query}"
-        ))
+    /// 自分の origin の、渡す道。`query` だけを変えて試す
+    fn handoff_of(query: &str) -> Option<Vec<Url>> {
+        handoff_str(&format!("https://life-record.example.com/__open?{query}"))
     }
 
-    /// まとめて渡された分は、書かれた順に1つずつへ戻す
+    /// 渡された分は、書かれた順に1つずつへ戻す
     #[test]
-    fn batch_is_split_into_each_url() {
+    fn handoff_is_split_into_each_url() {
         assert_eq!(
-            batch_of("url=https%3A%2F%2Fa.test%2F1&url=https%3A%2F%2Fb.test%2F2"),
+            handoff_of("url=https%3A%2F%2Fa.test%2F1&url=https%3A%2F%2Fb.test%2F2"),
             Some(vec![
                 Url::parse("https://a.test/1").unwrap(),
                 Url::parse("https://b.test/2").unwrap(),
@@ -242,45 +241,55 @@ mod tests {
 
     /// 1件でも同じ形で受け取れる
     #[test]
-    fn batch_of_one_is_a_batch() {
+    fn handoff_of_one_url() {
         assert_eq!(
-            batch_of("url=https%3A%2F%2Fa.test%2F"),
+            handoff_of("url=https%3A%2F%2Fa.test%2F"),
             Some(vec![Url::parse("https://a.test/").unwrap()])
         );
     }
 
-    /// ふつうの移動は、まとめて渡されたものではない
+    /// ふつうの移動は、渡されたものではない
     #[test]
-    fn ordinary_navigation_is_not_a_batch() {
-        assert_eq!(batched_str("https://life-record.example.com/items/1"), None);
-        assert_eq!(batched_str("https://example.com/"), None);
+    fn ordinary_navigation_is_not_a_handoff() {
+        assert_eq!(handoff_str("https://life-record.example.com/items/1"), None);
+        assert_eq!(handoff_str("https://example.com/"), None);
     }
 
     /// 別 origin が道を騙っても拾わない（開くのは自分が渡したものだけ）
     #[test]
-    fn batch_from_other_origin_is_ignored() {
+    fn handoff_from_other_origin_is_ignored() {
         assert_eq!(
-            batched_str("https://evil.test/__open-external?url=https%3A%2F%2Fa.test%2F"),
+            handoff_str("https://evil.test/__open?url=https%3A%2F%2Fa.test%2F"),
             None
         );
     }
 
     /// 読めない URL・別の名前の値は落とす（残りはそのまま渡す）
     #[test]
-    fn batch_keeps_only_readable_urls() {
+    fn handoff_keeps_only_readable_urls() {
         assert_eq!(
-            batch_of("url=not%20a%20url&other=https%3A%2F%2Fb.test%2F&url=https%3A%2F%2Fa.test%2F"),
+            handoff_of(
+                "url=not%20a%20url&other=https%3A%2F%2Fb.test%2F&url=https%3A%2F%2Fa.test%2F"
+            ),
             Some(vec![Url::parse("https://a.test/").unwrap()])
         );
     }
 
-    /// まとめて渡っても、開いてよいかは1つずつ `route` が決める
+    /// 渡ってきても、どこで開くかは1つずつ `route` が決める
     #[test]
-    fn batched_urls_still_go_through_route() {
+    fn handed_over_urls_still_go_through_route() {
         let targets =
-            batch_of("url=file%3A%2F%2F%2Fetc%2Fpasswd&url=https%3A%2F%2Fa.test%2F").unwrap();
+            handoff_of("url=file%3A%2F%2F%2Fetc%2Fpasswd&url=https%3A%2F%2Fa.test%2F").unwrap();
 
         let routes: Vec<Route> = targets.iter().map(|url| route(&app(), url)).collect();
         assert_eq!(routes, vec![Route::Blocked, Route::Os]);
+    }
+
+    /// アプリの中の URL は、渡ってきても中で開くもの（＝新しいタブ）のまま
+    #[test]
+    fn handed_over_in_app_url_stays_in_app() {
+        let targets = handoff_of("url=https%3A%2F%2Flife-record.example.com%2Fitems%2F1").unwrap();
+
+        assert_eq!(route(&app(), &targets[0]), Route::InApp);
     }
 }
