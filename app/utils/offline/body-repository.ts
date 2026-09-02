@@ -1,5 +1,6 @@
 import type { SectionDto } from '~~/shared/types/item'
 import type { DiarySectionDto } from '~~/shared/types/diary'
+import { keepsLocal } from './freshness'
 import {
   openLocalDatabase,
   type BodySyncState,
@@ -13,15 +14,8 @@ import {
  * TODO（todo-repository）と同じ考え方で、IndexedDB への読み書きをここへ集める。
  * 画面は `useItemDetailStore` / `useDiaryStore` を通してしか触らない。
  *
- * サーバーから取り直した内容を重ねるときの規則も、この層が持つ。
- *
- * 1. **まだ送れていない本文は上書きしない**（`syncState` が `synced` 以外）
- * 2. 同期済みでも、**応答を作った時刻（`fetchedAt`）より後に届いた保存**は
- *    残す。取得と保存は別々に飛ぶので、保存より前に出した取得の応答が
- *    保存の後で届くことがある（docs/15-client-state.md 14.2）
- *
- * 比べるのはどちらもサーバーが打った時刻なので、端末の時計がずれていても
- * 判断が狂わない。
+ * サーバーから取り直した内容の重ね方は、種類をまたいで同じ決まり
+ * （`freshness.ts` の `keepsLocal`）に従う。
  */
 
 // --- 作業記録（Section） ------------------------------------------------
@@ -88,7 +82,7 @@ export async function pendingSections(): Promise<LocalSection[]> {
 export async function mergeServerSections(
   itemId: string,
   server: SectionDto[],
-  fetchedAt: string | null,
+  fetchedAt: string,
 ): Promise<void> {
   const db = await openLocalDatabase()
   const tx = db.transaction('sections', 'readwrite')
@@ -125,7 +119,7 @@ export async function mergeServerSections(
 export async function mergeServerSectionsOnDate(
   date: string,
   server: DiarySectionDto[],
-  fetchedAt: string | null,
+  fetchedAt: string,
 ): Promise<void> {
   const db = await openLocalDatabase()
   const tx = db.transaction('sections', 'readwrite')
@@ -149,21 +143,6 @@ export async function mergeServerSectionsOnDate(
   }
 
   await tx.done
-}
-
-/**
- * 手元の内容を残すか。
- *
- * まだ送れていないもの（未送信・送信待ち）と、応答を作った時刻より後に
- * 保存できたものは、届いた内容の方が古い。
- */
-function keepsLocal(
-  local: { syncState: BodySyncState; updatedAt: string | null },
-  fetchedAt: string | null,
-): boolean {
-  if (local.syncState !== 'synced') return true
-  if (!fetchedAt || !local.updatedAt) return false
-  return local.updatedAt > fetchedAt
 }
 
 // --- 日記 ---------------------------------------------------------------
@@ -199,7 +178,7 @@ export async function pendingDiaries(): Promise<LocalDiary[]> {
 export async function mergeServerDiary(
   date: string,
   server: { body: string; updatedAt: string | null },
-  fetchedAt: string | null,
+  fetchedAt: string,
 ): Promise<void> {
   const db = await openLocalDatabase()
   const tx = db.transaction('diaries', 'readwrite')

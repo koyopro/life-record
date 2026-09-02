@@ -15,22 +15,20 @@ import { assertUuid, orderByFor, toItemDtos } from '~~/server/utils/items'
 import {
   isItemStatus,
   isSortKey,
-  type ItemListDto,
+  type ItemDto,
   type SortKey,
 } from '~~/shared/types/item'
+import type { Fetched } from '~~/shared/types/fetched'
+import { fetched } from '~~/server/utils/fetched'
 import { normalizeTagName } from '~~/shared/types/tag'
 
-/** Item 一覧。status / タグで絞り込み、sort で並べ替える。 */
-export default defineEventHandler(async (event): Promise<ItemListDto> => {
-  /*
-   * 応答を作った時刻。**読む前**に打つ。
-   *
-   * 受け取る側は「この時刻より後に送り終えた分は、この応答より新しい」と
-   * 判断する（docs/15-client-state.md 14.2）。読んだ後に打つと、読んでから
-   * 打つまでの間に入った更新を、古い応答で戻してしまう。
-   */
-  const fetchedAt = new Date().toISOString()
-
+/**
+ * Item 一覧。status / タグで絞り込み、sort で並べ替える。
+ *
+ * 手元の控え（IndexedDB）と突き合わせるので、応答を作った時刻を添えて返す
+ * （`fetched`。docs/15-client-state.md 14.2 の 4）。
+ */
+export default defineEventHandler(async (event): Promise<Fetched<ItemDto[]>> => {
   const query = getQuery(event)
   const conditions: SQL[] = []
 
@@ -91,11 +89,13 @@ export default defineEventHandler(async (event): Promise<ItemListDto> => {
 
   const sort: SortKey = isSortKey(query.sort) ? query.sort : 'priorityDueDesc'
 
-  const rows = await db
-    .select()
-    .from(items)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(...orderByFor(sort))
+  return await fetched(async () => {
+    const rows = await db
+      .select()
+      .from(items)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(...orderByFor(sort))
 
-  return { fetchedAt, items: await toItemDtos(db, rows) }
+    return await toItemDtos(db, rows)
+  })
 })

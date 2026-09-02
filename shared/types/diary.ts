@@ -20,13 +20,6 @@ export interface DiaryDto {
 
 export interface DiaryDetailDto extends DiaryDto {
   /**
-   * サーバーがこの応答を作った時刻（ISO 8601）。
-   *
-   * 手元に残っている本文が、この応答より後に保存されたものかを判断する
-   * ために持つ（docs/15-client-state.md 14.2）。
-   */
-  fetchedAt: string
-  /**
    * まだ書かれていない日は false。
    * 空の状態で開けるようにするため、404 ではなくこれで表す。
    */

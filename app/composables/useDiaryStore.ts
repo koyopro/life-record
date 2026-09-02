@@ -1,4 +1,5 @@
 import type { DiaryDetailDto, DiarySectionDto, DiarySummaryDto } from '~~/shared/types/diary'
+import type { Fetched } from '~~/shared/types/fetched'
 import type { ItemDto } from '~~/shared/types/item'
 import type { WorkedOnRecord } from '~/utils/diary-worked-on'
 import { excerptOf, pinnedImageOf } from '~~/shared/utils/diary'
@@ -216,24 +217,27 @@ export function useDiaryStore() {
      * （useState は payload でブラウザへ渡るので、最初の描画に本文が載る）。
      */
     if (import.meta.server) {
-      const { data } = useFetch<DiaryDetailDto>(() => `/api/diaries/${date.value}`)
+      const { data } = useFetch<Fetched<DiaryDetailDto>>(
+        () => `/api/diaries/${date.value}`,
+      )
       watch(
         data,
         (value) => {
           if (!value) return
+          const detail = value.data
           diaries.value = {
             ...diaries.value,
             [date.value]: {
               date: date.value,
-              body: value.body,
-              updatedAt: value.updatedAt,
+              body: detail.body,
+              updatedAt: detail.updatedAt,
               syncState: 'synced',
             },
           }
           loaded.value = { ...loaded.value, [date.value]: true }
           workedOn.value = {
             ...workedOn.value,
-            [date.value]: toRecords(value.items, value.sections),
+            [date.value]: toRecords(detail.items, detail.sections),
           }
         },
         { immediate: true },
@@ -246,18 +250,20 @@ export function useDiaryStore() {
       await loadWorkedOn(target)
 
       try {
-        const detail = await $fetch<DiaryDetailDto>(`/api/diaries/${target}`)
+        const { fetchedAt, data: detail } = await $fetch<Fetched<DiaryDetailDto>>(
+          `/api/diaries/${target}`,
+        )
         await mergeServerDiary(
           target,
           { body: detail.body, updatedAt: detail.updatedAt },
-          detail.fetchedAt ?? null,
+          fetchedAt,
         )
         /*
          * その日の作業記録も手元へ重ねる。「この日にやったこと」は手元の
          * 作業記録から作るので、これをしないと**他の端末で書いた分が出ない**
          * （この端末で詳細を開いたことのある Item しか手元に無いため）。
          */
-        await mergeServerSectionsOnDate(target, detail.sections, detail.fetchedAt ?? null)
+        await mergeServerSectionsOnDate(target, detail.sections, fetchedAt)
 
         // 他の端末で作られた TODO は、まだ手元の一覧に無いことがある
         if (detail.items.some((item) => !itemStore.byId(item.id))) {

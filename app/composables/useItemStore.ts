@@ -1,4 +1,5 @@
-import type { ItemDto, ItemListDto, ItemPatch } from '~~/shared/types/item'
+import type { ItemDto, ItemPatch } from '~~/shared/types/item'
+import type { Fetched } from '~~/shared/types/fetched'
 import type { LocalItem } from '~/utils/offline/local-database'
 import { requestFlush } from '~/utils/offline/flush-signal'
 import { isNetworkError } from '~/utils/offline/sync-runner'
@@ -38,6 +39,14 @@ export function useItemStore() {
   const fetching = useState('offline:fetching', () => false)
   const fetchError = useState<string | null>('offline:fetch-error', () => null)
   const fetchedAt = useState<string | null>('offline:fetched-at', () => null)
+  /**
+   * サーバーが最後の応答を作った時刻。
+   *
+   * サーバー描画で受け取った一覧を、ブラウザ側で控えへ重ねるときに要る
+   * （`hydrateFromLocal`）。手元のほうが新しい分を残す判断に使うので、
+   * 取得した内容と一緒に持ち越す（useState は payload でブラウザへ渡る）。
+   */
+  const serverFetchedAt = useState<string | null>('offline:server-fetched-at', () => null)
 
   // サーバー描画中は Cookie を引き継ぐ必要がある（Vercel の保護を通すため）
   const request = useRequestFetch()
@@ -75,19 +84,20 @@ export function useItemStore() {
     if (fetching.value) return false
     fetching.value = true
     try {
-      const list = await request<ItemListDto>('/api/items', {
+      const list = await request<Fetched<ItemDto[]>>('/api/items', {
         query: { status: 'all', sort: 'created' },
       })
       const now = new Date()
 
       if (import.meta.client) {
-        // 応答を作った時刻（list.fetchedAt）より後に送り終えた分は、この応答が
-        // まだ知らない。重ねる側で残す（docs/15-client-state.md 14.2 の 4）
-        await mergeServerItems(list.items, now, list.fetchedAt)
+        // 応答を作った時刻より後に送り終えた分は、この応答がまだ知らない。
+        // 重ねる側で残す（docs/15-client-state.md 14.2 の 4）
+        await mergeServerItems(list.data, list.fetchedAt, now)
         await reload()
       } else {
         // サーバー描画。ここには IndexedDB が無いので、そのまま見せる
-        items.value = list.items.map((item) => toLocalItem(item))
+        items.value = list.data.map((item) => toLocalItem(item))
+        serverFetchedAt.value = list.fetchedAt
       }
 
       fetchedAt.value = now.toISOString()
@@ -111,7 +121,9 @@ export function useItemStore() {
    * （初回アクセスでローカルが空のとき、これが最初のキャッシュになる）。
    */
   async function hydrateFromLocal(): Promise<void> {
-    if (items.value.length > 0) await mergeServerItems(items.value)
+    if (items.value.length > 0 && serverFetchedAt.value) {
+      await mergeServerItems(items.value, serverFetchedAt.value)
+    }
     await reload()
     const stored = await lastFetchedAt()
     if (stored) fetchedAt.value = stored.toISOString()

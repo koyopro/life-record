@@ -88,6 +88,7 @@ Item の同期状態（`syncState`）は `synced` / `pending_create` / `pending_
 | 層 | 役割 |
 |---|---|
 | `local-database.ts` | 接続とスキーマ（LocalDatabase） |
+| `freshness.ts` | 重ねるときの決まり（手元とサーバーのどちらが新しいか）。種類をまたいでここだけ |
 | `todo-repository.ts` | TODO の読み書き・サーバーの内容の重ね方（TodoRepository） |
 | `todo-actions.ts` | 「ローカルへ書く」と「操作を積む」を1組にしたもの |
 | `body-repository.ts` | 本文（作業記録・日記）の読み書きと、サーバーの内容の重ね方 |
@@ -287,6 +288,8 @@ Cookie が切れた状態で送ると `401` / `403` が返る。この場合は�
 
 `npm test`（vitest + fake-indexeddb）。`tests/offline/`。
 
+- `freshness.spec.ts`: 重ね方の決まり（未送信は残す・応答より後に送り終えた分は
+  残す・それ以外はサーバーを採る）。TODO も本文もこの1つを使う
 - `todo-repository.spec.ts`: サーバーの内容の重ね方（未送信を上書きしない・
   古い応答で戻さない・消えたものを消す）、競合の記録の掃除
 - `sync-queue.spec.ts`: 積んだ順、待機中の追い越し防止、失敗しても消さない、

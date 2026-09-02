@@ -10,7 +10,14 @@ import {
 } from '~/utils/offline/todo-actions'
 import { listOperations } from '~/utils/offline/sync-queue'
 import { drainQueue } from '~/utils/offline/sync-engine'
-import { fakeServer, httpError, itemDto, networkError, type RecordedRequest } from '../helpers'
+import {
+  FRESH_FETCH,
+  fakeServer,
+  httpError,
+  itemDto,
+  networkError,
+  type RecordedRequest,
+} from '../helpers'
 
 /**
  * オフラインでの操作と、オンラインに戻ってからの同期の筋道
@@ -154,7 +161,7 @@ describe('オンラインでの操作', () => {
   it('ステータスの変更が送られる', async () => {
     const item = itemDto({ status: 'backlog' })
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     await patchTodos([item.id], { status: 'closed' })
     await sync(remote)
@@ -177,7 +184,7 @@ describe('オフラインでの操作', () => {
   it('オフラインでも追加・編集・ステータス変更ができ、未同期として残る', async () => {
     const existing = itemDto({ title: '既にあるタスク' })
     const remote = server([existing])
-    await mergeServerItems([existing])
+    await mergeServerItems([existing], FRESH_FETCH)
 
     remote.down = true
 
@@ -202,7 +209,7 @@ describe('オフラインでの操作', () => {
   it('オフラインで消したものを、送る前なら取り消せる', async () => {
     const item = itemDto()
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
     remote.down = true
 
     await removeTodos([item.id])
@@ -225,7 +232,7 @@ describe('オンライン復帰', () => {
   it('溜まっていた操作が積んだ順に送られ、未同期が解ける', async () => {
     const item = itemDto({ title: 'もとの題' })
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     remote.down = true
     const draft = itemDto({ title: '新しいタスク' })
@@ -255,7 +262,7 @@ describe('オンライン復帰', () => {
     const first = itemDto()
     const second = itemDto()
     const remote = server([first, second])
-    await mergeServerItems([first, second])
+    await mergeServerItems([first, second], FRESH_FETCH)
 
     await patchTodos([first.id], { status: 'closed' })
     await patchTodos([second.id], { status: 'closed' })
@@ -311,7 +318,7 @@ describe('オンライン復帰', () => {
   it('送ってしまった削除も、応答の控えから戻せる', async () => {
     const item = itemDto()
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     await removeTodos([item.id])
     await sync(remote)
@@ -333,7 +340,7 @@ describe('オンライン復帰', () => {
   it('続けて行った操作の基準は、前の送信の結果に合わせて進む', async () => {
     const item = itemDto()
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     await patchTodos([item.id], { status: 'in_progress' })
     await patchTodos([item.id], { priority: 2 })
@@ -368,7 +375,7 @@ describe('取り直しと保存が前後したとき', () => {
     // 取りに行った時点の写しと、その応答を作った時刻
     const snapshot = [{ ...item }]
     const fetchedAt = stamp()
-    await mergeServerItems(snapshot, new Date(), fetchedAt)
+    await mergeServerItems(snapshot, fetchedAt)
 
     // メモを直して送る。サーバーはここで新しい updatedAt を打つ
     await patchTodos([item.id], { note: '直したメモ' })
@@ -376,7 +383,7 @@ describe('取り直しと保存が前後したとき', () => {
     expect((await getItem(item.id))?.syncState).toBe('synced')
 
     // 取りに行った応答が、送り終えた後になって届く
-    await mergeServerItems(snapshot, new Date(), fetchedAt)
+    await mergeServerItems(snapshot, fetchedAt)
 
     const stored = await getItem(item.id)
     expect(stored?.note).toBe('直したメモ')
@@ -393,7 +400,7 @@ describe('競合', () => {
   it('他の端末の変更が先にあると、サーバー側を採り、捨てた内容を記録する', async () => {
     const item = itemDto({ title: 'もとの題' })
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     remote.down = true
     await patchTodos([item.id], { title: 'この端末で直した題' })
@@ -427,7 +434,7 @@ describe('競合', () => {
   it('他の端末で削除されていたら、こちらでも消して知らせる', async () => {
     const item = itemDto()
     const remote = server([item])
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     remote.items.delete(item.id)
 

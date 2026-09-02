@@ -1,4 +1,5 @@
-import type { SectionDto } from '~~/shared/types/item'
+import type { ItemDetailDto, SectionDto } from '~~/shared/types/item'
+import type { Fetched } from '~~/shared/types/fetched'
 import {
   nextPositionIn,
   pickPrimarySection,
@@ -178,14 +179,16 @@ export function useItemDetailStore() {
      * 本文が載る）。ブラウザ側では、すぐ IndexedDB の内容で置き換わる。
      */
     if (import.meta.server) {
-      const { data } = useFetch<ItemDetailDto>(() => `/api/items/${id.value}`)
+      const { data } = useFetch<Fetched<ItemDetailDto>>(
+        () => `/api/items/${id.value}`,
+      )
       watch(
         data,
         (value) => {
           if (!value) return
           sections.value = {
             ...sections.value,
-            [id.value]: value.sections.map((section) =>
+            [id.value]: value.data.sections.map((section) =>
               toLocalSection(id.value, section),
             ),
           }
@@ -200,8 +203,8 @@ export function useItemDetailStore() {
       await reload(target)
 
       try {
-        const detail = await $fetch<ItemDetailDto>(`/api/items/${target}`)
-        await mergeServerSections(target, detail.sections, detail.fetchedAt ?? null)
+        const detail = await $fetch<Fetched<ItemDetailDto>>(`/api/items/${target}`)
+        await mergeServerSections(target, detail.data.sections, detail.fetchedAt)
         await reload(target)
         error.value = null
         reachable.value = true

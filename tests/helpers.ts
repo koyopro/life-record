@@ -10,6 +10,14 @@ export async function resetLocalDatabase(): Promise<void> {
 let counter = 0
 
 /** 素の Item。必要なところだけ上書きして使う。 */
+/**
+ * 取りたての応答が持つ時刻（`Fetched.fetchedAt`）。
+ *
+ * 重ね方の新旧を試すのが目的でないテストで使う。手元のどれよりも新しいので、
+ * 応答の内容がそのまま当たる。
+ */
+export const FRESH_FETCH = '2099-12-31T23:59:59.000Z'
+
 export function itemDto(overrides: Partial<ItemDto> = {}): ItemDto {
   counter += 1
   const now = '2026-08-18T00:00:00.000Z'

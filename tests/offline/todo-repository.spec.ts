@@ -12,14 +12,14 @@ import {
   setItemBody,
   toLocalItem,
 } from '~/utils/offline/todo-repository'
-import { itemDto, resetLocalDatabase } from '../helpers'
+import { FRESH_FETCH, itemDto, resetLocalDatabase } from '../helpers'
 
 describe('TodoRepository', () => {
   beforeEach(resetLocalDatabase)
 
   it('サーバーの一覧をローカルへ写す', async () => {
     const item = itemDto({ title: '買い物' })
-    await mergeServerItems([item], new Date('2026-08-18T10:00:00.000Z'))
+    await mergeServerItems([item], FRESH_FETCH, new Date('2026-08-18T10:00:00.000Z'))
 
     const stored = await getItem(item.id)
     expect(stored?.title).toBe('買い物')
@@ -32,12 +32,12 @@ describe('TodoRepository', () => {
 
   it('まだ送れていない変更はサーバーの内容で上書きしない', async () => {
     const item = itemDto({ title: 'もとの題' })
-    await mergeServerItems([item])
+    await mergeServerItems([item], FRESH_FETCH)
 
     const local = await getItem(item.id)
     await putItem({ ...local!, title: 'オフラインで直した題', syncState: 'pending_update' })
 
-    await mergeServerItems([{ ...item, title: 'もとの題' }])
+    await mergeServerItems([{ ...item, title: 'もとの題' }], FRESH_FETCH)
 
     const after = await getItem(item.id)
     expect(after?.title).toBe('オフラインで直した題')
@@ -47,9 +47,9 @@ describe('TodoRepository', () => {
   it('サーバーに無くなった同期済みの Item は消す', async () => {
     const kept = itemDto()
     const removed = itemDto()
-    await mergeServerItems([kept, removed])
+    await mergeServerItems([kept, removed], FRESH_FETCH)
 
-    await mergeServerItems([kept])
+    await mergeServerItems([kept], FRESH_FETCH)
 
     const ids = (await allItems()).map((item) => item.id)
     expect(ids).toEqual([kept.id])
@@ -62,7 +62,7 @@ describe('TodoRepository', () => {
    */
   it('応答を作った時刻より後に送り終えた分は、その応答で戻さない', async () => {
     const item = itemDto({ title: 'もとの題' })
-    await mergeServerItems([item], new Date(), '2026-09-01T10:00:00.000Z')
+    await mergeServerItems([item], '2026-09-01T10:00:00.000Z')
 
     // 送信が通って、サーバーがこの時刻を打った（取得の応答より後）
     await markSynced({
@@ -72,7 +72,7 @@ describe('TodoRepository', () => {
     })
 
     // 取りに行ったのは直す前。応答が後から届く
-    await mergeServerItems([item], new Date(), '2026-09-01T10:00:00.000Z')
+    await mergeServerItems([item], '2026-09-01T10:00:00.000Z')
 
     const after = await getItem(item.id)
     expect(after?.title).toBe('直した題')
@@ -81,12 +81,11 @@ describe('TodoRepository', () => {
 
   it('応答を作った時刻より前に送り終えた分は、応答の内容で更新する', async () => {
     const item = itemDto({ title: 'もとの題' })
-    await mergeServerItems([item], new Date(), '2026-09-01T10:00:00.000Z')
+    await mergeServerItems([item], '2026-09-01T10:00:00.000Z')
 
     // 別の端末が直した分が、後から出した応答に入っている
     await mergeServerItems(
       [{ ...item, title: '別の端末の題', updatedAt: '2026-09-01T10:00:05.000Z' }],
-      new Date(),
       '2026-09-01T10:00:10.000Z',
     )
 
@@ -97,7 +96,7 @@ describe('TodoRepository', () => {
     const added = itemDto({ updatedAt: '2026-09-01T10:00:05.000Z' })
     await markSynced(added)
 
-    await mergeServerItems([], new Date(), '2026-09-01T10:00:00.000Z')
+    await mergeServerItems([], '2026-09-01T10:00:00.000Z')
 
     expect(await getItem(added.id)).toBeDefined()
   })
@@ -106,7 +105,7 @@ describe('TodoRepository', () => {
     const draft = itemDto()
     await putItem(toLocalItem(draft, 'pending_create'))
 
-    await mergeServerItems([])
+    await mergeServerItems([], FRESH_FETCH)
 
     expect(await getItem(draft.id)).toBeDefined()
   })
@@ -162,7 +161,7 @@ describe('TodoRepository', () => {
   describe('setItemBody', () => {
     it('一覧カードに出す本文の写しだけを差し替える', async () => {
       const item = itemDto({ title: '買い物', body: '書く前' })
-      await mergeServerItems([item])
+      await mergeServerItems([item], FRESH_FETCH)
 
       await setItemBody(item.id, '書いたあと')
 
