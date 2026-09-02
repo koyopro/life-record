@@ -1,5 +1,5 @@
 import type { ItemDto } from '~~/shared/types/item'
-import type { LocalItem, PendingOperation } from './local-database'
+import type { LocalItem, LocalSection, PendingOperation } from './local-database'
 import {
   deleteItem,
   getItem,
@@ -314,6 +314,30 @@ function isNewerThanServer(local: LocalItem, server: ItemDto): boolean {
 }
 
 /**
+ * その作業記録を**いま送るならどうなるか**。
+ *
+ * 送る直前に手元から取り直す値（docs/12-offline.md 12.7）を、ここだけで作る。
+ * 送信の前（`withCurrentValues`）と後（`applyBodyOutcome` の食い違いの判定）で
+ * 別々に組み立てると、**手元の写しと送る値の食い違いが直らない**組み合わせが
+ * できてしまう。実際、ピン留めより前に書いた写し（`pinned` を持たない）は
+ * 送るときだけ false に直していたため、送り終えた内容と素のまま比べると
+ * 永久に食い違い、「往復中に書き足された」と見なして送り直し続けていた
+ * （列が空にならず、画面は「未同期」と「同期中」のまま動かない）。
+ */
+function sendValuesOf(
+  payload: SectionSavePayload,
+  local: LocalSection,
+): SectionSavePayload {
+  return {
+    ...payload,
+    date: local.date,
+    body: local.body,
+    // 古い写しには無い（この機能より前に入れた分）。無ければ立っていない扱い
+    pinned: local.pinned === true,
+  }
+}
+
+/**
  * 送る直前に、手元の最新の値を payload へ入れ直す。
  *
  * - 競合の基準（サーバーで最後に見た updatedAt）。積んだ時点の値をそのまま
@@ -338,15 +362,7 @@ export async function withCurrentValues(
     const payload = operation.payload as SectionSavePayload
     const local = await getSection(payload.id)
     if (!local) return operation
-    return {
-      ...operation,
-      payload: {
-        ...payload,
-        date: local.date,
-        body: local.body,
-        pinned: local.pinned === true,
-      },
-    }
+    return { ...operation, payload: sendValuesOf(payload, local) }
   }
 
   if (operation.kind === 'diary_save') {
@@ -394,12 +410,18 @@ async function applyBodyOutcome(
         return
       }
 
+      /*
+       * 送っている間に書き足されたか。**もう一度送るなら何を送るか**で見る。
+       * 送った内容と同じものを送ることになるなら、積み直しても同じ結果に
+       * なるだけなので（回り続ける）、送り終えたものとして扱う。
+       */
+      const next = sendValuesOf(payload, local)
       if (
-        local.body !== payload.body ||
-        local.date !== payload.date ||
-        local.pinned !== payload.pinned
+        next.body !== payload.body ||
+        next.date !== payload.date ||
+        next.pinned !== payload.pinned
       ) {
-        // 送っている間に書き足された。位置や作成日時だけ確定させ、印は残す
+        // 位置や作成日時だけ確定させ、未送信の印は残す
         await putSection({
           ...local,
           position: sent.position,

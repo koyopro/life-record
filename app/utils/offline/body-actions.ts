@@ -64,7 +64,15 @@ export async function saveSectionBody(
   const stamp = now.toISOString()
 
   const next: LocalSection = local
-    ? { ...local, date: params.date, body: params.body, updatedAt: stamp, syncState: 'pending_save' }
+    ? {
+        ...local,
+        date: params.date,
+        body: params.body,
+        // 古い写しは `pinned` を持たない。書くついでに素の値へ直しておく
+        pinned: local.pinned === true,
+        updatedAt: stamp,
+        syncState: 'pending_save',
+      }
     : {
         id: params.id,
         itemId: params.itemId,

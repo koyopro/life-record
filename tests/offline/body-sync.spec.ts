@@ -205,6 +205,50 @@ describe('本文の同期', () => {
     expect((await getDiary(DATE))?.updatedAt).not.toBeNull()
   })
 
+  /**
+   * ピン留め（3.3）より前に書いた写しは、`pinned` を持っていない。送るときは
+   * 「立っていない」として false を添えるので、**送り終えた内容と手元の内容を
+   * 素のまま比べると永久に食い違う**。食い違いは「往復中に書き足された」印
+   * なので、そのまま積み直され、列が空にならないまま送り続けてしまう
+   * （画面は「未同期」と「同期中」のまま動かない）。
+   */
+  it('ピンの印を持たない古い写しでも、送り終えたら同期済みになる', async () => {
+    const remote = server()
+
+    // この機能より前に書いた写し（pinned が無い）
+    await putSection({
+      id: SECTION_ID,
+      itemId: ITEM_ID,
+      date: DATE,
+      body: '前に書いた分',
+      position: 0,
+      createdAt: '2026-08-22T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      syncState: 'pending_save',
+    } as unknown as Parameters<typeof putSection>[0])
+    await saveSectionBody({
+      id: SECTION_ID,
+      itemId: ITEM_ID,
+      date: DATE,
+      body: '前に書いた分と続き',
+    })
+
+    // 回り続けても終わらないので、送信そのものに上限を置いて確かめる
+    const capped = (async (path: string, options?: unknown) => {
+      if (remote.calls.length >= 5) throw new Error('送り続けている（回り続けている）')
+      return await remote.request(path, options as never)
+    }) as typeof remote.request
+
+    await drainQueue({ request: capped })
+
+    expect(remote.calls).toHaveLength(1)
+    expect(await listOperations()).toEqual([])
+    const stored = await getSection(SECTION_ID)
+    expect(stored?.syncState).toBe('synced')
+    expect(stored?.body).toBe('前に書いた分と続き')
+    expect(stored?.pinned).toBe(false)
+  })
+
   it('列から操作が失われても、手元に残った本文は積み直される', async () => {
     await putSection(
       toLocalSection(
