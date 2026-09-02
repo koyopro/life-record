@@ -9,6 +9,7 @@ import {
   codeBodyOf,
   continuationPrefix,
   dropPrefixUnit,
+  dropsIndentOnEnter,
   imagesIn,
   indentOf,
   linesFromInput,
@@ -888,6 +889,21 @@ function onEnter(event: KeyboardEvent) {
 
   const prefix = activePrefix.value
   const lines = [...rawLines.value]
+
+  /*
+   * 字下げの空白しか無い行では、その字下げを外してから改行する。
+   *
+   * 箇条書きの深いところまで書いて、次の話に移るところ。引き継ぐと空の項目が
+   * そのまま残り、`Backspace` で1段ずつ戻すことになる（parse.ts の
+   * dropsIndentOnEnter）。
+   */
+  if (dropsIndentOnEnter(activeLine.value, activeText.value)) {
+    lines.splice(index, 1, '', '')
+    commit(lines)
+    void activate(index + 1, 'start', lines)
+    return
+  }
+
   // 改行したら前の行の行頭を引き継ぐ（貼り付けと同じ規則）
   lines.splice(index, 1, prefix + before, continuationPrefix(activeLine.value) + after)
   commit(lines)

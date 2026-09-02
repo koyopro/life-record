@@ -312,6 +312,23 @@ export function continuationPrefix(line: Line | null): string {
 }
 
 /**
+ * 改行したときに、行頭の字下げを外す行か。
+ *
+ * **字下げの空白しか無い行**（箇条書きの空の項目）で `Enter` を押したら、
+ * その行の字下げをすべて外してから改行する。抜けた先の行にも引き継がない。
+ * 深いところまで書いて次の話に移るとき、`Backspace` で1段ずつ戻さずに済む
+ * （docs/11-scrapbox-notation.md 11.6）。
+ *
+ * 引用（`>`）・コードブロック・表の中は対象にしない。それらの空行はブロックの
+ * 中身としてそのまま意味があり、抜けるための操作は別にある。
+ *
+ * @param content 入力欄のいまの中身（行頭は含まない）。
+ */
+export function dropsIndentOnEnter(line: Line | null, content: string): boolean {
+  return line?.type === 'text' && line.indent > 0 && content === ''
+}
+
+/**
  * 入力欄の値を行へ分ける。複数行を貼り付けたときに使う。
  *
  * 1行目は編集していた行頭のまま、**2行目以降には続きの行頭を付ける**。
