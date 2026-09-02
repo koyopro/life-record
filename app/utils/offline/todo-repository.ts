@@ -20,9 +20,46 @@ const LAST_FETCHED_AT = 'items.lastFetchedAt'
 /** 競合の記録を残しておく日数。読まれないまま溜め続けない。 */
 const CONFLICT_RETENTION_DAYS = 7
 
+/**
+ * ローカルへ書き込んだ回数。
+ *
+ * 画面が見ている配列は、**書き込みと前後して読み直される**ことがある
+ * （送信の合間にも読み直すため。useSync の `onLocalChange`）。書き込みより
+ * 前に始めた読み取りは、書く前の写しを返す。そのまま当てると入力した
+ * そばから巻き戻るので、追い越されたかどうかが分かるように数えておく
+ * （`readItems`。docs/15-client-state.md 14.2 の 7）。
+ */
+let writes = 0
+
+/**
+ * ローカルへ書き込む。**印を先に進めてから**行う。
+ *
+ * 先に進めるので、読み取りは「自分より後に始まった書き込み」も
+ * 追い越しとして扱う（取引の順は IndexedDB が守るため、読み取りより先に
+ * 始まった書き込みはその読み取りに入っている）。
+ */
+async function write<T>(action: () => Promise<T>): Promise<T> {
+  writes += 1
+  return await action()
+}
+
 export async function allItems(): Promise<LocalItem[]> {
   const db = await openLocalDatabase()
   return await db.getAll('items')
+}
+
+/**
+ * 画面へ当てるために全件読む。
+ *
+ * 読んでいる間にローカルへ書き込みがあったら **null を返す**。その写しは
+ * 書く前のものかもしれず、当てると書いたそばから巻き戻る（送信中は操作
+ * 1つごとに読み直すので、打鍵と重なりやすい）。書いた側が必ず読み直すので、
+ * ここでは捨ててよい。
+ */
+export async function readItems(): Promise<LocalItem[] | null> {
+  const stamp = writes
+  const list = await allItems()
+  return writes === stamp ? list : null
 }
 
 export async function getItem(id: string): Promise<LocalItem | undefined> {
@@ -31,13 +68,17 @@ export async function getItem(id: string): Promise<LocalItem | undefined> {
 }
 
 export async function putItem(item: LocalItem): Promise<void> {
-  const db = await openLocalDatabase()
-  await db.put('items', item)
+  await write(async () => {
+    const db = await openLocalDatabase()
+    await db.put('items', item)
+  })
 }
 
 export async function deleteItem(id: string): Promise<void> {
-  const db = await openLocalDatabase()
-  await db.delete('items', id)
+  await write(async () => {
+    const db = await openLocalDatabase()
+    await db.delete('items', id)
+  })
 }
 
 /**
@@ -87,33 +128,35 @@ export async function mergeServerItems(
   /** 取り直した時刻（手元の時計）。次に取り直すまでの判断に使う。 */
   fetchedAt: Date = new Date(),
 ): Promise<void> {
-  const db = await openLocalDatabase()
-  const tx = db.transaction(['items', 'meta'], 'readwrite')
-  const items = tx.objectStore('items')
+  await write(async () => {
+    const db = await openLocalDatabase()
+    const tx = db.transaction(['items', 'meta'], 'readwrite')
+    const items = tx.objectStore('items')
 
-  const locals = new Map<string, LocalItem>()
-  for (const local of await items.getAll()) locals.set(local.id, local)
+    const locals = new Map<string, LocalItem>()
+    for (const local of await items.getAll()) locals.set(local.id, local)
 
-  const seen = new Set<string>()
-  for (const server of serverItems) {
-    seen.add(server.id)
-    const local = locals.get(server.id)
-    if (local && keepsLocal(local, serverFetchedAt)) continue
-    await items.put(toLocalItem(server))
-  }
+    const seen = new Set<string>()
+    for (const server of serverItems) {
+      seen.add(server.id)
+      const local = locals.get(server.id)
+      if (local && keepsLocal(local, serverFetchedAt)) continue
+      await items.put(toLocalItem(server))
+    }
 
-  for (const [id, local] of locals) {
-    if (seen.has(id)) continue
-    if (keepsLocal(local, serverFetchedAt)) continue
-    await items.delete(id)
-  }
+    for (const [id, local] of locals) {
+      if (seen.has(id)) continue
+      if (keepsLocal(local, serverFetchedAt)) continue
+      await items.delete(id)
+    }
 
-  await tx.objectStore('meta').put({
-    key: LAST_FETCHED_AT,
-    value: fetchedAt.toISOString(),
+    await tx.objectStore('meta').put({
+      key: LAST_FETCHED_AT,
+      value: fetchedAt.toISOString(),
+    })
+
+    await tx.done
   })
-
-  await tx.done
 }
 
 /** 最後にサーバーから取れた時刻。無ければ null。 */
@@ -136,18 +179,20 @@ export async function markSynced(
   server: ItemDto,
   options: { keepPending?: boolean } = {},
 ): Promise<void> {
-  const db = await openLocalDatabase()
-  const tx = db.transaction('items', 'readwrite')
-  const local = await tx.store.get(server.id)
+  await write(async () => {
+    const db = await openLocalDatabase()
+    const tx = db.transaction('items', 'readwrite')
+    const local = await tx.store.get(server.id)
 
-  if (options.keepPending && local) {
-    // ローカルの内容は保ったまま、競合の基準だけ進める
-    await tx.store.put({ ...local, baseUpdatedAt: server.updatedAt })
-  } else {
-    await tx.store.put(toLocalItem(server))
-  }
+    if (options.keepPending && local) {
+      // ローカルの内容は保ったまま、競合の基準だけ進める
+      await tx.store.put({ ...local, baseUpdatedAt: server.updatedAt })
+    } else {
+      await tx.store.put(toLocalItem(server))
+    }
 
-  await tx.done
+    await tx.done
+  })
 }
 
 /**
@@ -159,11 +204,13 @@ export async function markSynced(
  * メタデータまで未送信の扱いになる）。
  */
 export async function setItemBody(id: string, body: string | null): Promise<void> {
-  const db = await openLocalDatabase()
-  const tx = db.transaction('items', 'readwrite')
-  const local = await tx.store.get(id)
-  if (local && local.body !== body) await tx.store.put({ ...local, body })
-  await tx.done
+  await write(async () => {
+    const db = await openLocalDatabase()
+    const tx = db.transaction('items', 'readwrite')
+    const local = await tx.store.get(id)
+    if (local && local.body !== body) await tx.store.put({ ...local, body })
+    await tx.done
+  })
 }
 
 /** 同期状態を書き換える。送信の成否に応じて印を付け替えるために使う。 */
@@ -171,11 +218,13 @@ export async function setSyncState(
   id: string,
   syncState: SyncState,
 ): Promise<void> {
-  const db = await openLocalDatabase()
-  const tx = db.transaction('items', 'readwrite')
-  const local = await tx.store.get(id)
-  if (local) await tx.store.put({ ...local, syncState })
-  await tx.done
+  await write(async () => {
+    const db = await openLocalDatabase()
+    const tx = db.transaction('items', 'readwrite')
+    const local = await tx.store.get(id)
+    if (local) await tx.store.put({ ...local, syncState })
+    await tx.done
+  })
 }
 
 // --- 競合の記録 ---------------------------------------------------------

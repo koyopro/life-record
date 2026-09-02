@@ -9,6 +9,7 @@ import {
   pruneConflicts,
   putConflict,
   putItem,
+  readItems,
   setItemBody,
   toLocalItem,
 } from '~/utils/offline/todo-repository'
@@ -135,6 +136,34 @@ describe('TodoRepository', () => {
     expect(stored?.title).toBe('ローカルの題')
     expect(stored?.syncState).toBe('pending_update')
     expect(stored?.baseUpdatedAt).toBe('2026-08-18T12:00:00.000Z')
+  })
+
+  /**
+   * 画面が見ている配列は、ローカルへの書き込みと**前後して**読み直される
+   * （送信中は操作1つごとに読み直す）。書く前の写しを当てると、メモや題が
+   * 入力したそばから巻き戻る（docs/15-client-state.md 14.2 の 7）。
+   */
+  describe('画面へ当てる読み取り', () => {
+    it('書き込みと重なっていなければ、そのまま読める', async () => {
+      const item = itemDto({ note: 'メモ' })
+      await putItem(toLocalItem(item))
+
+      const list = await readItems()
+      expect(list?.map((stored) => stored.note)).toEqual(['メモ'])
+    })
+
+    it('読んでいる間に書き込みがあれば、当てずに捨てる（null）', async () => {
+      const item = itemDto({ note: 'もとのメモ' })
+      await putItem(toLocalItem(item))
+
+      // 読み取りを始めてから、書き終わるのを待たずに書き込む
+      const reading = readItems()
+      await putItem({ ...toLocalItem(item), note: '直したメモ', syncState: 'pending_update' })
+
+      expect(await reading).toBeNull()
+      // 書いた側が読み直せば、直した内容が読める
+      expect((await readItems())?.[0]?.note).toBe('直したメモ')
+    })
   })
 
   it('古い競合の記録は捨てる', async () => {

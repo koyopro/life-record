@@ -4,10 +4,10 @@ import type { LocalItem } from '~/utils/offline/local-database'
 import { requestFlush } from '~/utils/offline/flush-signal'
 import { isNetworkError } from '~/utils/offline/sync-runner'
 import {
-  allItems,
   lastFetchedAt,
   mergeServerItems,
   pruneConflicts,
+  readItems,
   setItemBody,
   toLocalItem,
 } from '~/utils/offline/todo-repository'
@@ -68,9 +68,20 @@ export function useItemStore() {
     return items.value.find((item) => item.id === id)
   }
 
-  /** IndexedDB から読み直す。ローカルへ書いたあとは必ずこれを呼ぶ。 */
+  /**
+   * IndexedDB から読み直す。ローカルへ書いたあとは必ずこれを呼ぶ。
+   *
+   * ただし**読み直しは手元の状態を巻き戻さない**（docs/15-client-state.md
+   * 14.2 の 7）。送信中は操作1つごとに読み直すので（useSync の
+   * `onLocalChange`）、打鍵と重なると「書く前の写し」を読むことがある。
+   * それを当てると、メモや題が入力したそばから巻き戻る。書き込みと前後した
+   * 写しは `readItems` が null で返すので、当てずに捨てる（書いた側が
+   * 続けて読み直す）。
+   */
   async function reload(): Promise<void> {
-    items.value = await allItems()
+    const list = await readItems()
+    if (!list) return
+    items.value = list
     hydrated.value = true
   }
 

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ItemDto } from '~~/shared/types/item'
-import { allItems, getItem, listConflicts, mergeServerItems } from '~/utils/offline/todo-repository'
+import {
+  allItems,
+  getItem,
+  listConflicts,
+  mergeServerItems,
+  putItem,
+} from '~/utils/offline/todo-repository'
 import {
   applyTodoTags,
   createTodo,
@@ -221,6 +227,28 @@ describe('オフラインでの操作', () => {
     expect((await listOperations()).length).toBe(3)
   })
 
+  it('メモを直してから消し、取り消しても、その変更は未同期のまま残る', async () => {
+    const item = itemDto({ note: 'もとのメモ' })
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+    remote.down = true
+
+    await patchTodos([item.id], { note: '直したメモ' })
+    await removeTodos([item.id])
+    await restoreTodos([item.id])
+
+    /*
+     * 削除は送らずに取り消せたが、メモの変更はまだ列に残っている。
+     * ここで同期済みに戻すと、次の取り直しでサーバーの内容に上書きされる
+     */
+    const stored = await getItem(item.id)
+    expect(stored?.note).toBe('直したメモ')
+    expect(stored?.syncState).toBe('pending_update')
+
+    await mergeServerItems([item], FRESH_FETCH)
+    expect((await getItem(item.id))?.note).toBe('直したメモ')
+  })
+
   it('オフラインで消したものを、送る前なら取り消せる', async () => {
     const item = itemDto()
     const remote = server([item])
@@ -434,6 +462,64 @@ describe('届いていた送信の送り直し', () => {
 
     expect((await listConflicts()).length).toBe(1)
     expect((await getItem(item.id))?.note).toBe('別の端末のメモ')
+  })
+})
+
+/**
+ * 応答は**送った時点の姿**なので、そのまま当てると、送っている間に書いた分が
+ * 消える。ローカルへ書くことと列へ積むことは別々の取引で、書き終わっていても
+ * 列にはまだ入っていない瞬間があるため、列だけを見ていては気づけない。
+ */
+describe('送信の往復中に書き足したとき', () => {
+  beforeEach(async () => {
+    const { resetLocalDatabase } = await import('../helpers')
+    await resetLocalDatabase()
+  })
+
+  it('手元が先へ進んでいたら、応答で塗り潰さない', async () => {
+    const item = itemDto({ note: 'もとのメモ', updatedAt: stamp() })
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+
+    await patchTodos([item.id], { note: '直したメモ' })
+
+    // 応答が返る直前に書き足す。ローカルへは書けたが、列へはまだ積まれていない
+    const typing = (async (path: string, options?: unknown) => {
+      const response = await remote.request(path, options as never)
+      const local = await getItem(item.id)
+      if (local) {
+        await putItem({
+          ...local,
+          note: '書き足したメモ',
+          updatedAt: new Date().toISOString(),
+          syncState: 'pending_update',
+        })
+      }
+      return response
+    }) as typeof remote.request
+
+    await drainQueue({ request: typing })
+
+    // 書き足した分は残り、未同期のまま（続けて送られる）
+    const stored = await getItem(item.id)
+    expect(stored?.note).toBe('書き足したメモ')
+    expect(stored?.syncState).toBe('pending_update')
+    // 競合の基準は、送り終えた時点のサーバーに合わせて進む
+    expect(stored?.baseUpdatedAt).toBe(remote.items.get(item.id)?.updatedAt)
+    expect(await listConflicts()).toEqual([])
+  })
+
+  it('手元が送った内容のままなら、送り終えた印を付ける', async () => {
+    const item = itemDto({ note: 'もとのメモ', updatedAt: stamp() })
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+
+    await patchTodos([item.id], { note: '直したメモ' })
+    await sync(remote)
+
+    const stored = await getItem(item.id)
+    expect(stored?.note).toBe('直したメモ')
+    expect(stored?.syncState).toBe('synced')
   })
 })
 

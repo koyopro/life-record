@@ -1,7 +1,7 @@
 import type { ItemDetailDto, ItemDto, ItemPatch } from '~~/shared/types/item'
-import type { LocalItem } from './local-database'
+import type { LocalItem, SyncState } from './local-database'
 import { getItem, putItem, toLocalItem } from './todo-repository'
-import { cancelOperations, enqueueOperation } from './sync-queue'
+import { cancelOperations, enqueueOperation, listOperations } from './sync-queue'
 import { takeDeletedSnapshot } from './deleted-snapshots'
 
 /**
@@ -111,10 +111,21 @@ export async function restoreTodos(
     const local = await getItem(id)
 
     if (local && cancelled > 0) {
-      await putItem({
-        ...local,
-        syncState: local.baseUpdatedAt ? 'synced' : 'pending_create',
-      })
+      /*
+       * 削除を送る前に取り消せた。ただし**他の未送信の変更が残っていれば、
+       * 同期済みには戻さない**。戻すと、その Item は「サーバーと同じ」扱いに
+       * なり、次の取り直しで手元の変更（メモなど）が上書きされる
+       * （`freshness.ts` の `keepsLocal` が守るのは未送信の印が付いた分だけ）。
+       */
+      const pending = (await listOperations()).some((operation) =>
+        operation.itemIds.includes(id),
+      )
+      const restored: SyncState = !local.baseUpdatedAt
+        ? 'pending_create'
+        : pending
+          ? 'pending_update'
+          : 'synced'
+      await putItem({ ...local, syncState: restored })
       continue
     }
 

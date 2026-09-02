@@ -119,15 +119,9 @@ export async function applyOutcome(
           await dropSectionsOfItem(local.id)
         }
       } else if (outcome.item) {
-        /*
-         * まだ同じ Item への操作が残っているなら、内容は上書きしない。
-         * 上書きすると、送信中に行った変更が画面から消える。
-         * 競合の基準（baseUpdatedAt）だけは進めておく。
-         */
-        const remaining = await listOperations()
-        const keepPending = remaining.some((rest) =>
-          rest.itemIds.includes(outcome.item!.id),
-        )
+        // 手元がまだ先へ進んでいるなら、内容は上書きしない
+        // （競合の基準（baseUpdatedAt）だけ進める）
+        const keepPending = await hasMoreToSend(operation, outcome.item)
         await markSynced(outcome.item, { keepPending })
       }
 
@@ -178,10 +172,39 @@ export async function applyOutcome(
 }
 
 /**
- * 送ろうとしている内容が、サーバーにすでに入っているか。
+ * 送り終えた印を付けずに、手元の内容を保つべきか。
+ *
+ * 応答は**送った時点の姿**なので、手元がその先へ進んでいるときに当てると、
+ * 書いたものが消える（入力したそばから巻き戻る）。次のどちらかなら保つ。
+ *
+ * 1. まだ同じ Item への操作が列に残っている。上書きすると、送信の往復中に
+ *    行った変更が画面から消える
+ * 2. **送った項目が、手元ではもう違う値になっている。**ローカルへ書くことと
+ *    列へ積むことは別々の取引なので、書き終わっていても列にはまだ入って
+ *    いない瞬間がある。1 だけを見ていると、その隙に届いた応答で塗り潰す
+ *    （本文の `applyBodyOutcome` と同じ考え方）
+ */
+async function hasMoreToSend(
+  operation: PendingOperation,
+  server: ItemDto,
+): Promise<boolean> {
+  const remaining = await listOperations()
+  if (remaining.some((rest) => rest.itemIds.includes(server.id))) return true
+
+  // 突き合わせられるのは、送った項目が分かるもの（更新・タグ）だけ。
+  // 追加・復元は「入力そのまま」を送っており、比べる相手が無い
+  if (operation.kind !== 'patch' && operation.kind !== 'tags') return false
+
+  const local = await getItem(server.id)
+  return local ? !alreadyApplied(operation, local) : false
+}
+
+/**
+ * 送ろうとした内容が、その写しにすでに入っているか。
  *
  * 見るのは**送った項目だけ**。他の項目が違っていても、こちらが触っていない
- * ものなので構わない。
+ * ものなので構わない。突き合わせる相手は、サーバーが返した今の内容
+ * （届いていた送信の送り直しか）と、手元の内容（さらに書き足されたか）。
  */
 function alreadyApplied(operation: PendingOperation, server: ItemDto): boolean {
   if (operation.kind === 'patch') {
