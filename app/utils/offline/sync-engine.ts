@@ -1,3 +1,4 @@
+import type { ItemDto } from '~~/shared/types/item'
 import type { PendingOperation } from './local-database'
 import {
   deleteItem,
@@ -14,6 +15,7 @@ import {
   removeOperation,
   type DiarySavePayload,
   type PatchPayload,
+  type TagsPayload,
   type SectionDeletePayload,
   type SectionReorderPayload,
   type SectionSavePayload,
@@ -134,6 +136,23 @@ export async function applyOutcome(
     }
 
     case 'conflict': {
+      /*
+       * 送ろうとした内容が、サーバーにすでに入っている。
+       *
+       * **1回目は届いていて、応答だけが返らなかった**ということ（通信が切れた・
+       * アプリが閉じた・別のタブが同じ操作を送った）。送り直すとサーバーの
+       * updatedAt が進んでいるので競合に見えるが、中身は自分が送ったもので、
+       * 他の端末の変更ではない。ここで競合として扱うと**自分の変更を自分で
+       * 捨てる**ことになる（続けて書いた分もまとめて取り下げられる）。
+       */
+      if (outcome.server && alreadyApplied(operation, outcome.server)) {
+        return await applyOutcome(
+          operation,
+          { type: 'done', item: outcome.server },
+          hooks,
+        )
+      }
+
       await handleConflict(operation, outcome, hooks, now())
       return false
     }
@@ -157,6 +176,41 @@ export async function applyOutcome(
       return false
     }
   }
+}
+
+/**
+ * 送ろうとしている内容が、サーバーにすでに入っているか。
+ *
+ * 見るのは**送った項目だけ**。他の項目が違っていても、こちらが触っていない
+ * ものなので構わない。
+ */
+function alreadyApplied(operation: PendingOperation, server: ItemDto): boolean {
+  if (operation.kind === 'patch') {
+    const { patch } = operation.payload as PatchPayload
+    const current = server as unknown as Record<string, unknown>
+    return Object.entries(patch).every(([key, value]) => sameValue(value, current[key]))
+  }
+
+  // タグの付け外しは集合の操作。付けたものがあり、外したものが無ければ済んでいる
+  if (operation.kind === 'tags') {
+    const { add, remove } = operation.payload as TagsPayload
+    return (
+      add.every((name) => server.tags.includes(name)) &&
+      remove.every((name) => !server.tags.includes(name))
+    )
+  }
+
+  return false
+}
+
+/** 送った値とサーバーの値が同じか。タグだけ配列で来るので順番を見ない。 */
+function sameValue(sent: unknown, current: unknown): boolean {
+  if (Array.isArray(sent) && Array.isArray(current)) {
+    const a = [...sent].sort()
+    const b = [...current].sort()
+    return a.length === b.length && a.every((value, index) => value === b[index])
+  }
+  return sent === current
 }
 
 /**

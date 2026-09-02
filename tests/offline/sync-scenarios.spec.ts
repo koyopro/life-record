@@ -32,11 +32,18 @@ interface Server {
   items: Map<string, ItemDto>
   /** 落ちている状態。オフラインの再現に使う。 */
   down: boolean
+  /**
+   * 受け取って書き換えるが、応答は返さない状態。
+   *
+   * 「1回目は届いていたのに、応答だけが返らなかった」の再現に使う
+   * （送り直すと、サーバーの updatedAt が進んでいるので競合に見える）。
+   */
+  swallow: boolean
 }
 
 function server(seed: ItemDto[] = []): Server {
   const items = new Map(seed.map((item) => [item.id, item]))
-  const state = { down: false }
+  const state = { down: false, swallow: false }
 
   const fake = fakeServer((path, options) => {
     if (state.down) throw networkError()
@@ -89,6 +96,8 @@ function server(seed: ItemDto[] = []): Server {
       }
       const next = { ...current, ...patch, updatedAt: stamp() } as ItemDto
       items.set(id, next)
+      // 書き換えは済んでいるが、応答が返らない
+      if (state.swallow) throw networkError()
       return next
     }
 
@@ -111,6 +120,12 @@ function server(seed: ItemDto[] = []): Server {
     },
     set down(value: boolean) {
       state.down = value
+    },
+    get swallow() {
+      return state.swallow
+    },
+    set swallow(value: boolean) {
+      state.swallow = value
     },
   }
 }
@@ -362,6 +377,61 @@ describe('オンライン復帰', () => {
  * 保存の後で届く**ことがある（docs/15-client-state.md 14.2 の 4）。その応答を
  * そのまま当てると、直した題やメモが入力したそばから巻き戻って見える。
  */
+/**
+ * 送り直しで、自分の変更を自分で捨てないこと（docs/12-offline.md 12.5）。
+ *
+ * 応答が返らなかった送信は列に残って送り直される。1回目が実は届いていると、
+ * サーバーの updatedAt は進んでいるので**競合に見える**。そこでサーバー側を
+ * 採ると、続けて書いた分までまとめて取り下げられ、メモや題が巻き戻る。
+ */
+describe('届いていた送信の送り直し', () => {
+  beforeEach(async () => {
+    const { resetLocalDatabase } = await import('../helpers')
+    await resetLocalDatabase()
+  })
+
+  it('同じ内容がすでに入っていれば、競合として扱わない', async () => {
+    const item = itemDto({ note: 'もとのメモ', updatedAt: stamp() })
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+
+    // メモを直して送る。サーバーには届くが、応答が返らない
+    remote.swallow = true
+    await patchTodos([item.id], { note: '直したメモ' })
+    await sync(remote)
+    expect(remote.items.get(item.id)?.note).toBe('直したメモ')
+    expect((await listOperations()).length).toBe(1)
+
+    // 応答を待つ間に書き足した分
+    await patchTodos([item.id], { note: '直したメモ（続き）' })
+
+    // 通信が戻る。1件目は送り直しになり、サーバーからは 409 が返る
+    remote.swallow = false
+    await sync(remote)
+
+    expect(await listConflicts()).toEqual([])
+    expect((await getItem(item.id))?.note).toBe('直したメモ（続き）')
+    expect((await getItem(item.id))?.syncState).toBe('synced')
+    expect(remote.items.get(item.id)?.note).toBe('直したメモ（続き）')
+    expect(await listOperations()).toEqual([])
+  })
+
+  it('違う内容が入っていれば、これまでどおり競合として扱う', async () => {
+    const item = itemDto({ note: 'もとのメモ', updatedAt: stamp() })
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+
+    // 他の端末が先に直した（こちらは知らない）
+    remote.items.set(item.id, { ...item, note: '別の端末のメモ', updatedAt: stamp() })
+
+    await patchTodos([item.id], { note: '直したメモ' })
+    await sync(remote)
+
+    expect((await listConflicts()).length).toBe(1)
+    expect((await getItem(item.id))?.note).toBe('別の端末のメモ')
+  })
+})
+
 describe('取り直しと保存が前後したとき', () => {
   beforeEach(async () => {
     const { resetLocalDatabase } = await import('../helpers')
