@@ -55,29 +55,6 @@ export function useTags() {
     }
   })
 
-  // 取れたら控え直す。次のリロードで最初から色を出せるようにする
-  watch(
-    data,
-    (list) => {
-      if (!import.meta.client || !list?.length) return
-
-      const next: Record<string, TagColor | null> = {}
-      for (const tag of list) next[tag.name] = tag.color
-
-      const json = JSON.stringify(next)
-      if (json === lastRememberedColors) return
-      lastRememberedColors = json
-
-      rememberedColors.value = next
-      try {
-        localStorage.setItem(COLORS_STORAGE_KEY, json)
-      } catch {
-        // 書けなくても、その回の表示は変わらない
-      }
-    },
-    { immediate: true },
-  )
-
   /**
    * 手元の Item から数えたタグ。id はサーバーのものではないと分かる形にする。
    *
@@ -97,9 +74,10 @@ export function useTags() {
       .sort((a, b) => (a.name < b.name ? -1 : 1))
   })
 
-  const tags = computed(() => {
-    const fetched = data.value ?? []
-    if (!error.value && fetched.length > 0) return fetched
+  /** サーバーから届いた一覧（取れていなければ、手元の Item から数えたもの）。 */
+  const fetched = computed<TagDto[]>(() => {
+    const list = data.value ?? []
+    if (!error.value && list.length > 0) return list
 
     // 色だけは覚えているものを重ねる。件数は手元の Item から数えたほうが新しい
     return local.value.map((tag) => ({
@@ -107,6 +85,35 @@ export function useTags() {
       color: rememberedColors.value[tag.name] ?? null,
     }))
   })
+
+  /*
+   * この端末で直した色は、届いた内容より優先する。取りに行った後に直すと、
+   * その応答が後から届いて直す前に戻るため（docs/15-client-state.md 14.2 の 4）。
+   */
+  const { list: tags, edit, revert } = useLocalEdits<TagDto>('tags', fetched)
+
+  // 取れたら控え直す。次のリロードで最初から色を出せるようにする
+  watch(
+    tags,
+    (list) => {
+      if (!import.meta.client || !list?.length) return
+
+      const next: Record<string, TagColor | null> = {}
+      for (const tag of list) next[tag.name] = tag.color
+
+      const json = JSON.stringify(next)
+      if (json === lastRememberedColors) return
+      lastRememberedColors = json
+
+      rememberedColors.value = next
+      try {
+        localStorage.setItem(COLORS_STORAGE_KEY, json)
+      } catch {
+        // 書けなくても、その回の表示は変わらない
+      }
+    },
+    { immediate: true },
+  )
 
   /** 入力途中の文字列に対する候補。すでに付いているものは除く。 */
   function suggest(query: string, exclude: string[] = []): TagDto[] {
@@ -129,24 +136,19 @@ export function useTags() {
    * 取り直しの2往復ぶん（回線によっては数秒）押した色に変わらない。
    * 色は表示のためだけのものなので、先に出して構わない。
    *
-   * 当てる先は useFetch の `data` そのもの。キー（`tags`）を共有しているので、
-   * 一覧のカードや詳細に出ているタグの色もその場で変わる。
+   * 当てるのは「この端末で直した分」（`useLocalEdits`）。取りに行った後に
+   * 直すと、その応答が後から届いて**直す前の色に戻る**ので、届いた内容より
+   * こちらを優先する。届いた内容が追いついたら自動で落ちる。
    *
-   * 送れたら応答に揃える（リネームでの統合があれば id や件数も変わる）。
    * 送れなかったら元へ戻し、呼んだ側が知らせられるよう投げ直す。
    */
   async function setColor(id: string, color: TagColor | null) {
-    const before = data.value ?? []
-    data.value = before.map((tag) => (tag.id === id ? { ...tag, color } : tag))
+    edit(id, { color })
 
     try {
-      const updated = await $fetch<TagDto>(`/api/tags/${id}`, {
-        method: 'PATCH',
-        body: { color },
-      })
-      data.value = (data.value ?? []).map((tag) => (tag.id === id ? updated : tag))
+      await $fetch<TagDto>(`/api/tags/${id}`, { method: 'PATCH', body: { color } })
     } catch (e) {
-      data.value = before
+      revert(id)
       throw e
     }
   }

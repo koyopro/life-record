@@ -40,11 +40,26 @@ export function useSmartLists() {
     }
   })
 
+  /** 取得が終わるまでは控えを使う。終わったあとは、0件でも取得結果を使う。 */
+  const fetched = computed<SmartListDto[]>(() =>
+    loaded.value ? (data.value ?? []) : remembered.value,
+  )
+
+  /*
+   * この端末で直した分は、届いた内容より優先する。取りに行った後に直すと、
+   * その応答が後から届いて直す前に戻るため（docs/15-client-state.md 14.2 の 4）。
+   */
+  const {
+    list: lists,
+    edit,
+    revert,
+  } = useLocalEdits<SmartListDto>('smart-lists', fetched)
+
   watch(
-    data,
+    lists,
     (list) => {
       // 取得できたときだけ控え直す。既定値（空）で控えを消さないため
-      if (!import.meta.client || !list || !loaded.value) return
+      if (!import.meta.client || !list.length || !loaded.value) return
 
       const json = JSON.stringify(list)
       if (json === lastRemembered) return
@@ -58,11 +73,6 @@ export function useSmartLists() {
       }
     },
     { immediate: true },
-  )
-
-  /** 取得が終わるまでは控えを使う。終わったあとは、0件でも取得結果を使う。 */
-  const lists = computed<SmartListDto[]>(() =>
-    loaded.value ? (data.value ?? []) : remembered.value,
   )
 
   function byId(id: string): SmartListDto | null {
@@ -96,20 +106,23 @@ export function useSmartLists() {
    * 一覧の右上で並びを選び直したときも、その場でリストを直している
    * （docs/08-todo-management.md 8.6）。待ってから反映すると、選んだ直後に
    * 選択が元へ戻って見える。送れなかったときだけ元に戻す。
+   *
+   * 当てるのは「この端末で直した分」（`useLocalEdits`）。取りに行った後に
+   * 直すと、その応答が後から届いて**選び直す前に戻る**ため。
    */
   async function update(id: string, input: SmartListInput): Promise<SmartListDto> {
-    const before = data.value ?? []
-    data.value = before.map((list) => (list.id === id ? { ...list, ...input } : list))
+    edit(id, input)
 
     try {
       const updated = await $fetch<SmartListDto>(`/api/smart-lists/${id}`, {
         method: 'PATCH',
         body: input,
       })
+      // 届いた内容が追いつけば、重ねていた分は自動で落ちる
       await refresh()
       return updated
     } catch (error) {
-      data.value = before
+      revert(id)
       throw error
     }
   }
