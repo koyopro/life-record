@@ -139,6 +139,17 @@ fn open_tab(app: &AppHandle, url: Url) -> Result<(), Box<dyn std::error::Error>>
          */
         .on_navigation(move |url| decide(&handle, &origin, url))
         /*
+         * タブの見出しは、その画面の題にする（ブラウザのタブと同じ）。
+         *
+         * ネイティブのウィンドウの題は、作るときに決めたまま変わらない。
+         * タブを並べたときに全部「Life Record」では、どれがどれだか分からない。
+         */
+        .on_document_title_changed(|window, title| {
+            if let Err(error) = window.set_title(&title) {
+                eprintln!("タブの見出しを変えられなかった: {error}");
+            }
+        })
+        /*
          * ドラッグ＆ドロップは WebView（＝画面側）に任せる。
          *
          * Tauri は既定でドロップを横取りし、ファイルのパスを

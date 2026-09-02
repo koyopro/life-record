@@ -14,7 +14,17 @@ definePageMeta({ wide: 'reading' })
 const route = useRoute()
 const id = computed(() => String(route.params.id))
 
-useHead({ title: 'タスク' })
+/*
+ * 題はそのタスクの名前にする。ブラウザのタブ・履歴・共有先で、どのタスクを
+ * 開いているのかが分かるようにするため（macOS アプリのタブの見出しも
+ * これを使う。docs/16-macos-app.md 16.10）。
+ *
+ * 手元に無い（まだ取れていない）間は、種類だけを出す。
+ */
+const store = useItemStore()
+const item = computed(() => store.byId(id.value))
+
+useHead({ title: () => item.value?.title || 'タスク' })
 </script>
 
 <template>
