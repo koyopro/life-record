@@ -259,6 +259,20 @@ export async function cancelOperations(
   return cancelled
 }
 
+/**
+ * 次に送る操作の様子。画面に「なぜ送れていないのか」を出すために持つ
+ * （docs/12-offline.md 12.8）。
+ */
+export interface QueueHead {
+  kind: OperationKind
+  /** 送ろうとした回数。`MAX_ATTEMPTS` で自動の送り直しをやめる。 */
+  attempts: number
+  /** 次に送ってよい時刻（ISO）。 */
+  nextAttemptAt: string
+  lastError: string | null
+  givenUp: boolean
+}
+
 export interface QueueSummary {
   /** 未送信の操作の数。 */
   pending: number
@@ -268,22 +282,45 @@ export interface QueueSummary {
   itemIds: string[]
   /** 直近の失敗の内容。 */
   lastError: string | null
+  /**
+   * 次に送る操作。すべて諦めていれば先頭のもの。列が空なら null。
+   *
+   * 「失敗しているのか、待っているだけなのか」は数だけでは分からない。
+   * 試した回数と次に送る時刻を添えて、画面から読めるようにする。
+   */
+  head: QueueHead | null
+  /** 種類ごとの件数（積んだ順）。何が送れていないのかを出すために使う。 */
+  kinds: { kind: OperationKind; count: number }[]
 }
 
 export async function summarize(): Promise<QueueSummary> {
   const operations = await listOperations()
   const itemIds = new Set<string>()
+  const counts = new Map<OperationKind, number>()
   let lastError: string | null = null
 
   for (const operation of operations) {
     for (const id of operation.itemIds) itemIds.add(id)
     if (operation.lastError) lastError = operation.lastError
+    counts.set(operation.kind, (counts.get(operation.kind) ?? 0) + 1)
   }
+
+  const head = operations.find((operation) => !operation.givenUp) ?? operations[0]
 
   return {
     pending: operations.length,
     givenUp: operations.filter((operation) => operation.givenUp).length,
     itemIds: [...itemIds],
     lastError,
+    head: head
+      ? {
+          kind: head.kind,
+          attempts: head.attempts,
+          nextAttemptAt: head.nextAttemptAt,
+          lastError: head.lastError,
+          givenUp: head.givenUp,
+        }
+      : null,
+    kinds: [...counts].map(([kind, count]) => ({ kind, count })),
   }
 }

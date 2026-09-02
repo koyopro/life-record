@@ -71,6 +71,57 @@ describe('LocalDatabase の移行', () => {
     expect(stored.map((operation) => operation.seq)).toEqual([1, 2, 3])
   })
 
+  /**
+   * 手当てが入る前の版（2・3）で上げ終わっていた DB は、古い形のまま
+   * 取り残されていた（版 1 から上げるときだけ作り直していたため）。
+   * 実際にそうなった DB があり、送信の列が一度も流れないままになっていた。
+   */
+  it('古い形のまま新しい版になっていた DB も、作り直して流せるようにする', async () => {
+    // 版 4 まで上がっているが、operations は opId を主キーにしたままのもの
+    const legacy = await openDB(DB_NAME, 4, {
+      upgrade(database) {
+        const items = database.createObjectStore('items', { keyPath: 'id' })
+        items.createIndex('by-sync-state', 'syncState')
+
+        const operations = database.createObjectStore('operations', { keyPath: 'opId' })
+        operations.createIndex('by-op-id', 'opId', { unique: true })
+
+        database.createObjectStore('conflicts', { keyPath: 'itemId' })
+        database.createObjectStore('meta', { keyPath: 'key' })
+
+        const sections = database.createObjectStore('sections', { keyPath: 'id' })
+        sections.createIndex('by-item', 'itemId')
+        sections.createIndex('by-date', 'date')
+
+        database.createObjectStore('diaries', { keyPath: 'date' })
+
+        const images = database.createObjectStore('images', { keyPath: 'path' })
+        images.createIndex('by-used-at', 'usedAt')
+      },
+    })
+    await legacy.put('operations', {
+      opId: 'a0000000-0000-4000-8000-000000000000',
+      kind: 'patch',
+      itemIds: ['取り残されていた変更'],
+      payload: { id: 'a', patch: { status: 'closed' }, baseUpdatedAt: null },
+      createdAt: '2026-08-19T00:00:00.000Z',
+      attempts: 0,
+      nextAttemptAt: '2026-08-19T00:00:00.000Z',
+      givenUp: false,
+      lastError: null,
+    })
+    legacy.close()
+    await closeLocalDatabase()
+
+    await openLocalDatabase()
+
+    const head = await nextOperation()
+    expect(head?.itemIds).toEqual(['取り残されていた変更'])
+    // 消す宛先が決まる（決まらないと列が一度も流れない）
+    await removeOperation(head!.seq)
+    expect(await listOperations()).toEqual([])
+  })
+
   it('持ち越した操作を、送ったあと消せる', async () => {
     await createLegacyDatabase([
       { opId: 'a0000000-0000-4000-8000-000000000000', createdAt: '2026-08-19T00:00:00.000Z', itemId: '1件目' },

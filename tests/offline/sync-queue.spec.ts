@@ -99,6 +99,44 @@ describe('SyncQueue', () => {
     expect(summary.lastError).toBe('タイトルは空にできません')
   })
 
+  /**
+   * 「未同期（n）」だけでは、失敗しているのか・待っているだけなのかが
+   * 分からない。画面に出すための材料をまとめて返す（docs/12-offline.md 12.8）。
+   */
+  it('次に送る操作と、種類ごとの内訳を返す', async () => {
+    const first = await enqueueOperation(
+      { kind: 'section_save', itemIds: ['a'], payload: { id: 's1', itemId: 'a', date: '2026-08-22', body: 'あ', pinned: false } },
+      new Date('2026-08-22T00:00:00.000Z'),
+    )
+    await enqueueOperation(
+      { kind: 'section_save', itemIds: ['b'], payload: { id: 's2', itemId: 'b', date: '2026-08-22', body: 'い', pinned: false } },
+      new Date('2026-08-22T00:00:01.000Z'),
+    )
+    await enqueueOperation(
+      { kind: 'patch', itemIds: ['a'], payload: { id: 'a', patch: { status: 'closed' }, baseUpdatedAt: null } },
+      new Date('2026-08-22T00:00:02.000Z'),
+    )
+
+    // 先頭が諦めていれば、次に送るのはその後ろ
+    await recordFailure(first.seq, '通信できませんでした', {
+      permanent: true,
+      now: new Date('2026-08-22T00:00:03.000Z'),
+    })
+
+    const summary = await summarize()
+
+    expect(summary.pending).toBe(3)
+    expect(summary.kinds).toEqual([
+      { kind: 'section_save', count: 2 },
+      { kind: 'patch', count: 1 },
+    ])
+    expect(summary.head).toMatchObject({
+      kind: 'section_save',
+      attempts: 0,
+      givenUp: false,
+    })
+  })
+
   it('まだ送っていない操作を取り消せる', async () => {
     const item = itemDto()
     await enqueueOperation({

@@ -45,6 +45,14 @@ export interface EngineHooks {
   request: RequestFn
   /** ローカルの内容が変わった。画面に見せている配列を読み直させる。 */
   onLocalChange?: () => void | Promise<void>
+  /**
+   * 1つ送り終えた。この回で何件送ったかを画面へ出すために使う。
+   *
+   * 送り終えた数が伸び続けているのに未送信の数が減らなければ、同じ操作を
+   * 送り直し続けている（回り続けている）ということが分かる
+   * （docs/12-offline.md 12.8）。
+   */
+  onProgress?: (sent: number) => void
   /** サーバーへ届いたか。オフライン表示の判断に使う。 */
   onReachable?: (reachable: boolean) => void
   /** 直近の失敗の内容。 */
@@ -80,7 +88,10 @@ export async function drainQueue(hooks: EngineHooks): Promise<DrainResult> {
     const outcome = await runOperation(sending, hooks.request)
     const stop = await applyOutcome(sending, outcome, hooks)
 
-    if (outcome.type === 'done') sent += 1
+    if (outcome.type === 'done') {
+      sent += 1
+      hooks.onProgress?.(sent)
+    }
     if (stop) return { sent, stoppedBy: 'retry' }
   }
 }

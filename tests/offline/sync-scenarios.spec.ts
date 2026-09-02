@@ -301,6 +301,28 @@ describe('オンライン復帰', () => {
     expect((await allItems()).every((stored) => stored.syncState === 'synced')).toBe(true)
   })
 
+  it('送り終えた数が、1件ごとに画面へ伝わる', async () => {
+    const first = itemDto()
+    const second = itemDto()
+    const remote = server([first, second])
+    await mergeServerItems([first, second], FRESH_FETCH)
+
+    await patchTodos([first.id], { status: 'closed' })
+    await patchTodos([second.id], { status: 'closed' })
+
+    /*
+     * 送り終えた数が伸び続けているのに未送信の数が減らなければ、同じ操作を
+     * 送り直し続けていると分かる（docs/12-offline.md 12.8）。
+     */
+    const progress: number[] = []
+    await drainQueue({
+      request: remote.request,
+      onProgress: (sent) => progress.push(sent),
+    })
+
+    expect(progress).toEqual([1, 2])
+  })
+
   it('途中で通信が切れても、残りの操作は消えない', async () => {
     const first = itemDto()
     const second = itemDto()

@@ -16,7 +16,7 @@ import {
 import { saveDiaryBody, setSectionPinned } from '~/utils/offline/body-actions'
 import { requestFlush } from '~/utils/offline/flush-signal'
 import { listOperations, type DiarySavePayload } from '~/utils/offline/sync-queue'
-import { isNetworkError } from '~/utils/offline/sync-runner'
+import { isNetworkError, REQUEST_TIMEOUT_MS } from '~/utils/offline/sync-runner'
 
 /**
  * 日記の置き場。
@@ -252,6 +252,7 @@ export function useDiaryStore() {
       try {
         const { fetchedAt, data: detail } = await $fetch<Fetched<DiaryDetailDto>>(
           `/api/diaries/${target}`,
+          { timeout: REQUEST_TIMEOUT_MS },
         )
         await mergeServerDiary(
           target,

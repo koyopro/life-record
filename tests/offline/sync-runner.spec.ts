@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PendingOperation } from '~/utils/offline/local-database'
-import { runOperation } from '~/utils/offline/sync-runner'
+import { runOperation, withSendTimeout } from '~/utils/offline/sync-runner'
 import { fakeServer, httpError, itemDto, networkError } from '../helpers'
 
 function operation(overrides: Partial<PendingOperation>): PendingOperation {
@@ -137,6 +137,49 @@ describe('sync-runner', () => {
     expect(await runOperation(operation({}), fake.request)).toEqual({
       type: 'failed',
       message: 'タイトルは空にできません',
+    })
+  })
+  /**
+   * 応答が返ってこない送信が1つあると、列がそこで永久に止まる（送信は1つずつ、
+   * 前が終わってから次へ進む）。画面には「未同期」と点滅する●が出たままで、
+   * 再読み込みでも直らない（docs/12-offline.md 12.7）。
+   */
+  describe('送信の上限', () => {
+    it('応答が返らなければ打ち切り、送り直しの対象にする', async () => {
+      // いつまでも終わらない送信
+      const stuck = () => new Promise<never>(() => {})
+
+      const outcome = await runOperation(
+        operation({}),
+        withSendTimeout(stuck, 5),
+      )
+
+      expect(outcome).toMatchObject({ type: 'retry', offline: true })
+      expect((outcome as { message: string }).message).toContain('終わりませんでした')
+    })
+
+    it('打ち切るときは通信そのものも止める', async () => {
+      let signal: AbortSignal | undefined
+      const stuck = (_path: string, options?: { signal?: AbortSignal }) => {
+        signal = options?.signal
+        return new Promise<never>(() => {})
+      }
+
+      await runOperation(operation({}), withSendTimeout(stuck, 5))
+
+      expect(signal?.aborted).toBe(true)
+    })
+
+    it('間に合った送信はそのまま通す', async () => {
+      const item = itemDto()
+      const server = fakeServer(() => item)
+
+      const outcome = await runOperation(
+        operation({ payload: { id: item.id, patch: { status: 'closed' }, baseUpdatedAt: null } }),
+        withSendTimeout(server.request, 5_000),
+      )
+
+      expect(outcome).toMatchObject({ type: 'done', item })
     })
   })
 })

@@ -1,10 +1,16 @@
 import type { ConflictRecord } from '~/utils/offline/local-database'
 import { onFlushRequested } from '~/utils/offline/flush-signal'
 import { dismissConflict, listConflicts } from '~/utils/offline/todo-repository'
-import { listOperations, retryGivenUp, summarize } from '~/utils/offline/sync-queue'
+import {
+  listOperations,
+  retryGivenUp,
+  summarize,
+  type QueueHead,
+  type QueueSummary,
+} from '~/utils/offline/sync-queue'
 import { drainQueue } from '~/utils/offline/sync-engine'
 import { resumePendingBodies } from '~/utils/offline/body-actions'
-import type { RequestFn } from '~/utils/offline/sync-runner'
+import { withSendTimeout, type RequestFn } from '~/utils/offline/sync-runner'
 
 /**
  * 未送信の操作をサーバーへ流し込む係。
@@ -31,6 +37,22 @@ export function useSync() {
   /** 自動での送り直しをやめた操作の数。 */
   const givenUp = useState('offline:given-up', () => 0)
   const lastError = useState<string | null>('offline:sync-error', () => null)
+  /**
+   * 次に送る操作の様子（種類・試した回数・次に送る時刻）。
+   *
+   * 数だけでは「失敗しているのか、待っているだけなのか」が分からない。
+   * 画面（SyncStatus）から読めるように持つ（docs/12-offline.md 12.8）。
+   */
+  const head = useState<QueueHead | null>('offline:queue-head', () => null)
+  /** 種類ごとの内訳。何が送れていないのかを出す。 */
+  const kinds = useState<QueueSummary['kinds']>('offline:queue-kinds', () => [])
+  /**
+   * いま流している回で送り終えた数。
+   *
+   * これが伸び続けているのに未送信の数が減らなければ、同じ操作を送り直し
+   * 続けている（回り続けている）。数字が動かないのと見分けるために出す。
+   */
+  const sentNow = useState('offline:sent-now', () => 0)
   const conflicts = useState<ConflictRecord[]>('offline:conflicts', () => [])
   /** 最後に何かを送り終えた時刻。タグ一覧の取り直しなどの合図に使う。 */
   const lastSyncedAt = useState<string | null>('offline:last-synced-at', () => null)
@@ -44,13 +66,19 @@ export function useSync() {
    * パスは実行時に決まるため、Nitro の型付きルート推論には乗せない
    * （全ルートを突き合わせようとして型チェックが破綻する）。
    */
-  const send = $fetch as unknown as RequestFn
+  // 応答が返らない送信で列が止まらないよう、1回ずつ上限を付ける
+  const send = withSendTimeout($fetch as unknown as RequestFn)
   const request: RequestFn = (path, options) => enqueue(() => send(path, options))
 
   async function refreshStatus(): Promise<void> {
     const summary = await summarize()
     pending.value = summary.pending
     givenUp.value = summary.givenUp
+    head.value = summary.head
+    kinds.value = summary.kinds
+    // 諦めた操作の失敗は列にも残っている。流していない間もそれを出す。
+    // 思いがけない失敗（下の catch）を消してしまわないよう、あるときだけ当てる
+    if (!running && summary.lastError) lastError.value = summary.lastError
     conflicts.value = await listConflicts()
   }
 
@@ -66,11 +94,15 @@ export function useSync() {
 
     running = true
     syncing.value = true
+    sentNow.value = 0
 
     let sent = 0
     try {
       const result = await drainQueue({
         request,
+        onProgress: (count) => {
+          sentNow.value = count
+        },
         // 送信の結果はローカルへ入るので、画面が見ている分を読み直す
         onLocalChange: async () => {
           await store.reload()
@@ -85,6 +117,13 @@ export function useSync() {
         },
       })
       sent = result.sent
+    } catch (error) {
+      /*
+       * 思いがけない失敗（IndexedDB の異常など）。列は残っているので次の合図で
+       * 送り直せるが、**黙って止まると「未同期」が動かない理由が分からない**。
+       * 画面に出したうえで、下の目覚まし（scheduleNext）まで進める。
+       */
+      lastError.value = error instanceof Error ? error.message : '同期を続けられませんでした'
     } finally {
       running = false
       syncing.value = false
@@ -166,6 +205,9 @@ export function useSync() {
     pending,
     givenUp,
     lastError,
+    head,
+    kinds,
+    sentNow,
     conflicts,
     lastSyncedAt,
     flush,

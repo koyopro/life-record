@@ -47,9 +47,60 @@ export type SyncOutcome =
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
+  /** 送信を打ち切るための合図（`withSendTimeout` が渡す）。 */
+  signal?: AbortSignal
 }
 
 export type RequestFn = (path: string, options?: RequestOptions) => Promise<unknown>
+
+/**
+ * 1回の送受信を待つ上限。
+ *
+ * 応答が返ってこない送信が1つあると、**列がそこで永久に止まる**（送信は
+ * 1つずつ、前が終わってから次へ進む）。画面には「未同期（n）」と点滅する●が
+ * 出たままで、再読み込みでも直らない。ブラウザの fetch には既定の上限が
+ * 無いので、こちらで区切る。
+ *
+ * 電波の悪い場所でも通ることを優先して、長めに取る。打ち切っても操作は
+ * 列に残り、間隔を空けて送り直される（すべての操作は冪等。12.6）。
+ */
+export const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * 送信に上限を付ける。
+ *
+ * 打ち切りは2重にする。`signal` で実際の通信を止めた上で、**待つのをやめる
+ * 側も自分で区切る**。止める合図を無視する実装（WebView の詰まった fetch）に
+ * 当たっても、列は必ず先へ進む。
+ *
+ * 応答が返らなかったのと同じ形（status を持たないエラー）で投げるので、
+ * 一時的な失敗として送り直しの対象になる（`classify`）。
+ */
+export function withSendTimeout(
+  request: RequestFn,
+  ms: number = REQUEST_TIMEOUT_MS,
+): RequestFn {
+  return async (path, options) => {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const limit = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort()
+        reject(new TypeError(`送信が ${Math.round(ms / 1000)} 秒で終わりませんでした`))
+      }, ms)
+    })
+
+    try {
+      return await Promise.race([
+        request(path, { ...options, signal: controller.signal }),
+        limit,
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+}
 
 export async function runOperation(
   operation: PendingOperation,
@@ -244,12 +295,18 @@ function statusOf(error: unknown): number | undefined {
   return undefined
 }
 
-/** サーバーは message で返す（docs/04-architecture.md 4.4）。 */
+/**
+ * サーバーは message で返す（docs/04-architecture.md 4.4）。
+ *
+ * 空文字は「無い」として扱う。そのまま採ると、画面の「直近の失敗」が
+ * 空欄になり、何が起きたのか読めない（既定の文言に落とす）。
+ */
 function messageOf(error: unknown): string | null {
   if (typeof error !== 'object' || error === null) return null
   const candidate = error as { data?: { message?: unknown }; message?: unknown }
-  if (typeof candidate.data?.message === 'string') return candidate.data.message
-  if (typeof candidate.message === 'string') return candidate.message
+  for (const value of [candidate.data?.message, candidate.message]) {
+    if (typeof value === 'string' && value.trim()) return value
+  }
   return null
 }
 

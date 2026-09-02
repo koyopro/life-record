@@ -27,7 +27,7 @@ export const DB_NAME = 'life-record'
  * ただし未送信の操作（operations）だけは作り直せない。まだサーバーに
  * 届いていない変更そのものなので、移行では必ず持ち越す。
  */
-export const DB_VERSION = 4
+export const DB_VERSION = 5
 
 /** Item ごとの同期状態。 */
 export type SyncState =
@@ -222,14 +222,20 @@ function createOperationsStore(db: LocalDatabase) {
 }
 
 /**
- * 版 1 で作られた operations を、seq を主キーとする形へ作り直す。
+ * 古い形の operations を、seq を主キーとする形へ作り直す。
  *
  * 順序の持ち方を opId から seq（IndexedDB の採番）へ変えたとき、版を
  * 上げ忘れていた。そのため、それより前に DB を作ったブラウザだけが
  * `keyPath: 'opId'` のまま残っている。この形では操作が seq を持たないので
  * 削除の宛先が決まらず（`removeOperation` が例外になる）、送信の列が
- * 一度も流れない。未送信の操作はサーバーへ届いていない変更そのものなので、
+ * **一度も流れない**（画面には「未同期（n）」が出たままで、試した回数も
+ * 増えない）。未送信の操作はサーバーへ届いていない変更そのものなので、
  * 捨てずに積み直す。
+ *
+ * **版を問わず毎回通す。**はじめは「版 1 から上げるときだけ」にしていたが、
+ * それだと版 2・3 のうちに（この手当てが入る前の版で）上げ終わっていた DB は
+ * 古い形のまま取り残される。実際にそうなった DB があり、送信の列が
+ * 流れないままになっていた。形を見て要るときだけ動くので、毎回通してよい。
  *
  * 積んだ順は createdAt から復元する。古い形では取り出しが opId（UUID）順に
  * なるため、積んだ順そのものは残っていない。
@@ -300,7 +306,7 @@ export function openLocalDatabase(): Promise<LocalDatabase> {
 
         // 作り直しは非同期になるので最後に置く。オブジェクトストアの作成は
         // 版を上げる取引が開いている間（＝待つ前）に済ませておく必要がある
-        if (oldVersion === 1) return migrateOperationsToSeq(db, transaction)
+        return migrateOperationsToSeq(db, transaction)
       },
       /**
        * 別のタブが新しい版へ上げようとしている。
