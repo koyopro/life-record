@@ -1,9 +1,10 @@
 import { and, desc, eq, ne, sql, type SQL } from 'drizzle-orm'
 import { useDb } from '~~/server/db'
 import { diaries, items, sections } from '~~/server/db/schema'
-import { excerptAround, likePattern } from '~~/server/utils/search'
+import { likePattern } from '~~/server/utils/search'
 import { tagsByItemId } from '~~/server/utils/tags'
 import { toAppDate } from '~~/shared/utils/date'
+import { headOf } from '~~/shared/utils/diary'
 import type { Priority } from '~~/shared/types/item'
 import { BACKLINK_LIMIT, isLinkablePath, type Backlink } from '~~/shared/types/backlink'
 
@@ -74,7 +75,7 @@ export default defineEventHandler(async (event): Promise<Backlink[]> => {
       date: toAppDate(row.createdAt),
       path: `/items/${row.id}`,
       title: row.title,
-      excerpt: excerptAround(row.note ?? '', path),
+      head: headOf(row.note ?? ''),
       item: {
         id: row.id,
         status: row.status,
@@ -119,7 +120,7 @@ export default defineEventHandler(async (event): Promise<Backlink[]> => {
       date: row.date,
       path: `/items/${row.itemId}`,
       title: row.title,
-      excerpt: excerptAround(row.body, path),
+      head: headOf(row.body),
       item: {
         id: row.itemId,
         status: row.status,
@@ -146,7 +147,7 @@ export default defineEventHandler(async (event): Promise<Backlink[]> => {
       date: row.date,
       path: `/diary/${row.date}`,
       title: '日記',
-      excerpt: excerptAround(row.body, path),
+      head: headOf(row.body),
       item: null,
     })
   }

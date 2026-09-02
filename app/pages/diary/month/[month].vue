@@ -355,8 +355,20 @@ onActivated(() => void refreshBacklinks())
             <span v-if="link.kind !== 'item'" class="link__date">
               {{ formatAppDate(link.date) }}
             </span>
-            <span v-if="link.excerpt" class="link__excerpt">{{ link.excerpt }}</span>
           </NuxtLink>
+
+          <!--
+            指してきた本文の冒頭だけ。続きはリンク先で読む。
+            リンクの外に置く（記法の中のリンクが入れ子にならないように）
+          -->
+          <div v-if="link.head.text" class="link__head">
+            <ScrapboxEditor
+              view
+              :model-value="link.head.text"
+              :aria-label="`「${link.title}」の冒頭`"
+            />
+            <p v-if="link.head.truncated" class="link__more">…</p>
+          </div>
         </li>
       </ul>
 
@@ -615,15 +627,22 @@ onActivated(() => void refreshBacklinks())
   overflow: hidden;
 }
 
-.link__body {
+/* 見出しの行と冒頭を縦に積む。枠（背景）は行ごとに1つ */
+.link {
   background: var(--surface);
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  min-width: 0;
+}
+
+.link__body {
   color: inherit;
   text-decoration: none;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 0.5rem;
-  padding: 0.5rem 0.625rem;
 }
 
 .link__kind {
@@ -646,14 +665,23 @@ onActivated(() => void refreshBacklinks())
   font-variant-numeric: tabular-nums;
 }
 
-.link__excerpt {
+/*
+ * 指してきた本文の冒頭。日記の「この日にやったこと」と同じ顔にする
+ * （見出しの行より控えめに、記法はそのまま解釈して出す）。
+ */
+.link__head {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.875rem;
   color: var(--text-muted);
-  font-size: 0.75rem;
-  /* 抜粋は行を折らず、幅に収まらないぶんは省く */
-  flex: 1 1 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+}
+
+.link__more {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1;
 }
 
 .links__empty {

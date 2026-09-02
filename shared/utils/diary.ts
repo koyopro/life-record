@@ -1,4 +1,8 @@
-import { DIARY_EXCERPT_LENGTH, WORKED_ON_HEAD_LINES } from '~~/shared/types/diary'
+import {
+  DIARY_EXCERPT_LENGTH,
+  WORKED_ON_HEAD_LINES,
+  type BodyHead,
+} from '~~/shared/types/diary'
 import { firstImageSrc } from '~~/shared/utils/scrapbox/parse'
 import { toPlainText } from '~~/shared/utils/scrapbox/render'
 
@@ -34,17 +38,11 @@ export function pinnedImageOf(bodies: string[]): string | null {
   return null
 }
 
-export interface BodyHead {
-  /** 冒頭の数行。記法はそのまま（表示側で解釈する）。 */
-  text: string
-  /** 続きがあるか。画面に「まだ先がある」ことを出すために使う。 */
-  truncated: boolean
-}
-
 /**
  * 本文の冒頭だけを取り出す。
  *
- * 日記の「この日にやったこと」に作業記録を添えるときに使う
+ * 日記の「この日にやったこと」に作業記録を添えるときと、月のページの
+ * 「この月を指しているもの」に本文を添えるときに使う
  * （docs/03-functional-spec.md 3.3）。記法は落とさない。落とすと、
  * 箇条書きや画像がただの文字になって読みにくくなるため。
  */

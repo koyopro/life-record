@@ -922,6 +922,10 @@ Diary と Section を日付だけで結ぶ（[02-data-model.md](02-data-model.md
 `/diary/month/YYYY-MM`）にそろえてあるので、部分一致でも別のページの
 リンクを巻き込まない。
 
+並べるときは、指してきた本文の冒頭（`headOf`。既定で5行）を添える。日記の
+「この日にやったこと」と同じ見せ方で、記法もそのまま解釈して出す
+（[03-functional-spec.md](03-functional-spec.md) 3.3）。
+
 受け付けるのは、その記法が認めるパスだけにする（`shared/types/backlink.ts` の
 `isLinkablePath`）。任意の文字列を渡せると、本文の部分一致検索を別の入口から
 呼べてしまい、バックリンクという意味から外れるため。

@@ -1,3 +1,4 @@
+import type { BodyHead } from './diary'
 import type { ItemStatus, Priority } from './item'
 
 /**
@@ -24,8 +25,15 @@ export interface Backlink {
   path: string
   /** 見出し。Item と Section はタスク名、Diary は日付。 */
   title: string
-  /** リンクを書いた箇所の前後を切り出したもの。 */
-  excerpt: string
+  /**
+   * 本文の冒頭（既定で5行）。記法はそのまま返し、画面で解釈して出す。
+   *
+   * リンクを書いた箇所の前後ではなく**頭から**出す。指してきたものは
+   * 月の振り返りのように「1枚の読みもの」であることが多く、リンクの
+   * まわりだけを切り出しても何の話か分からないため
+   * （日記の「この日にやったこと」と同じ見せ方。3.3）。
+   */
+  head: BodyHead
   /** タスクに紐づく行（Item と Section）だけ。日記は null。 */
   item: BacklinkItem | null
 }

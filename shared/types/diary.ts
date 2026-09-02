@@ -71,3 +71,16 @@ export const DIARY_EXCERPT_LENGTH = 140
  * 続きは Item 詳細で読む（docs/03-functional-spec.md 3.3）。
  */
 export const WORKED_ON_HEAD_LINES = 5
+
+/**
+ * 本文の冒頭（`headOf` が返すもの）。
+ *
+ * 日記の「この日にやったこと」と、月のページの「この月を指しているもの」で
+ * 同じ形のプレビューを出すために共有する（docs/03-functional-spec.md 3.3）。
+ */
+export interface BodyHead {
+  /** 冒頭の数行。記法はそのまま（表示側で解釈する）。 */
+  text: string
+  /** 続きがあるか。画面に「まだ先がある」ことを出すために使う。 */
+  truncated: boolean
+}
