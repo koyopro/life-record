@@ -1,4 +1,4 @@
-import type { Line, Inline, ImageNode } from './types'
+import type { Line, Inline, ImageNode, IframeNode } from './types'
 import { isAppDate, isAppMonth } from '../date'
 
 /**
@@ -188,22 +188,6 @@ export function parseScrapbox(input: string): Line[] {
       continue
     }
 
-    /*
-     * 埋め込み（`iframe:URL`）。
-     *
-     * 中身が `http(s)` の URL でなければ、行ごと普通の文字として扱う
-     * （`----` が4つ未満ならただの文字になるのと同じ）。危ないスキームを
-     * 埋め込みにしないためと、`iframe:` で始まる普通の文を壊さないため。
-     */
-    if (rest.startsWith(IFRAME_MARKER)) {
-      const line = split(raw, indent + IFRAME_MARKER.length)
-      const iframe = parseIframeContent(line.content)
-      if (iframe) {
-        lines.push({ ...line, type: 'iframe', indent, ...iframe })
-        continue
-      }
-    }
-
     // 引用の `>` と、それに続く空白ひとつまでが行頭
     const quote = /^> ?/.exec(rest)
     if (quote) {
@@ -238,67 +222,39 @@ const CODE_MARKER = 'code:'
 const TABLE_MARKER = 'table:'
 
 /**
- * 外部の Web ページを埋め込む行（docs/11-scrapbox-notation.md 11.12）。
+ * 埋め込み（`[URL]`）にするホスト（docs/11-scrapbox-notation.md 11.12）。
  *
- * `code:` `table:` と同じ「行の種類を決める行頭」の形にしている。
- * 角括弧の `[URL]` は既に外部リンクなので、そちらには寄せられない。
+ * `[URL]` は外部リンクの記法でもあるので、**どの URL も埋め込みにはできない**
+ * （普通のリンクが書けなくなる）。そこで、埋め込みとして出すホストだけを
+ * ここに並べる。増やすときはこの1か所に足す。
+ *
+ * 埋め込み自体の仕組みは囲碁とは関係がなく、ここに並ぶのは
+ * 「iframe で置いて読めるページを出しているホスト」でしかない。
  */
-const IFRAME_MARKER = 'iframe:'
+const IFRAME_HOSTS = ['kifu.tsumego.jp', 'kifu-lab.vercel.app']
 
 /**
  * 埋め込みの既定の高さ（px）。
  *
- * 横幅は本文の幅いっぱいに広げるので、決めるのは高さだけ。行に
- * `height=<数値>` と書けば変えられる（IframeLine）。
+ * 横幅は本文の幅いっぱいに広げるので、決めるのは高さだけ。
  */
-export const IFRAME_DEFAULT_HEIGHT = 420
+export const IFRAME_DEFAULT_HEIGHT = 600
 
 /**
- * 高さに認める範囲（px）。
+ * 埋め込みとして出す URL か。
  *
- * 書き間違いで本文が丸ごと押し流されたり、線1本に潰れたりしないよう
- * 収める。範囲の外は既定の高さにする。
- */
-const IFRAME_MIN_HEIGHT = 80
-const IFRAME_MAX_HEIGHT = 2000
-
-/**
- * 埋め込みに使える URL か。
- *
- * `http(s)` のものだけを通す。`javascript:` のようなスキームや、アプリの
- * 相対パス（自分自身を入れ子にするだけ）は埋め込みにしない
- * （docs/11-scrapbox-notation.md 11.10）。**特定のドメインだけを許す
- * 作りにはしない**（任意の外部ページを埋め込むための記法のため）。
+ * `http(s)` で、かつホストが `IFRAME_HOSTS` にあるものだけ。それ以外
+ * （`javascript:` のようなスキーム・アプリの相対パス・並べていないホスト）は
+ * これまでどおりリンクとして出す（docs/11-scrapbox-notation.md 11.10）。
  */
 export function isIframeUrl(value: string): boolean {
-  return URL_PATTERN.test(value.trim())
-}
-
-/** 埋め込みの記法。URL をそのまま行の中身にする。 */
-export function iframeNotation(url: string): string {
-  return `${IFRAME_MARKER}${url.trim()}`
-}
-
-/**
- * 埋め込みの行の中身（URL と表示の指定）を読む。
- *
- * 指定は `key=value` の並びにしてあり、知らないものは無視する。幅や表示の
- * 設定を後から足すときに、記法と AST の形を変えずに済ませるため。
- * URL が `http(s)` でなければ null（呼び出し側で普通の文字の行として扱う）。
- */
-function parseIframeContent(content: string): { url: string; height: number } | null {
-  const [url, ...options] = content.trim().split(/\s+/)
-  if (!url || !isIframeUrl(url)) return null
-
-  let height = IFRAME_DEFAULT_HEIGHT
-  for (const option of options) {
-    const match = /^height=(\d{1,4})$/.exec(option)
-    if (!match) continue
-    const value = Number(match[1])
-    if (value >= IFRAME_MIN_HEIGHT && value <= IFRAME_MAX_HEIGHT) height = value
+  const trimmed = value.trim()
+  if (!URL_PATTERN.test(trimmed)) return false
+  try {
+    return IFRAME_HOSTS.includes(new URL(trimmed).hostname.toLowerCase())
+  } catch {
+    return false
   }
-
-  return { url, height }
 }
 
 /**
@@ -361,6 +317,7 @@ function inlineText(nodes: Inline[]): string {
           return `#${node.name}`
         case 'image':
         case 'icon':
+        case 'iframe':
           return '　'
       }
     })
@@ -397,12 +354,9 @@ export function codeBodyOf(lines: Line[], index: number): string {
  * もう1つのブロックにならないよう落とし、代わりに中身と同じ基準の
  * 字下げ（+1）にする。そうしないと、空のまま `Enter` や `Delete` を
  * 押しただけでブロックを抜けてしまう（空行の判定を参照）。
- *
- * `iframe:` も落とすが、こちらは中身を持たない1行の記法なので、字下げは
- * 足さない（続きの行は埋め込みの下に書く普通の行になる）。
  */
 export function continuationPrefix(line: Line | null): string {
-  const stripped = (line?.prefix ?? '').replace(/(?:code:|table:|iframe:)$/, '')
+  const stripped = (line?.prefix ?? '').replace(/(?:code:|table:)$/, '')
   const header = line?.type === 'codeHeader' || line?.type === 'tableHeader'
   return header ? `${stripped} ` : stripped
 }
@@ -448,7 +402,7 @@ export function linesFromInput(text: string, line: Line | null): string[] {
  * 意味の単位で外す。
  */
 export function dropPrefixUnit(prefix: string): string {
-  const marker = /(?:> ?|code:|table:|iframe:)$/.exec(prefix)
+  const marker = /(?:> ?|code:|table:)$/.exec(prefix)
   if (marker) return prefix.slice(0, -marker[0].length)
   return prefix.slice(0, -1)
 }
@@ -673,6 +627,16 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
   if (isImage(content)) {
     return [{ type: 'image', src: normalizeImageSrc(content), large: false }]
   }
+  /*
+   * 単体の URL は、ホストによって埋め込みにする（11.12）。
+   *
+   * 表示文字列つき（`[URL 棋譜1]`）は上で既にリンクになっているので、
+   * ここに来るのは「URL だけを角括弧で囲んだもの」。裸の URL も
+   * リンクのまま（角括弧で囲んだときだけ埋め込みになる）。
+   */
+  if (isIframeUrl(content)) {
+    return [{ type: 'iframe', url: content, height: IFRAME_DEFAULT_HEIGHT }]
+  }
   if (isUrl(content)) {
     return [
       { type: 'link', href: content, nodes: [{ type: 'text', value: content }] },
@@ -719,6 +683,37 @@ export function imagesIn(line: Line): ImageNode[] {
     default:
       return []
   }
+}
+
+/**
+ * 行の中の埋め込み（`[URL]`、11.12）。
+ *
+ * カーソルを置いた行でも、埋め込みのぶんの高さを確保するために使う
+ * （画像と同じ理由。docs/11-scrapbox-notation.md 11.6「画像の行は高さを残す」）。
+ * ただし画像と違って**敷き直さない**（iframe を作り直すと外のページを
+ * 読み直してしまう）ので、使うのは高さだけ。
+ */
+export function iframesIn(line: Line): IframeNode[] {
+  switch (line.type) {
+    case 'text':
+    case 'quote':
+      return collectIframes(line.nodes)
+    case 'tableRow':
+      return line.cells.flatMap((cell) => collectIframes(cell))
+    default:
+      return []
+  }
+}
+
+function collectIframes(nodes: Inline[]): IframeNode[] {
+  const found: IframeNode[] = []
+  for (const node of nodes) {
+    if (node.type === 'iframe') found.push(node)
+    if (node.type === 'decoration' || node.type === 'link') {
+      found.push(...collectIframes(node.nodes))
+    }
+  }
+  return found
 }
 
 function collectImages(nodes: Inline[]): ImageNode[] {

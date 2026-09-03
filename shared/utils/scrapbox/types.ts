@@ -17,7 +17,6 @@ export type Line =
   | RuleLine
   | TableHeaderLine
   | TableRowLine
-  | IframeLine
 
 interface LineBase {
   /** 行頭の空白の数。箇条書きの階層になる。 */
@@ -79,30 +78,6 @@ export interface TableRowLine extends LineBase {
   last: boolean
 }
 
-/**
- * `iframe:URL` の行。外部の Web ページをそのまま埋め込む
- * （docs/11-scrapbox-notation.md 11.12）。
- *
- * 行の種類を決める行頭（`code:` / `table:`）と同じ形にしてある。埋め込みは
- * 横幅いっぱい・高さありの箱で、**行の中に混ぜられない**ため、インラインの
- * 記法（角括弧）ではなく行の記法にしている（角括弧の `[URL]` は既に
- * 外部リンクなので、そちらに寄せると普通のリンクが書けなくなる）。
- *
- * 中身は「URL + 表示の指定」の並びで、指定は `key=value` で足せるようにする。
- * いまは高さ（`height=400`）だけを見て、知らない指定は無視する。幅や表示の
- * 設定を後から足しても、記法と AST の形を変えずに済む。
- *
- * `url` は `http(s)` のものだけ。それ以外は行ごと普通の文字として扱うので、
- * ここに危ないスキームは入らない（docs/11-scrapbox-notation.md 11.10）。
- */
-export interface IframeLine extends LineBase {
-  type: 'iframe'
-  /** 埋め込む URL（`http(s)` のみ）。 */
-  url: string
-  /** 表示の高さ（px）。書かれていなければ既定値。 */
-  height: number
-}
-
 /** `code:ファイル名` の行。`content` がファイル名にあたる。 */
 export interface CodeHeaderLine extends LineBase {
   type: 'codeHeader'
@@ -130,6 +105,7 @@ export type Inline =
   | ImageNode
   | HashTagNode
   | IconNode
+  | IframeNode
 
 export interface TextNode {
   type: 'text'
@@ -185,6 +161,24 @@ export interface ImageNode {
 export interface HashTagNode {
   type: 'hashtag'
   name: string
+}
+
+/**
+ * `[URL]` で書く埋め込み（docs/11-scrapbox-notation.md 11.12）。
+ *
+ * 外部の Web ページを、その場に iframe として出す。**埋め込みにする URL は
+ * ホスト名で決める**（`IFRAME_HOSTS`）。`[URL]` は外部リンクの記法でもあり、
+ * どの URL も埋め込みにすると普通のリンクが書けなくなるため。
+ *
+ * 高さは記法からは決めていない（いまは既定値だけ）。あとから指定できるよう、
+ * 節点には持たせておく。
+ */
+export interface IframeNode {
+  type: 'iframe'
+  /** 埋め込む URL（`http(s)` のみ）。 */
+  url: string
+  /** 表示の高さ（px）。 */
+  height: number
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   continuationPrefix,
   dropPrefixUnit,
   dropsIndentOnEnter,
+  iframesIn,
   imagesIn,
   indentOf,
   isIframeUrl,
@@ -22,7 +23,6 @@ import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
 import { caretAfterSplit } from '~/utils/caret-shift'
 import { insertImageLines, type ImageInsert } from '~/utils/image-insert'
-import { insertIframeLines } from '~/utils/iframe-insert'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import {
   itemIdFromUrl,
@@ -133,14 +133,16 @@ const mediaFloor = ref(0)
  * カーソルを置いた行は記法をそのままのテキストに戻すため、そのままだと
  * 絵や箱のぶんの高さが消え、**その行より下がまとめて上がってしまう**。
  *
- * - 画像の行 … 大きさが分からないので、表示のまま測った高さ（`mediaFloor`）
- * - 埋め込みの行 … 高さは記法から決まっているので、それをそのまま使う。
+ * - 画像 … 大きさが分からないので、表示のまま測った高さ（`mediaFloor`）
+ * - 埋め込み … 高さは記法から決まっているので、それをそのまま使う。
  *   `iframe` は敷き直すと外の頁を読み直してしまうため、**中身は敷かず
  *   高さだけを取る**（打つたびに読み込みが走ると編集にならない）
  */
 const editingFloor = computed(() => {
   const line = activeLine.value
-  if (line?.type === 'iframe') return line.height
+  const frames = line ? iframesIn(line) : []
+  // 埋め込みの高さは記法から決まっているので、測らなくても分かる
+  if (frames.length) return frames.reduce((total, frame) => total + frame.height, 0)
   if (activeImages.value !== '' && mediaFloor.value > 0) return mediaFloor.value
   return null
 })
@@ -1985,20 +1987,28 @@ function addIframe() {
   if (locked.value) return
 
   const url = iframeUrl.value.trim()
-  if (!isIframeUrl(url)) {
+  if (!/^https?:\/\/\S+$/i.test(url)) {
     iframeError.value = 'http:// または https:// で始まる URL を入れてください'
     return
   }
 
-  const inserted = insertIframeLines(rawLines.value, caretNow(), url)
+  // 記法は画像と同じ角括弧（`[URL]`）なので、差し込みも同じ仕組みに乗せる
+  insertImageAt(url, caretNow())
   lastCaret = null
-  commit(inserted.lines)
   closeIframeForm()
 
   /*
-   * 入れた埋め込みの行は編集状態にしない。カーソルを置くと記法が
-   * そのままのテキストとして出るので、入れた直後に見えるのが URL の
-   * 文字だけになってしまう（入れた人が見たいのは埋め込みそのもの）。
+   * 埋め込みにならないホストは、そのままリンクとして入る（11.12）。
+   * 黙って見た目が変わると理由が分からないので、その場で伝える。
+   */
+  if (!isIframeUrl(url)) {
+    iframeError.value = 'このホストは埋め込みに対応していないため、リンクとして入れました'
+  }
+
+  /*
+   * 入れた行は編集状態にしない。カーソルを置くと記法がそのままのテキストと
+   * して出るので、入れた直後に見えるのが URL の文字だけになってしまう
+   * （入れた人が見たいのは埋め込みそのもの）。
    */
   deactivate()
 }
@@ -3056,27 +3066,11 @@ defineExpose({
 }
 
 /*
- * 埋め込み（`iframe:URL`、docs/11-scrapbox-notation.md 11.12）。
+ * 埋め込み（`[URL]`、docs/11-scrapbox-notation.md 11.12）。
  *
- * 横幅は本文の幅いっぱい。高さは記法から決まる値を style で受ける。
- * 引用やコードブロックと同じく、リストの中では箱ごと字下げの分だけ
- * 右へ寄せる（文字だけを詰めると枠が外へ広がる）。
+ * 横幅いっぱいの箱なので、`[[画像URL]]` と同じように行の中で塊として置く。
+ * 高さは記法から決まる値を style で受ける。
  */
-.editor :deep(.sb-line--iframe) {
-  margin-left: calc(var(--sb-indent, 0) * var(--sb-step));
-  /* 中身は箱そのものなので、行の文字の余白（字下げ）は要らない */
-  padding-left: 0;
-}
-
-/*
- * 箱ごと右へ寄せた分、箇条書きの中黒を箱のすぐ左へ置き直す
- * （そのままだと中黒が字下げの2倍のところ＝箱の中に入ってしまう。
- * コードブロックの見出しと同じ直し方）。
- */
-.editor :deep(.sb-line--iframe.sb-line--indented)::before {
-  left: -0.75rem;
-}
-
 .editor :deep(.sb-iframe) {
   display: block;
   width: 100%;
