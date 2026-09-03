@@ -2,7 +2,7 @@ import type { ItemDto, ItemPatch } from '~~/shared/types/item'
 import type { Fetched } from '~~/shared/types/fetched'
 import type { LocalItem } from '~/utils/offline/local-database'
 import { requestFlush } from '~/utils/offline/flush-signal'
-import { isNetworkError, REQUEST_TIMEOUT_MS } from '~/utils/offline/sync-runner'
+import { isNetworkError, withinTimeout } from '~/utils/offline/sync-runner'
 import {
   lastFetchedAt,
   mergeServerItems,
@@ -95,12 +95,14 @@ export function useItemStore() {
     if (fetching.value) return false
     fetching.value = true
     try {
-      const list = await request<Fetched<ItemDto[]>>('/api/items', {
-        query: { status: 'all', sort: 'created' },
-        // 応答が返らないままだと、以後の取り直しが二度と走らない（fetching が
-        // 立ったまま）。送信と同じ上限で区切る
-        timeout: REQUEST_TIMEOUT_MS,
-      })
+      // 応答が返らないままだと、以後の取り直しが二度と走らない（fetching が
+      // 立ったまま）。送信と同じ上限で、待つ側からも区切る
+      const list = await withinTimeout((signal) =>
+        request<Fetched<ItemDto[]>>('/api/items', {
+          query: { status: 'all', sort: 'created' },
+          signal,
+        }),
+      )
       const now = new Date()
 
       if (import.meta.client) {

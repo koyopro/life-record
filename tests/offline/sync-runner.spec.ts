@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PendingOperation } from '~/utils/offline/local-database'
-import { runOperation, withSendTimeout } from '~/utils/offline/sync-runner'
+import { runOperation, withSendTimeout, withinTimeout } from '~/utils/offline/sync-runner'
 import { fakeServer, httpError, itemDto, networkError } from '../helpers'
 
 function operation(overrides: Partial<PendingOperation>): PendingOperation {
@@ -167,6 +167,27 @@ describe('sync-runner', () => {
 
       await runOperation(operation({}), withSendTimeout(stuck, 5))
 
+      expect(signal?.aborted).toBe(true)
+    })
+
+    /**
+     * 取り直し（GET）も同じ守りが要る。ofetch の `timeout` は通信を止める
+     * 合図しか持たないので、**合図を無視する fetch**（WebView の詰まった
+     * fetch）に当たると応答も失敗も返らない。その約束を待っている側
+     * （送信の1本の列、取り直し中の印）ごと止まり、アプリを開き直すまで
+     * 同期が動かなくなる。
+     */
+    it('取り直しも、合図を無視されたら待つのをやめる', async () => {
+      let signal: AbortSignal | undefined
+      // 止める合図を受け取っても終わらない通信
+      const ignoresAbort = (given: AbortSignal) => {
+        signal = given
+        return new Promise<never>(() => {})
+      }
+
+      await expect(withinTimeout(ignoresAbort, 5)).rejects.toThrow(
+        '終わりませんでした',
+      )
       expect(signal?.aborted).toBe(true)
     })
 

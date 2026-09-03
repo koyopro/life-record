@@ -20,7 +20,7 @@ import {
 } from '~/utils/offline/body-actions'
 import { requestFlush } from '~/utils/offline/flush-signal'
 import { listOperations, type SectionSavePayload } from '~/utils/offline/sync-queue'
-import { isNetworkError, REQUEST_TIMEOUT_MS } from '~/utils/offline/sync-runner'
+import { isNetworkError, withinTimeout } from '~/utils/offline/sync-runner'
 
 /**
  * Item の詳細（作業記録＝Section）の置き場。
@@ -203,9 +203,9 @@ export function useItemDetailStore() {
       await reload(target)
 
       try {
-        const detail = await $fetch<Fetched<ItemDetailDto>>(`/api/items/${target}`, {
-          timeout: REQUEST_TIMEOUT_MS,
-        })
+        const detail = await withinTimeout((signal) =>
+          $fetch<Fetched<ItemDetailDto>>(`/api/items/${target}`, { signal }),
+        )
         await mergeServerSections(target, detail.data.sections, detail.fetchedAt)
         await reload(target)
         error.value = null

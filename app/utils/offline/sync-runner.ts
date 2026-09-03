@@ -67,39 +67,48 @@ export type RequestFn = (path: string, options?: RequestOptions) => Promise<unkn
 export const REQUEST_TIMEOUT_MS = 30_000
 
 /**
- * 送信に上限を付ける。
+ * 1回の往復に上限を付ける（送信・取り直しの両方で使う）。
  *
  * 打ち切りは2重にする。`signal` で実際の通信を止めた上で、**待つのをやめる
  * 側も自分で区切る**。止める合図を無視する実装（WebView の詰まった fetch）に
- * 当たっても、列は必ず先へ進む。
+ * 当たっても、待っている側は必ず先へ進む。
+ *
+ * ofetch の `timeout` は前者（`signal`）しか持たない。合図を無視されると
+ * 応答も失敗も返らないままになり、**その約束を待っている処理ごと止まる**。
+ * 送信の列（`useSyncQueue` の1本の列）や、取り直し中の印（`fetching`）が
+ * その約束を待っているため、1つ詰まるとアプリを開き直すまで同期が動かない。
  *
  * 応答が返らなかったのと同じ形（status を持たないエラー）で投げるので、
  * 一時的な失敗として送り直しの対象になる（`classify`）。
  */
+export async function withinTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  ms: number = REQUEST_TIMEOUT_MS,
+): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const limit = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new TypeError(`通信が ${Math.round(ms / 1000)} 秒で終わりませんでした`))
+    }, ms)
+  })
+
+  try {
+    return await Promise.race([run(controller.signal), limit])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 送信に上限を付ける（`withinTimeout` を送信の形に合わせたもの）。 */
 export function withSendTimeout(
   request: RequestFn,
   ms: number = REQUEST_TIMEOUT_MS,
 ): RequestFn {
-  return async (path, options) => {
-    const controller = new AbortController()
-    let timer: ReturnType<typeof setTimeout> | undefined
-
-    const limit = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        controller.abort()
-        reject(new TypeError(`送信が ${Math.round(ms / 1000)} 秒で終わりませんでした`))
-      }, ms)
-    })
-
-    try {
-      return await Promise.race([
-        request(path, { ...options, signal: controller.signal }),
-        limit,
-      ])
-    } finally {
-      clearTimeout(timer)
-    }
-  }
+  return async (path, options) =>
+    await withinTimeout((signal) => request(path, { ...options, signal }), ms)
 }
 
 export async function runOperation(
