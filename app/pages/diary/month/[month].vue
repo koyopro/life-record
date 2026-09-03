@@ -143,17 +143,16 @@ function onDateInput(event: Event) {
 const path = computed(() => diaryMonthPath(month.value))
 
 /*
- * バックリンクはサーバーの部分一致検索に頼っており、手元には無い
- * （検索と同じ制約。docs/12-offline.md）。オフラインでは空で出す。
+ * バックリンクはサーバーの部分一致検索に頼っており、手元では組み立て直せない
+ * （検索と同じ制約。docs/12-offline.md 12.9）。そのぶん**前回の内容を控える**
+ * ので、一度見た月へ戻ったときは取り直しを待たずにそのまま出る
+ * （オフラインでも、最後に見た内容までは読める）。
  */
-const {
-  data: backlinks,
-  status: backlinkStatus,
-  refresh: refreshBacklinks,
-} = useFetch<Backlink[]>('/api/backlinks', {
-  query: computed(() => ({ path: path.value })),
-  default: () => [],
-})
+const backlinkStore = useBacklinkStore()
+const { pending: backlinksPending, refresh: refreshBacklinks } = backlinkStore.track(path)
+
+/** 控えを持っていれば、それがそのまま画面に出るもの。 */
+const backlinks = computed<Backlink[]>(() => backlinkStore.linksOf(path.value) ?? [])
 
 const KIND_LABELS: Record<Backlink['kind'], string> = {
   item: 'メモ',
@@ -372,7 +371,7 @@ onActivated(() => void refreshBacklinks())
         </li>
       </ul>
 
-      <p v-else-if="backlinkStatus === 'pending'" class="page__placeholder">
+      <p v-else-if="backlinksPending" class="page__placeholder">
         読み込み中…
       </p>
 
