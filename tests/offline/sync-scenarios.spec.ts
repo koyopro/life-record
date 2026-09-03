@@ -14,7 +14,7 @@ import {
   removeTodos,
   restoreTodos,
 } from '~/utils/offline/todo-actions'
-import { listOperations } from '~/utils/offline/sync-queue'
+import { MAX_ATTEMPTS, listOperations } from '~/utils/offline/sync-queue'
 import { drainQueue } from '~/utils/offline/sync-engine'
 import {
   FRESH_FETCH,
@@ -225,6 +225,37 @@ describe('オフラインでの操作', () => {
     const result = await sync(remote)
     expect(result).toEqual({ sent: 0, stoppedBy: 'retry' })
     expect((await listOperations()).length).toBe(3)
+  })
+
+  /**
+   * 電波の無いところに長くいても、繋がれば送られる（docs/12-offline.md 12.7）。
+   *
+   * 届いていない失敗まで回数で諦めていたため、一覧での完了・削除が数回の
+   * 送り直しで「送れていません」になり、手で押し直すまで止まっていた。
+   */
+  it('オフラインが長引いても諦めず、繋がったときにまとめて送る', async () => {
+    const first = itemDto({ title: '完了にするタスク' })
+    const second = itemDto({ title: '消すタスク' })
+    const remote = server([first, second])
+    await mergeServerItems([first, second], FRESH_FETCH)
+
+    remote.down = true
+    await patchTodos([first.id], { status: 'closed' })
+    await removeTodos([second.id])
+
+    // 送り直しの上限（5回）を超えて失敗させる
+    for (let i = 0; i < MAX_ATTEMPTS + 2; i += 1) await sync(remote)
+
+    const waiting = await listOperations()
+    expect(waiting.length).toBe(2)
+    expect(waiting.every((operation) => !operation.givenUp)).toBe(true)
+
+    remote.down = false
+    await sync(remote)
+
+    expect(await listOperations()).toEqual([])
+    expect(remote.items.get(first.id)?.status).toBe('closed')
+    expect(remote.items.has(second.id)).toBe(false)
   })
 
   it('メモを直してから消し、取り消しても、その変更は未同期のまま残る', async () => {

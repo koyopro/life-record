@@ -83,14 +83,21 @@ export function useSync() {
   }
 
   /**
-   * 列を流す。
+   * 列を流す。走っている間は重ねて走らせない。
    *
-   * ブラウザがオフラインだと分かっているときは何もしない。送っても失敗する
-   * だけで、失敗の回数を数えてしまう（回数切れで諦めてしまう）ため。
+   * **`navigator.onLine` で止めない。** 以前は「オフラインだと分かっている
+   * 間は送らない」（失敗の回数を数えて諦めてしまうため）としていたが、
+   * この印は当てにならない。macOS アプリの WebView では実際には繋がって
+   * いるのにオフラインと言うことがあり、そうなると**アプリを開き直すまで
+   * 何ひとつ送られない**（起動時に読み直すまで印が変わらないため）。
+   *
+   * 届かない失敗で諦めないようにした（`recordFailure` の `offline`）ので、
+   * 数えて困ることもない。本当にオフラインなら1回失敗して間隔が空くだけで、
+   * 投げ続けることにはならない。
    */
   async function flush(): Promise<void> {
     if (!import.meta.client) return
-    if (running || !browserOnline.value) return
+    if (running) return
 
     running = true
     syncing.value = true
@@ -111,6 +118,9 @@ export function useSync() {
         },
         onReachable: (value) => {
           reachable.value = value
+          // 送れたのだから繋がっている。`navigator.onLine` が
+          // 「オフライン」のまま固まっていたら、ここで直す
+          if (value) browserOnline.value = true
         },
         onError: (message) => {
           lastError.value = message

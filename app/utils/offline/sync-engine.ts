@@ -163,8 +163,12 @@ export async function applyOutcome(
     }
 
     case 'retry': {
-      // 消さずに残す。次に送ってよい時刻だけ後ろへ倒す
-      await recordFailure(operation.seq, outcome.message, { now: now() })
+      // 消さずに残す。次に送ってよい時刻だけ後ろへ倒す。
+      // 届いていない失敗は回数で諦めない（recordFailure の offline）
+      await recordFailure(operation.seq, outcome.message, {
+        offline: outcome.offline,
+        now: now(),
+      })
       hooks.onError?.(outcome.message)
 
       /*

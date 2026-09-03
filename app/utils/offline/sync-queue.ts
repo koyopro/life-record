@@ -226,14 +226,19 @@ export async function removeOperation(seq: number): Promise<void> {
 /**
  * 送信に失敗した。操作は消さず、次に送る時刻を後ろへ倒す。
  *
- * 一時的なエラー（通信断・サーバーの5xx）は間隔を空けて送り直し、
+ * 一時的なエラー（サーバーの5xx・認証切れ）は間隔を空けて送り直し、
  * 決着しないもの（内容が不正・回数切れ）は自動での送り直しをやめて
  * UI から手で送り直せるようにする。
+ *
+ * **サーバーへ届いていない失敗（`offline`）だけは、何度めでも諦めない。**
+ * 届かないのはこちらの回線の話で、送る内容の問題ではない。諦めてしまうと、
+ * 電波の無いところに数分いただけで手で送り直すまで止まってしまう
+ * （間隔は伸び続けるので、投げ続けることにはならない）。
  */
 export async function recordFailure(
   seq: number,
   message: string,
-  options: { permanent?: boolean; now?: Date } = {},
+  options: { permanent?: boolean; offline?: boolean; now?: Date } = {},
 ): Promise<void> {
   const now = options.now ?? new Date()
   const db = await openLocalDatabase()
@@ -243,11 +248,14 @@ export async function recordFailure(
   if (operation) {
     const attempts = operation.attempts + 1
     const delay = RETRY_DELAYS_MS[Math.min(attempts - 1, RETRY_DELAYS_MS.length - 1)]!
+    const givenUp =
+      Boolean(options.permanent) ||
+      (!options.offline && attempts >= MAX_ATTEMPTS)
     await tx.store.put({
       ...operation,
       attempts,
       lastError: message,
-      givenUp: Boolean(options.permanent) || attempts >= MAX_ATTEMPTS,
+      givenUp,
       nextAttemptAt: new Date(now.getTime() + delay).toISOString(),
     })
   }

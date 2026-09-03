@@ -116,6 +116,45 @@ describe('SyncQueue', () => {
     expect((await nextOperation(waiting))?.payload).toMatchObject({ date: '2026-08-19' })
   })
 
+  /**
+   * 届いていない失敗（通信断）で諦めると、電波の無いところに数分いただけで
+   * 手で送り直すまで止まってしまう（docs/12-offline.md 12.7）。
+   */
+  it('サーバーへ届いていない失敗は、何度めでも諦めない', async () => {
+    const now = new Date('2026-08-18T00:00:00.000Z')
+    const operation = await enqueueOperation(
+      { kind: 'delete', itemIds: ['a'], payload: { id: 'a' } },
+      now,
+    )
+
+    for (let i = 0; i < MAX_ATTEMPTS + 3; i += 1) {
+      await recordFailure(operation.seq, '通信できませんでした', {
+        offline: true,
+        now,
+      })
+    }
+
+    const [stored] = await listOperations()
+    expect(stored?.attempts).toBe(MAX_ATTEMPTS + 3)
+    expect(stored?.givenUp).toBe(false)
+    // 間隔は伸びきったところで頭打ちになる（10分）
+    expect(stored?.nextAttemptAt).toBe(new Date(now.getTime() + 600_000).toISOString())
+  })
+
+  it('答えの返ってきた失敗は、回数切れで諦める', async () => {
+    const operation = await enqueueOperation({
+      kind: 'delete',
+      itemIds: ['a'],
+      payload: { id: 'a' },
+    })
+
+    for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
+      await recordFailure(operation.seq, 'サーバーが応答しませんでした')
+    }
+
+    expect((await listOperations())[0]?.givenUp).toBe(true)
+  })
+
   it('失敗しても操作は消さず、回数を数える', async () => {
     const operation = await enqueueOperation({
       kind: 'delete',
