@@ -129,6 +129,12 @@ describe('埋め込みの差し込み', () => {
     expect(inserted).toMatchObject({ index: 1, added: 1 })
   })
 
+  it('一度も書いていない本文は、その1行が埋め込みになる', () => {
+    const inserted = insertIframeLines([''], null, url)
+    expect(inserted.lines).toEqual([notation])
+    expect(inserted).toMatchObject({ index: 0, added: 0 })
+  })
+
   it('何も書かれていない行は、その行が埋め込みになる', () => {
     const inserted = insertIframeLines(['メモ', ''], { index: 1, offset: 0 }, url)
     expect(inserted.lines).toEqual(['メモ', notation])

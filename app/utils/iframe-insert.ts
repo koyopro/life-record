@@ -34,6 +34,14 @@ export function insertIframeLines(
   const notation = iframeNotation(url)
 
   if (!at || at.index < 0 || at.index >= lines.length) {
+    /*
+     * 一度も書いていない本文（空の1行）は、その行を埋め込みにする。
+     * 足すだけにすると、埋め込みの上に空行が1つ残る
+     * （タスクのリンクの差し込みと同じ扱い。`insertAtCaret`）。
+     */
+    if (lines.length === 1 && lines[0] === '') {
+      return { lines: [notation], index: 0, added: 0 }
+    }
     lines.push(notation)
     return { lines, index: lines.length - 1, added: 1 }
   }
