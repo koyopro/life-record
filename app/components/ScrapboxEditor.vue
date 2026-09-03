@@ -12,6 +12,7 @@ import {
   dropsIndentOnEnter,
   imagesIn,
   indentOf,
+  isIframeUrl,
   linesFromInput,
   parseScrapbox,
 } from '~~/shared/utils/scrapbox/parse'
@@ -21,6 +22,7 @@ import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
 import { caretAfterSplit } from '~/utils/caret-shift'
 import { insertImageLines, type ImageInsert } from '~/utils/image-insert'
+import { insertIframeLines } from '~/utils/iframe-insert'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import {
   itemIdFromUrl,
@@ -125,6 +127,24 @@ const activeImages = computed(() =>
  * 下限として当てる。敷いた画像に大きさが入れば、そちらが高さを決める。
  */
 const mediaFloor = ref(0)
+/**
+ * 編集中の行に残しておく高さ（px）。残すものが無ければ null。
+ *
+ * カーソルを置いた行は記法をそのままのテキストに戻すため、そのままだと
+ * 絵や箱のぶんの高さが消え、**その行より下がまとめて上がってしまう**。
+ *
+ * - 画像の行 … 大きさが分からないので、表示のまま測った高さ（`mediaFloor`）
+ * - 埋め込みの行 … 高さは記法から決まっているので、それをそのまま使う。
+ *   `iframe` は敷き直すと外の頁を読み直してしまうため、**中身は敷かず
+ *   高さだけを取る**（打つたびに読み込みが走ると編集にならない）
+ */
+const editingFloor = computed(() => {
+  const line = activeLine.value
+  if (line?.type === 'iframe') return line.height
+  if (activeImages.value !== '' && mediaFloor.value > 0) return mediaFloor.value
+  return null
+})
+
 /**
  * 入力欄。行ごとに作り直さず、1つを使い回す。
  *
@@ -1923,6 +1943,66 @@ async function resumeEditing(at: CaretPosition, lines: string[]) {
   await activate(at.index, at.offset, next)
 }
 
+// --- 埋め込み（docs/11-scrapbox-notation.md 11.12） ----------------------
+//
+// 任意の外部ページを本文に埋め込む。記法（`iframe:URL`）は手で書いてもよいが、
+// URL を入れるだけで済むように足元にも入口を置く（画像と同じ考え方）。
+
+/** URL の入力欄を出しているか。 */
+const iframeOpen = ref(false)
+const iframeUrl = ref('')
+const iframeError = ref('')
+const iframeInput = ref<HTMLInputElement | null>(null)
+
+async function openIframeForm() {
+  /*
+   * ボタンを押した時点で入力欄からフォーカスが外れ、activeIndex は null に
+   * なっている。差し込む位置を、外れる直前に控えた位置（lastCaret）から
+   * 決められるようにしておく（画像と同じ。`caretNow`）。
+   */
+  captureCaret()
+  iframeError.value = ''
+  iframeOpen.value = true
+  await nextTick()
+  iframeInput.value?.focus()
+}
+
+function closeIframeForm() {
+  iframeOpen.value = false
+  iframeUrl.value = ''
+  iframeError.value = ''
+}
+
+/**
+ * 入れた URL を埋め込みの行として差し込む。
+ *
+ * URL は `http(s)` のものだけを受ける（記法として認めるものと同じ判定
+ * `isIframeUrl`）。**特定のドメインだけを許す作りにはしない。**
+ * 通らないものは差し込まず、その場で伝える（黙って普通の文字の行に
+ * なると、なぜ埋め込みにならないのか分からない）。
+ */
+function addIframe() {
+  if (locked.value) return
+
+  const url = iframeUrl.value.trim()
+  if (!isIframeUrl(url)) {
+    iframeError.value = 'http:// または https:// で始まる URL を入れてください'
+    return
+  }
+
+  const inserted = insertIframeLines(rawLines.value, caretNow(), url)
+  lastCaret = null
+  commit(inserted.lines)
+  closeIframeForm()
+
+  /*
+   * 入れた埋め込みの行は編集状態にしない。カーソルを置くと記法が
+   * そのままのテキストとして出るので、入れた直後に見えるのが URL の
+   * 文字だけになってしまう（入れた人が見たいのは埋め込みそのもの）。
+   */
+  deactivate()
+}
+
 // --- 他のタスクへのリンク（ドラッグ＆ドロップ） ---------------------------
 //
 // 日記の「この日にやったこと」などから Item をドラッグすると、開かずに
@@ -2094,9 +2174,9 @@ defineExpose({
         外枠は表示側の行と同じクラス・同じ字下げにする。行頭は入力欄に
         入れず余白で表すため、両者が揃っていないと文字の開始位置がずれる。
 
-        高さの下限（`mediaFloor`）は、敷いた画像に大きさが入るまでのつなぎ。
-        画像を敷いている間だけ当て、行から画像が消えたら外す（空いたままの
-        余白が残らないように）。
+        高さの下限（`editingFloor`）は、画像なら敷いた画像に大きさが入るまでの
+        つなぎ、埋め込みなら記法から決まる高さ。残すものが無ければ当てない
+        （空いたままの余白が残らないように）。
       -->
       <div
         v-show="activeIndex !== null"
@@ -2108,7 +2188,7 @@ defineExpose({
         :style="{
           order: activeIndex ?? 0,
           '--sb-indent': activeLine?.indent ?? 0,
-          minHeight: activeImages !== '' && mediaFloor > 0 ? `${mediaFloor}px` : undefined,
+          minHeight: editingFloor !== null ? `${editingFloor}px` : undefined,
         }"
         :data-line-index="activeIndex ?? undefined"
       >
@@ -2270,6 +2350,46 @@ defineExpose({
         multiple
         @change="onPick"
       />
+
+      <!--
+        埋め込み（docs/11-scrapbox-notation.md 11.12）。
+        記法（`iframe:URL`）を覚えていなくても、URL を入れるだけで足せる
+        ようにする。画像の追加と同じく、押せないときも置いたままにする。
+      -->
+      <button
+        v-if="!iframeOpen"
+        type="button"
+        class="editor__image"
+        :disabled="locked"
+        @click="openIframeForm"
+      >
+        iframeを追加
+      </button>
+
+      <!--
+        URL の入力。`confirm()`/`prompt()` は macOS アプリでは出ない
+        （docs/16-macos-app.md 16.8）ため、本文の足元にそのまま置く。
+      -->
+      <form v-else class="editor__embed" @submit.prevent="addIframe">
+        <input
+          ref="iframeInput"
+          v-model="iframeUrl"
+          class="editor__embed-url"
+          type="url"
+          inputmode="url"
+          placeholder="https://..."
+          aria-label="埋め込む URL"
+          @keydown.esc.prevent="closeIframeForm"
+        />
+        <button type="submit" class="editor__embed-add">追加</button>
+        <button type="button" class="editor__image" @click="closeIframeForm">
+          キャンセル
+        </button>
+      </form>
+
+      <span v-if="iframeError" class="editor__error" role="alert">
+        {{ iframeError }}
+      </span>
     </footer>
   </div>
 </template>
@@ -2455,6 +2575,8 @@ defineExpose({
   order: 9999;
   display: flex;
   align-items: center;
+  /* 埋め込みの URL 入力が並ぶと横に長い。狭い画面では折り返す */
+  flex-wrap: wrap;
   gap: 0.5rem;
   /* margin-top: auto だと本文が短いときに1行を超えて余白が広がるため、固定値にする */
   margin-top: 0.5rem;
@@ -2481,6 +2603,41 @@ defineExpose({
 
 .editor__picker {
   display: none;
+}
+
+/* 埋め込む URL の入力（足元に出す小さな入力欄） */
+.editor__embed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* 入力欄が縮めるようにしておく（狭い画面で枠からはみ出させない） */
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.editor__embed-url {
+  font: inherit;
+  font-size: 0.75rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 1.75rem;
+  padding: 0 0.375rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: inherit;
+}
+
+.editor__embed-add {
+  font: inherit;
+  font-size: 0.75rem;
+  min-height: 1.75rem;
+  padding: 0 0.5rem;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent-text);
+  cursor: pointer;
 }
 
 .editor__input {
@@ -2896,6 +3053,39 @@ defineExpose({
      縦横比が変わって潰れて見えるため。縦長の画像は 300px を超えて伸びる */
   height: auto;
   max-height: none;
+}
+
+/*
+ * 埋め込み（`iframe:URL`、docs/11-scrapbox-notation.md 11.12）。
+ *
+ * 横幅は本文の幅いっぱい。高さは記法から決まる値を style で受ける。
+ * 引用やコードブロックと同じく、リストの中では箱ごと字下げの分だけ
+ * 右へ寄せる（文字だけを詰めると枠が外へ広がる）。
+ */
+.editor :deep(.sb-line--iframe) {
+  margin-left: calc(var(--sb-indent, 0) * var(--sb-step));
+  /* 中身は箱そのものなので、行の文字の余白（字下げ）は要らない */
+  padding-left: 0;
+}
+
+/*
+ * 箱ごと右へ寄せた分、箇条書きの中黒を箱のすぐ左へ置き直す
+ * （そのままだと中黒が字下げの2倍のところ＝箱の中に入ってしまう。
+ * コードブロックの見出しと同じ直し方）。
+ */
+.editor :deep(.sb-line--iframe.sb-line--indented)::before {
+  left: -0.75rem;
+}
+
+.editor :deep(.sb-iframe) {
+  display: block;
+  width: 100%;
+  /* 高さは style で入る（既定は IFRAME_DEFAULT_HEIGHT） */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  /* 中の頁の色をそのまま出すので、角丸から中身がはみ出さないようにする */
+  overflow: hidden;
 }
 
 /*

@@ -1,5 +1,5 @@
 import { parseScrapbox } from './parse'
-import type { Inline, Line } from './types'
+import type { IframeLine, Inline, Line } from './types'
 
 /**
  * AST から HTML を作る（docs/11-scrapbox-notation.md）。
@@ -70,6 +70,8 @@ export function renderLine(line: Line, options: RenderOptions = {}): string {
     case 'rule':
       // ハイフンは線そのものになるので、文字としては出さない
       return '<hr class="sb-rule" />'
+    case 'iframe':
+      return renderIframe(line)
     case 'tableHeader':
       // `table:` は行頭として余白に置き換えるので、ここでは名前だけを出す
       return `<span class="sb-table__name">${escapeHtml(line.content) || '&nbsp;'}</span>`
@@ -87,6 +89,40 @@ export function renderLine(line: Line, options: RenderOptions = {}): string {
       return html || '&nbsp;'
     }
   }
+}
+
+/**
+ * 埋め込み（`iframe:URL`）を出す（docs/11-scrapbox-notation.md 11.12）。
+ *
+ * URL は**属性としてだけ**渡す。ユーザーが書いた文字列なので、エスケープの
+ * うえで `src` に入れ、HTML として解釈させる余地を作らない（11.10）。
+ * パーサーは `http(s)` 以外を埋め込みにしないが、ここでも通す URL を
+ * 確かめる（描画側だけを見て安全と分かるようにするため）。
+ *
+ * 横幅は本文の幅いっぱい（CSS）。高さは行に書かれた値をそのまま px で
+ * 入れる。数値としてしか作らないので属性に入れても安全。
+ */
+function renderIframe(line: IframeLine): string {
+  const src = safeUrl(line.url)
+  // 認めない URL は、書かれたままの文字として出す（リンクと同じ扱い）
+  if (!src) return escapeHtml(line.raw)
+
+  const url = escapeHtml(src)
+  return (
+    `<iframe class="sb-iframe" src="${url}" style="height:${line.height}px"` +
+    ` title="${url}" loading="lazy"` +
+    /*
+     * 外の頁を自分の頁の中で動かすので、こちら側に手を出せる権限は渡さない。
+     *
+     * - `allow-scripts` `allow-same-origin`: 中の頁がふつうに動くために要る
+     *   （埋め込み先は別オリジンなので、`allow-same-origin` で渡すのは
+     *   「その頁自身のオリジン」＝ もともと持っているものだけ）
+     * - `allow-forms` `allow-popups`: 中のフォーム送信とリンクの新規タブ
+     * - 渡さないもの: `allow-top-navigation`（こちらの画面を勝手に飛ばす）、
+     *   `allow-modals`、`allow-popups-to-escape-sandbox`
+     */
+    ` sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`
+  )
 }
 
 /** 行の外枠に付けるクラス。 */
@@ -221,6 +257,10 @@ export function toPlainText(input: string): string {
         case 'quote':
         case 'text':
           return `${' '.repeat(line.indent)}${plainInline(line.nodes)}`
+        // 埋め込みは絵として出せないので、書かれた URL をそのまま残す
+        // （`[URL]` のリンクが URL の文字として出るのと同じ）
+        case 'iframe':
+          return `${' '.repeat(line.indent)}${line.url}`
       }
     })
     .join('\n')

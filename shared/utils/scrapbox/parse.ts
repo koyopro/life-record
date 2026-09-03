@@ -188,6 +188,22 @@ export function parseScrapbox(input: string): Line[] {
       continue
     }
 
+    /*
+     * 埋め込み（`iframe:URL`）。
+     *
+     * 中身が `http(s)` の URL でなければ、行ごと普通の文字として扱う
+     * （`----` が4つ未満ならただの文字になるのと同じ）。危ないスキームを
+     * 埋め込みにしないためと、`iframe:` で始まる普通の文を壊さないため。
+     */
+    if (rest.startsWith(IFRAME_MARKER)) {
+      const line = split(raw, indent + IFRAME_MARKER.length)
+      const iframe = parseIframeContent(line.content)
+      if (iframe) {
+        lines.push({ ...line, type: 'iframe', indent, ...iframe })
+        continue
+      }
+    }
+
     // 引用の `>` と、それに続く空白ひとつまでが行頭
     const quote = /^> ?/.exec(rest)
     if (quote) {
@@ -220,6 +236,70 @@ export function parseScrapbox(input: string): Line[] {
 
 const CODE_MARKER = 'code:'
 const TABLE_MARKER = 'table:'
+
+/**
+ * 外部の Web ページを埋め込む行（docs/11-scrapbox-notation.md 11.12）。
+ *
+ * `code:` `table:` と同じ「行の種類を決める行頭」の形にしている。
+ * 角括弧の `[URL]` は既に外部リンクなので、そちらには寄せられない。
+ */
+const IFRAME_MARKER = 'iframe:'
+
+/**
+ * 埋め込みの既定の高さ（px）。
+ *
+ * 横幅は本文の幅いっぱいに広げるので、決めるのは高さだけ。行に
+ * `height=<数値>` と書けば変えられる（IframeLine）。
+ */
+export const IFRAME_DEFAULT_HEIGHT = 420
+
+/**
+ * 高さに認める範囲（px）。
+ *
+ * 書き間違いで本文が丸ごと押し流されたり、線1本に潰れたりしないよう
+ * 収める。範囲の外は既定の高さにする。
+ */
+const IFRAME_MIN_HEIGHT = 80
+const IFRAME_MAX_HEIGHT = 2000
+
+/**
+ * 埋め込みに使える URL か。
+ *
+ * `http(s)` のものだけを通す。`javascript:` のようなスキームや、アプリの
+ * 相対パス（自分自身を入れ子にするだけ）は埋め込みにしない
+ * （docs/11-scrapbox-notation.md 11.10）。**特定のドメインだけを許す
+ * 作りにはしない**（任意の外部ページを埋め込むための記法のため）。
+ */
+export function isIframeUrl(value: string): boolean {
+  return URL_PATTERN.test(value.trim())
+}
+
+/** 埋め込みの記法。URL をそのまま行の中身にする。 */
+export function iframeNotation(url: string): string {
+  return `${IFRAME_MARKER}${url.trim()}`
+}
+
+/**
+ * 埋め込みの行の中身（URL と表示の指定）を読む。
+ *
+ * 指定は `key=value` の並びにしてあり、知らないものは無視する。幅や表示の
+ * 設定を後から足すときに、記法と AST の形を変えずに済ませるため。
+ * URL が `http(s)` でなければ null（呼び出し側で普通の文字の行として扱う）。
+ */
+function parseIframeContent(content: string): { url: string; height: number } | null {
+  const [url, ...options] = content.trim().split(/\s+/)
+  if (!url || !isIframeUrl(url)) return null
+
+  let height = IFRAME_DEFAULT_HEIGHT
+  for (const option of options) {
+    const match = /^height=(\d{1,4})$/.exec(option)
+    if (!match) continue
+    const value = Number(match[1])
+    if (value >= IFRAME_MIN_HEIGHT && value <= IFRAME_MAX_HEIGHT) height = value
+  }
+
+  return { url, height }
+}
 
 /**
  * 桁ごとの幅（全角を2・半角を1として数えた文字数）。
@@ -317,9 +397,12 @@ export function codeBodyOf(lines: Line[], index: number): string {
  * もう1つのブロックにならないよう落とし、代わりに中身と同じ基準の
  * 字下げ（+1）にする。そうしないと、空のまま `Enter` や `Delete` を
  * 押しただけでブロックを抜けてしまう（空行の判定を参照）。
+ *
+ * `iframe:` も落とすが、こちらは中身を持たない1行の記法なので、字下げは
+ * 足さない（続きの行は埋め込みの下に書く普通の行になる）。
  */
 export function continuationPrefix(line: Line | null): string {
-  const stripped = (line?.prefix ?? '').replace(/(?:code:|table:)$/, '')
+  const stripped = (line?.prefix ?? '').replace(/(?:code:|table:|iframe:)$/, '')
   const header = line?.type === 'codeHeader' || line?.type === 'tableHeader'
   return header ? `${stripped} ` : stripped
 }
@@ -365,7 +448,7 @@ export function linesFromInput(text: string, line: Line | null): string[] {
  * 意味の単位で外す。
  */
 export function dropPrefixUnit(prefix: string): string {
-  const marker = /(?:> ?|code:|table:)$/.exec(prefix)
+  const marker = /(?:> ?|code:|table:|iframe:)$/.exec(prefix)
   if (marker) return prefix.slice(0, -marker[0].length)
   return prefix.slice(0, -1)
 }
