@@ -19,7 +19,8 @@ import type { Line } from '~~/shared/utils/scrapbox/types'
 import { iconInsertion, searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
-import { caretAfterSplit, type LineSplit } from '~/utils/caret-shift'
+import { caretAfterSplit } from '~/utils/caret-shift'
+import { insertImageLines, type ImageInsert } from '~/utils/image-insert'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import {
   itemIdFromUrl,
@@ -1811,67 +1812,20 @@ const filePicker = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
 
 /**
- * 画像を**カーソルのあった位置**へ、1行として差し込む。
+ * 画像を**カーソルのあった位置**へ差し込む（`insertImageLines`）。
  *
- * 行の途中に混ぜると、書きかけの文が画像記法で割られてしまうため、
- * 常に1行として入れる。そのうえで**カーソルの位置で行を割り**、その間へ
- * 置く。空行にカーソルがあればその行がそのまま画像になり、書きかけの行なら
- * カーソルより後ろは画像の下へ回る。
- *
- * 行頭（字下げ・引用）は貼り付けや改行と同じ規則で引き継ぐ
- * （`continuationPrefix`）。位置が分からなければ末尾に足す。
+ * 行の途中では1行として置く（書きかけの文が画像記法で割られないように）が、
+ * **行の末尾ではその行へ続ける**。末尾なら後ろへ回る文字が無く、割ると
+ * 書いた文と画像のあいだに空の改行が入るだけになるため。
  *
  * 差し込んだ後の行と、次の画像を入れる位置（差し込んだ行の次）を返す。
  * 複数枚を順に並べるためと、差し込んだ直後に続きを編集するため。行は
  * `model` が親を往復して戻るまで古いままなので、呼び出し側へ渡す。
  */
-interface ImageInsert {
-  lines: string[]
-  /** 画像の次（続きを書く場所）。 */
-  at: CaretPosition
-  /**
-   * どの行をどこで割ったか。末尾に足したときは割っていないので null。
-   *
-   * 上げている間も書き続けている人のカーソルを、見た目の同じ場所に
-   * 留めるために使う（`caretAfterSplit`）。
-   */
-  split: LineSplit | null
-  /** 差し込みで増えた行数。 */
-  added: number
-}
-
 function insertImageAt(path: string, at: CaretPosition | null): ImageInsert {
-  const lines = [...rawLines.value]
-  const image = `[${path}]`
-
-  if (!at || at.index < 0 || at.index >= lines.length) {
-    lines.push(image)
-    commit(lines)
-    // 末尾に足しただけなので、いまある行の番号は動かない
-    return { lines, at: { index: lines.length, offset: 0 }, split: null, added: 0 }
-  }
-
-  const line = lineAt(lines, at.index)
-  const offset = Math.min(Math.max(at.offset, 0), line.content.length)
-  const before = line.content.slice(0, offset)
-  const after = line.content.slice(offset)
-  const prefix = continuationPrefix(line)
-
-  const replacement = [
-    ...(before ? [line.prefix + before] : []),
-    prefix + image,
-    ...(after ? [prefix + after] : []),
-  ]
-  lines.splice(at.index, 1, ...replacement)
-  commit(lines)
-
-  return {
-    lines,
-    // 差し込んだ画像の行（before があれば1つ下）の、さらに次
-    at: { index: at.index + (before ? 1 : 0) + 1, offset: 0 },
-    split: { index: at.index, offset, hasBefore: Boolean(before) },
-    added: replacement.length - 1,
-  }
+  const inserted = insertImageLines(rawLines.value, at, path)
+  commit(inserted.lines)
+  return inserted
 }
 
 /**
