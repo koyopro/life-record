@@ -31,22 +31,89 @@ describe('SyncQueue', () => {
     expect((await nextOperation())?.itemIds).toEqual(['b'])
   })
 
-  it('先頭が待機中なら、後ろを追い越さない', async () => {
+  it('同じ宛先が待機中なら、後ろを追い越さない', async () => {
     const now = new Date('2026-08-18T00:00:00.000Z')
     const head = await enqueueOperation(
-      { kind: 'delete', itemIds: ['a'], payload: { id: 'a' } },
+      { kind: 'patch', itemIds: ['a'], payload: { id: 'a', patch: { status: 'closed' } } },
       now,
     )
-    await enqueueOperation(
-      { kind: 'delete', itemIds: ['b'], payload: { id: 'b' } },
+    const later = await enqueueOperation(
+      { kind: 'delete', itemIds: ['a'], payload: { id: 'a' } },
       new Date(now.getTime() + 1),
     )
 
     await recordFailure(head.seq, '通信できませんでした', { now })
 
-    // 待機が明けるまでは何も返さない（順序を守る）
+    // 待機が明けるまでは、同じ Item の後続も出さない（順序を守る）
     expect(await nextOperation(now)).toBeNull()
+    expect(later.seq).toBeGreaterThan(head.seq)
     expect((await nextOperation(new Date(now.getTime() + 60_000)))?.opId).toBe(head.opId)
+  })
+
+  /**
+   * 詰まった1つの操作が、関係のない変更まで止めない
+   * （docs/12-offline.md 12.7）。列ごと止めていたため、送れないタスクの
+   * 操作があるだけで日記が送られず、●が灰色のまま動かなかった。
+   */
+  it('別の宛先は、待機中の操作を追い越して送る', async () => {
+    const now = new Date('2026-08-18T00:00:00.000Z')
+    const head = await enqueueOperation(
+      { kind: 'patch', itemIds: ['a'], payload: { id: 'a', patch: { status: 'closed' } } },
+      now,
+    )
+    const other = await enqueueOperation(
+      { kind: 'delete', itemIds: ['b'], payload: { id: 'b' } },
+      new Date(now.getTime() + 1),
+    )
+    const diary = await enqueueOperation(
+      {
+        kind: 'diary_save',
+        itemIds: [],
+        payload: { date: '2026-08-18', body: '今日のこと' },
+      },
+      new Date(now.getTime() + 2),
+    )
+
+    await recordFailure(head.seq, 'サーバーが応答しませんでした', { now })
+
+    // 詰まっている操作の待機中（送り直しは1秒後）に見る
+    const waiting = new Date(now.getTime() + 500)
+
+    // 別のタスク → 日記の順に、積んだ順のまま送れる
+    expect((await nextOperation(waiting))?.opId).toBe(other.opId)
+    await removeOperation(other.seq)
+    expect((await nextOperation(waiting))?.opId).toBe(diary.opId)
+
+    // 待機が明ければ、詰まっていた操作も送れる
+    await removeOperation(diary.seq)
+    expect(await nextOperation(waiting)).toBeNull()
+    expect((await nextOperation(new Date(now.getTime() + 60_000)))?.opId).toBe(head.opId)
+  })
+
+  it('同じ日記への操作は、待機中なら追い越さない', async () => {
+    const now = new Date('2026-08-18T00:00:00.000Z')
+    const head = await enqueueOperation(
+      {
+        kind: 'diary_save',
+        itemIds: [],
+        payload: { date: '2026-08-18', body: '書きかけ' },
+      },
+      now,
+    )
+    await enqueueOperation(
+      {
+        kind: 'diary_save',
+        itemIds: [],
+        payload: { date: '2026-08-19', body: '次の日' },
+      },
+      new Date(now.getTime() + 1),
+    )
+
+    await recordFailure(head.seq, 'サーバーが応答しませんでした', { now })
+
+    // 別の日は送れるが、同じ日の後続は待たせる
+    const waiting = new Date(now.getTime() + 500)
+    expect((await nextOperation(waiting))?.payload).toMatchObject({ date: '2026-08-19' })
   })
 
   it('失敗しても操作は消さず、回数を数える', async () => {

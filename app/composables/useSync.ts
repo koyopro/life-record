@@ -156,6 +156,10 @@ export function useSync() {
   /**
    * 次に送り直す時刻へ目覚ましを掛ける。
    * 送るものが無ければ掛けない。
+   *
+   * 起こす時刻は、列の先頭ではなく**いちばん早く送れるようになる操作**に
+   * 合わせる。先頭が10分待ちでも、後ろの操作（別の宛先）はもっと早く
+   * 送れることがあり、先頭に合わせるとその分まで待たせてしまう。
    */
   function scheduleNext(): void {
     if (timer) {
@@ -164,12 +168,11 @@ export function useSync() {
     }
 
     void listOperations().then((operations) => {
-      const head = operations.find((operation) => !operation.givenUp)
-      if (!head) return
-      const delay = Math.max(
-        1_000,
-        new Date(head.nextAttemptAt).getTime() - Date.now(),
-      )
+      const waiting = operations
+        .filter((operation) => !operation.givenUp)
+        .map((operation) => new Date(operation.nextAttemptAt).getTime())
+      if (waiting.length === 0) return
+      const delay = Math.max(1_000, Math.min(...waiting) - Date.now())
       timer = setTimeout(() => {
         timer = null
         void flush()

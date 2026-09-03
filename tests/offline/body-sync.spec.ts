@@ -14,11 +14,12 @@ import {
   sectionsOfItem,
   toLocalSection,
 } from '~/utils/offline/body-repository'
-import { listOperations } from '~/utils/offline/sync-queue'
+import { enqueueOperation, listOperations } from '~/utils/offline/sync-queue'
 import { drainQueue } from '~/utils/offline/sync-engine'
 import { putItem } from '~/utils/offline/todo-repository'
 import {
   fakeServer,
+  httpError,
   itemDto,
   networkError,
   resetLocalDatabase,
@@ -247,6 +248,41 @@ describe('本文の同期', () => {
     expect(stored?.syncState).toBe('synced')
     expect(stored?.body).toBe('前に書いた分と続き')
     expect(stored?.pinned).toBe(false)
+  })
+
+  /**
+   * 詰まった1つの操作が、関係のない変更まで止めない
+   * （docs/12-offline.md 12.7）。
+   *
+   * 以前は列ごと止めていたため、送れないタスクの操作が1つあるだけで日記が
+   * 送られず、日記の●が灰色（未同期）のまま動かなかった。送り直しの間隔は
+   * 最大10分あり、その間じゅう他の変更まで止まる。
+   */
+  it('送れないタスクの操作があっても、日記は送られる', async () => {
+    const remote = server()
+
+    // サーバーが 500 を返し続けるタスクの操作を、日記より前に積んでおく
+    await enqueueOperation({
+      kind: 'patch',
+      itemIds: [ITEM_ID],
+      payload: { id: ITEM_ID, patch: { status: 'closed' }, baseUpdatedAt: null },
+    })
+    await saveDiaryBody(DATE, '今日のこと')
+
+    const flaky = (async (path: string, options?: unknown) => {
+      if (path.startsWith('/api/items/')) throw httpError(500, { message: '落ちています' })
+      return await remote.request(path, options as never)
+    }) as typeof remote.request
+
+    await drainQueue({ request: flaky })
+
+    expect(remote.diaries.get(DATE)).toBe('今日のこと')
+    expect((await getDiary(DATE))?.syncState).toBe('synced')
+
+    // 送れなかったタスクの操作は、列に残って送り直しを待つ
+    const rest = await listOperations()
+    expect(rest.map((operation) => operation.kind)).toEqual(['patch'])
+    expect(rest[0]?.attempts).toBe(1)
   })
 
   it('列から操作が失われても、手元に残った本文は積み直される', async () => {

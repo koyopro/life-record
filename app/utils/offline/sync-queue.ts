@@ -170,18 +170,52 @@ export async function listOperations(): Promise<PendingOperation[]> {
 }
 
 /**
+ * 順序を守る単位（宛先）。
+ *
+ * 同じ対象への操作は積んだ順に送らなければならない。完了にしてすぐ
+ * 取り消す、のような続けざまの操作が入れ替わるためで、守りたいのは
+ * **その1点だけ**。別の対象への操作どうしは互いに関係がない。
+ *
+ * 日記は Item を持たないので、日付そのものが宛先になる。
+ */
+function targetsOf(operation: PendingOperation): string[] {
+  if (operation.kind === 'diary_save') {
+    return [`diary:${(operation.payload as DiarySavePayload).date}`]
+  }
+  return operation.itemIds.map((id) => `item:${id}`)
+}
+
+/**
  * 次に送る操作。
  *
- * 先頭が待機中（送り直しの間隔待ち）なら、後ろを追い越さずに何も返さない。
- * 追い越すと、同じ Item への操作の順序が崩れる。
+ * 待機中（送り直しの間隔待ち）の操作は、**同じ宛先の後続だけ**を押さえる。
+ * 列の先頭で1つ詰まっただけで全部止めると、送れないタスクの操作の後ろで
+ * 日記や別のタスクが待たされ、●が灰色のまま動かなくなる（間隔は最大10分。
+ * その間じゅう、関係のない変更まで送られない）。
+ *
+ * 自動での送り直しをやめた操作（`givenUp`）は飛ばす。手で送り直すまで
+ * 動かないものなので、後続をいつまでも押さえない。
  */
 export async function nextOperation(
   now: Date = new Date(),
 ): Promise<PendingOperation | null> {
-  const operations = await listOperations()
-  const head = operations.find((operation) => !operation.givenUp)
-  if (!head) return null
-  return head.nextAttemptAt <= now.toISOString() ? head : null
+  const stamp = now.toISOString()
+  /** 送れない操作が押さえている宛先。ここへの後続は追い越させない。 */
+  const held = new Set<string>()
+
+  for (const operation of await listOperations()) {
+    if (operation.givenUp) continue
+
+    const targets = targetsOf(operation)
+    if (operation.nextAttemptAt > stamp || targets.some((target) => held.has(target))) {
+      for (const target of targets) held.add(target)
+      continue
+    }
+
+    return operation
+  }
+
+  return null
 }
 
 export async function removeOperation(seq: number): Promise<void> {

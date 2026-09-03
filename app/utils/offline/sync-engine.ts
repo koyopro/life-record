@@ -71,8 +71,9 @@ export interface DrainResult {
 /**
  * 列の先頭から順に送る。
  *
- * 一時的な失敗（通信断・サーバーの5xx）に当たったらそこで止める。
- * 後ろを先に送ると、同じ Item への操作の前後が入れ替わるため。
+ * 順序を守るのは**同じ宛先（Item・日記の日付）への操作どうし**だけ
+ * （`nextOperation`）。1つが送れなくなっても、関係のない宛先は送り進める。
+ * 通信そのものができていないときだけ、その回をまるごと止める。
  */
 export async function drainQueue(hooks: EngineHooks): Promise<DrainResult> {
   const now = hooks.now ?? (() => new Date())
@@ -164,9 +165,23 @@ export async function applyOutcome(
     case 'retry': {
       // 消さずに残す。次に送ってよい時刻だけ後ろへ倒す
       await recordFailure(operation.seq, outcome.message, { now: now() })
-      if (outcome.offline) hooks.onReachable?.(false)
       hooks.onError?.(outcome.message)
-      return true
+
+      /*
+       * サーバーへ届いていないなら（通信できていない）、続けても同じなので
+       * 列ごと止める。
+       *
+       * そうでない失敗（5xx・認証切れなど、応答は返っている）で止めると、
+       * **詰まった1つの操作が関係のない変更まで止める**。次に送ってよい
+       * 時刻は後ろへ倒してあり、`nextOperation` が同じ宛先の後続ごと
+       * 飛ばしてくれるので、この回はほかの宛先を送り進めてよい。
+       * 日記が、送れないタスクの操作の後ろで待たされない。
+       */
+      if (outcome.offline) {
+        hooks.onReachable?.(false)
+        return true
+      }
+      return false
     }
 
     case 'failed': {
@@ -284,7 +299,8 @@ async function handleConflict(
       now,
     })
     await hooks.onLocalChange?.()
-    return true
+    // 間を空けるのはこの Item だけ。関係のない宛先は続けて送る
+    return false
   }
 
   // 本文（作業記録）の操作は取り下げない。メタデータの競合とは別で、
