@@ -388,6 +388,28 @@ function deactivate() {
 }
 
 /**
+ * `Esc` で編集をやめ、**本文からフォーカスも手放す**
+ * （docs/11-scrapbox-notation.md 11.6）。
+ *
+ * 入力欄を隠すだけでは足りない。フォーカスの当たっている要素が消えたとき、
+ * ブラウザによっては最も近い focusable な祖先（`tabindex="-1"` を持つ
+ * 囲み、`.editor`）へフォーカスを移す。囲みは `data-keyboard-surface`
+ * なので、画面側は「まだ入力中」と見なして黙ったままになり、`c` や
+ * `Delete` などが効かない。もう一度 `Esc` を押して初めて外れる（一覧側の
+ * `Esc` が `blur` する）ため、**1度の `Esc` で戻れない**。
+ *
+ * 隠す前にこちらから手放しておけば、どのブラウザでもフォーカスは body に
+ * 戻り、そのまま画面のショートカットが使える。
+ */
+function leaveEditing() {
+  // 先に控えてから外す（deactivate はカーソル位置を入力欄から読む）
+  deactivate()
+  input.value?.blur()
+  // 行をまたぐ選択から抜けてきたときなど、囲み自身が持っている分も外す
+  editorRoot.value?.blur()
+}
+
+/**
  * 入力中の行を model に反映する。
  *
  * `v-model` は使わず、入力欄の値を直接読む。`v-model` と `@input` を
@@ -688,7 +710,7 @@ function onKeydown(event: KeyboardEvent) {
       return onTab(event)
     case 'Escape':
       event.preventDefault()
-      return deactivate()
+      return leaveEditing()
     case '[':
       return onOpenBracket(event)
     case 'd':
