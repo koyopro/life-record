@@ -21,6 +21,12 @@ import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
 import { caretAfterSplit, type LineSplit } from '~/utils/caret-shift'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
+import {
+  itemIdFromUrl,
+  itemLinkText,
+  itemLinkTrigger,
+  searchItemsForLink,
+} from '~/utils/item-link'
 import { writeToClipboard } from '~/utils/clipboard'
 import {
   clampColumn,
@@ -279,7 +285,7 @@ async function activate(
   activeIndex.value = target
   activeLine.value = line
   activeText.value = line.content
-  closeEmojiPicker()
+  closePickers()
   lastDateInsert = null
   lastCaret = null
 
@@ -383,7 +389,7 @@ function deactivate() {
   activeIndex.value = null
   activeLine.value = null
   mediaFloor.value = 0
-  closeEmojiPicker()
+  closePickers()
   lastDateInsert = null
 }
 
@@ -430,7 +436,7 @@ function onInput(event?: Event) {
   // 貼り付けで改行が入ることがあるので、その場合は行を分ける
   // （2行目以降にも行頭を引き継ぐ。linesFromInput を参照）
   if (activeText.value.includes('\n')) {
-    closeEmojiPicker()
+    closePickers()
     const inserted = linesFromInput(activeText.value, activeLine.value)
     lines.splice(index, 1, ...inserted)
     commit(lines)
@@ -446,7 +452,7 @@ function onInput(event?: Event) {
     syncPrefix(lines, index, prefix)
     maybeAutoCloseBracket(previousText)
   }
-  updateEmojiTrigger()
+  updatePickers()
   resize()
 }
 
@@ -624,6 +630,152 @@ function selectEmoji(entry: PickerEntry) {
   closeEmojiPicker()
 }
 
+// --- タスクのリンク候補（`[` で出す） -------------------------------------
+//
+// 日記や作業記録から他のタスクを指すのに、id（UUID）を打つことはできない
+// （docs/11-scrapbox-notation.md 11.11「リンクを書く手間を減らす」）。
+// `[` に続けて題を打つと候補が出て、選ぶと `[/items/<id> 題]` に変わる。
+//
+// 候補は手元（IndexedDB）の Item から引く。サーバーへ聞きに行かないので、
+// オフラインでも打った端から出る（docs/12-offline.md 12.4）。
+
+/** 編集中の行における、候補を出すきっかけになった `[` の位置。 */
+const linkStart = ref<number | null>(null)
+const linkQuery = ref('')
+const linkIndex = ref(0)
+
+const itemStore = useItemStore()
+
+const linkMatches = computed(() =>
+  linkStart.value === null
+    ? []
+    : searchItemsForLink(itemStore.items.value, linkQuery.value),
+)
+
+function closeLinkPicker() {
+  linkStart.value = null
+  linkQuery.value = ''
+  linkIndex.value = 0
+}
+
+/** キャレットの直前の `[` を見て、候補を出すべきか判断する（`itemLinkTrigger`）。 */
+function updateLinkTrigger() {
+  const el = input.value
+  if (!el || activeIndex.value === null || el.selectionStart !== el.selectionEnd) {
+    closeLinkPicker()
+    return
+  }
+
+  const caret = el.selectionStart ?? activeText.value.length
+  const found = itemLinkTrigger(activeText.value, caret)
+  if (!found) {
+    closeLinkPicker()
+    return
+  }
+
+  linkStart.value = found.start
+  linkQuery.value = found.query
+  linkIndex.value = 0
+}
+
+/**
+ * 候補を選び、`[` からキャレットまでをリンクの記法に置き換える。
+ *
+ * すぐ後ろの `]` は `[` を打ったときに自動で足したもの
+ * （`maybeAutoCloseBracket`）なので、一緒に飲み込む。残すと閉じ括弧が
+ * 二重になる。
+ */
+function selectLink(item: { id: string; title: string }) {
+  const start = linkStart.value
+  const el = input.value
+  if (start === null || !el) return
+
+  const caret = el.selectionStart ?? activeText.value.length
+  const value = activeText.value
+  const following = value.slice(caret).replace(/^\]/, '')
+  const inserted = itemLinkText(item)
+
+  replaceActiveLine(value.slice(0, start) + inserted + following)
+
+  const newCaret = start + inserted.length
+  void setCaret(newCaret, newCaret)
+  closeLinkPicker()
+}
+
+// --- 候補（絵文字・タスクのリンク）に共通の扱い ---------------------------
+
+function closePickers() {
+  closeEmojiPicker()
+  closeLinkPicker()
+}
+
+/** キャレットが動いた・文字が入ったあとに、候補を出し直す。 */
+function updatePickers() {
+  updateEmojiTrigger()
+  updateLinkTrigger()
+}
+
+/**
+ * 候補を出している間のキー操作。上下で選び、`Enter` / `Tab` で確定、
+ * `Esc` は候補だけ閉じる（書きかけは残す）。扱ったなら true を返す。
+ *
+ * **見えていないときは横取りしない。** タスクの候補は1件も当たらなければ
+ * 出さないので、そのときの `Enter` は行の分割のまま、`Esc` は編集の終了の
+ * ままにする。`[` は他の記法の始まりでもあり、書いている途中のキーを
+ * 奪うわけにいかない（絵文字の `:` と違うところ）。
+ *
+ * 両方にあてはまるとき（`[:sm` のように）は絵文字を先に見る。
+ */
+function onSuggestKeydown(event: KeyboardEvent): boolean {
+  const open =
+    emojiStart.value !== null
+      ? {
+          // 絵文字は「該当なし」も出すので、候補が0でも見えている
+          visible: true,
+          count: emojiMatches.value.length,
+          index: emojiIndex,
+          close: closeEmojiPicker,
+          select: () => selectEmoji(emojiMatches.value[emojiIndex.value]!),
+        }
+      : linkStart.value !== null
+        ? {
+            visible: linkMatches.value.length > 0,
+            count: linkMatches.value.length,
+            index: linkIndex,
+            close: closeLinkPicker,
+            select: () => selectLink(linkMatches.value[linkIndex.value]!),
+          }
+        : null
+
+  if (!open || !open.visible) return false
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    open.close()
+    return true
+  }
+
+  if (open.count === 0) return false
+
+  switch (event.key) {
+    case 'ArrowDown':
+      event.preventDefault()
+      open.index.value = (open.index.value + 1) % open.count
+      return true
+    case 'ArrowUp':
+      event.preventDefault()
+      open.index.value = (open.index.value - 1 + open.count) % open.count
+      return true
+    case 'Enter':
+    case 'Tab':
+      event.preventDefault()
+      open.select()
+      return true
+  }
+
+  return false
+}
+
 // --- キー操作 -----------------------------------------------------------
 //
 // 日本語入力の変換中は Enter などを横取りしない。変換の確定が
@@ -663,33 +815,9 @@ function onKeydown(event: KeyboardEvent) {
   // 上下キー以外で動いたら、上下移動で保っていた横位置は忘れる
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') desiredColumn = null
 
-  // 絵文字候補を出している間は、上下で選び Enter / Tab で確定する。
-  // 行の分割やインデントなど、通常のキー操作より優先する。
-  if (emojiStart.value !== null) {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      closeEmojiPicker()
-      return
-    }
-    if (emojiMatches.value.length > 0) {
-      switch (event.key) {
-        case 'ArrowDown':
-          event.preventDefault()
-          emojiIndex.value = (emojiIndex.value + 1) % emojiMatches.value.length
-          return
-        case 'ArrowUp':
-          event.preventDefault()
-          emojiIndex.value =
-            (emojiIndex.value - 1 + emojiMatches.value.length) % emojiMatches.value.length
-          return
-        case 'Enter':
-        case 'Tab':
-          event.preventDefault()
-          selectEmoji(emojiMatches.value[emojiIndex.value]!)
-          return
-      }
-    }
-  }
+  // 候補（絵文字・タスクのリンク）を出している間は、そちらが先に受け取る。
+  // 行の分割や字下げより優先する
+  if (onSuggestKeydown(event)) return
 
   switch (event.key) {
     case 'Enter':
@@ -1849,9 +1977,30 @@ async function resumeEditing(at: CaretPosition, lines: string[]) {
 // 「カーソル位置に挿入する」操作なので、テキストカーソルのある場所へ
 // そのままはめ込む。編集中の行が無ければ、画像と同じく末尾に足す。
 
-async function insertItemLink(payload: ItemDragPayload) {
-  const link = `[/items/${payload.id} ${payload.title}]`
+/**
+ * キャレットの位置へ差し込む（選んでいる範囲があれば置き換える）。
+ * 一度も編集していなければカーソル位置が無いので、画像と同じく末尾に足す。
+ */
+function insertAtCaret(text: string) {
+  const el = input.value
+  if (activeIndex.value !== null && el) {
+    const start = el.selectionStart ?? activeText.value.length
+    const end = el.selectionEnd ?? start
+    const value = activeText.value
+    replaceActiveLine(value.slice(0, start) + text + value.slice(end))
+    const caret = start + text.length
+    void setCaret(caret, caret)
+    return
+  }
 
+  const lines = [...rawLines.value]
+  const replaceEmpty = lines.length === 1 && lines[0] === ''
+  if (replaceEmpty) lines.splice(0, 1, text)
+  else lines.splice(lines.length, 0, text)
+  commit(lines)
+}
+
+async function insertItemLink(payload: ItemDragPayload) {
   /*
    * ドラッグの開始でフォーカスが外れ、drop の時点では activeIndex が
    * すでに null になっている（deactivate 済み）。その場合は、外れる直前に
@@ -1862,23 +2011,8 @@ async function insertItemLink(payload: ItemDragPayload) {
   }
   lastCaret = null
 
-  const el = input.value
-  if (activeIndex.value !== null && el) {
-    const start = el.selectionStart ?? activeText.value.length
-    const end = el.selectionEnd ?? start
-    const value = activeText.value
-    replaceActiveLine(value.slice(0, start) + link + value.slice(end))
-    const caret = start + link.length
-    void setCaret(caret, caret)
-    return
-  }
-
-  // 一度も編集していなければ、カーソル位置が無いので画像と同じく末尾に足す
-  const lines = [...rawLines.value]
-  const replaceEmpty = lines.length === 1 && lines[0] === ''
-  if (replaceEmpty) lines.splice(0, 1, link)
-  else lines.splice(lines.length, 0, link)
-  commit(lines)
+  // リンクの形は `[` の候補・貼り付けと同じもの（item-link.ts）を使う
+  insertAtCaret(itemLinkText(payload))
 }
 
 function onDrop(event: DragEvent) {
@@ -1921,13 +2055,33 @@ function onPaste(event: ClipboardEvent) {
     return
   }
 
+  const text = event.clipboardData?.getData('text/plain')
+
+  /*
+   * タスクのページの URL を貼ったら、リンクの記法に変える
+   * （docs/11-scrapbox-notation.md 11.11「リンクを書く手間を減らす」）。
+   *
+   * 変えないと `https://…/items/<UUID>` という長い文字列が本文に残り、
+   * 読めないうえにバックリンクにも出ない（記法として書かれていないため）。
+   * 題は手元の Item から引く。手元に無ければパスだけのリンクにする。
+   *
+   * 変えるのは**貼り付けたものがその URL だけ**のときに限る。文章の中に
+   * 混じっている URL まで書き換えると、貼った内容が変わってしまう。
+   */
+  const pastedItemId = text ? itemIdFromUrl(text) : null
+  if (pastedItemId) {
+    event.preventDefault()
+    const item = itemStore.byId(pastedItemId)
+    insertAtCaret(itemLinkText({ id: pastedItemId, title: item?.title ?? '' }))
+    return
+  }
+
   /*
    * 行を選んでいる間の貼り付け（`Cmd`/`Ctrl`+`V`）。選んだ行を、貼り付けた
    * 内容で置き換える。1行を編集している間は入力欄が受け取るので、ここは
    * 行を選んでいるときだけ。
    */
   const selection = currentSelection()
-  const text = event.clipboardData?.getData('text/plain')
   if (!selection || !text) return
 
   event.preventDefault()
@@ -2020,11 +2174,11 @@ defineExpose({
             @compositionstart="composing = true"
             @compositionend="composing = false"
             @keydown="onKeydown"
-            @keyup.left="updateEmojiTrigger"
-            @keyup.right="updateEmojiTrigger"
-            @keyup.home="updateEmojiTrigger"
-            @keyup.end="updateEmojiTrigger"
-            @click="updateEmojiTrigger"
+            @keyup.left="updatePickers"
+            @keyup.right="updatePickers"
+            @keyup.home="updatePickers"
+            @keyup.end="updatePickers"
+            @click="updatePickers"
           />
 
           <!--
@@ -2032,28 +2186,54 @@ defineExpose({
             preventDefault し、textarea の blur（＝行の編集解除）より前に
             selectEmoji を確定させる。
           -->
-          <ul v-if="emojiStart !== null" class="editor__emoji" role="listbox" aria-label="絵文字・アイコンの候補">
+          <ul v-if="emojiStart !== null" class="editor__suggest" role="listbox" aria-label="絵文字・アイコンの候補">
             <li
               v-for="(entry, i) in emojiMatches"
               :key="entry.name"
-              class="editor__emoji-item"
-              :class="{ 'editor__emoji-item--active': i === emojiIndex }"
+              class="editor__suggest-item"
+              :class="{ 'editor__suggest-item--active': i === emojiIndex }"
               role="option"
               :aria-selected="i === emojiIndex"
               @mousedown.prevent="selectEmoji(entry)"
             >
               <img
                 v-if="entry.kind === 'icon'"
-                class="editor__emoji-icon"
+                class="editor__suggest-icon"
                 :src="entry.path"
                 alt=""
                 loading="lazy"
               />
-              <span v-else class="editor__emoji-char" aria-hidden="true">{{ entry.char }}</span>
-              <span class="editor__emoji-name">:{{ entry.name }}:</span>
+              <span v-else class="editor__suggest-char" aria-hidden="true">{{ entry.char }}</span>
+              <span class="editor__suggest-name">:{{ entry.name }}:</span>
             </li>
-            <li v-if="!emojiMatches.length" class="editor__emoji-empty">
+            <li v-if="!emojiMatches.length" class="editor__suggest-empty">
               該当する絵文字・アイコンがありません
+            </li>
+          </ul>
+
+          <!--
+            タスクのリンク候補（`[` に続けて題を打つと出る）。
+            **1件も当たらないときは何も出さない。**`[` は他の記法の始まり
+            でもあるので、絵文字の `:` と違って「該当なし」は出さない
+            （書くたびに邪魔になる）。
+          -->
+          <ul
+            v-if="emojiStart === null && linkMatches.length"
+            class="editor__suggest"
+            role="listbox"
+            aria-label="リンクするタスクの候補"
+          >
+            <li
+              v-for="(item, i) in linkMatches"
+              :key="item.id"
+              class="editor__suggest-item"
+              :class="{ 'editor__suggest-item--active': i === linkIndex }"
+              role="option"
+              :aria-selected="i === linkIndex"
+              @mousedown.prevent="selectLink(item)"
+            >
+              <span class="editor__suggest-title">{{ item.title }}</span>
+              <span v-if="item.status === 'closed'" class="editor__suggest-name">完了</span>
             </li>
           </ul>
         </div>
@@ -2255,7 +2435,7 @@ defineExpose({
   pointer-events: none;
 }
 
-.editor__emoji {
+.editor__suggest {
   position: absolute;
   top: 100%;
   left: 0;
@@ -2272,7 +2452,7 @@ defineExpose({
   box-shadow: var(--shadow);
 }
 
-.editor__emoji-item {
+.editor__suggest-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -2283,27 +2463,34 @@ defineExpose({
   cursor: pointer;
 }
 
-.editor__emoji-item--active {
+.editor__suggest-item--active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-.editor__emoji-char {
+.editor__suggest-char {
   font-size: 1.125rem;
   line-height: 1;
 }
 
 /* 登録したアイコン。絵文字1文字と同じ大きさに収める */
-.editor__emoji-icon {
+.editor__suggest-icon {
   width: 1.25rem;
   height: 1.25rem;
   object-fit: contain;
 }
 
-.editor__emoji-name {
+.editor__suggest-name {
   color: var(--text-muted);
 }
 
-.editor__emoji-empty {
+/* タスクの題は長い。折り返さず、はみ出す分は省略する */
+.editor__suggest-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 18rem;
+}
+
+.editor__suggest-empty {
   padding: 0.25rem 0.5rem;
   color: var(--text-muted);
   font-size: 0.8125rem;
