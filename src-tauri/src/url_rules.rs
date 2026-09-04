@@ -34,6 +34,21 @@ const IN_APP_SCHEMES: [&str; 3] = ["tauri", "asset", "about"];
 /// した分もここに並ぶ。ここへの移動は必ず取り消すため、この道のページは要らない。
 const HANDOFF_PATH: &str = "/__open";
 
+/// 本文に埋め込む（iframe）ページの host。
+///
+/// `on_navigation` には**フレームの区別が渡ってこない**（wry は
+/// `decidePolicyForNavigationAction` の URL だけを渡す）。そのため本文の
+/// iframe が読み込む URL も「別 origin への移動」として来てしまい、既定では
+/// ブラウザへ出てしまう（埋め込みの枠は空のまま）。
+///
+/// 埋め込みとして出す host だけを、直接の移動に限って中で通す
+/// （docs/16-macos-app.md 16.2）。
+///
+/// **画面側（`shared/utils/scrapbox/parse.ts` の `IFRAME_HOSTS`）と同じ一覧**。
+/// 片方だけ増やすと、記法は埋め込みになるのにアプリではブラウザが開く、と
+/// いう食い違いになる。増やすときは両方に足す。
+const EMBED_HOSTS: [&str; 2] = ["kifu.tsumego.jp", "kifu-lab.vercel.app"];
+
 /// 認証のために経由する host。別 origin だがアプリの中で開く。
 ///
 /// デプロイ先を Vercel の Deployment Protection で守っているため、最初の
@@ -64,6 +79,20 @@ pub fn handoff(app: &Url, target: &Url) -> Option<Vec<Url>> {
             .filter_map(|(_, value)| Url::parse(&value).ok())
             .collect(),
     )
+}
+
+/// 直接の移動（`on_navigation`）をどこで開くか。
+///
+/// 埋め込み（iframe）の読み込みもここに来るので、`route` より**埋め込みの
+/// host のぶんだけ緩い**。リンクを押したとき（`open-external.js` 経由の
+/// `handoff`）はこちらを通さないので、埋め込み先のページへのリンクは
+/// これまでどおりブラウザで開く。
+pub fn route_navigation(app: &Url, target: &Url) -> Route {
+    // 盗み見られると困る中身ではないが、混ぜ物をされないよう https だけにする
+    if target.scheme() == "https" && is_embed_host(target) {
+        return Route::InApp;
+    }
+    route(app, target)
 }
 
 /// `target` をどこで開くか。`app` は Life Record 自身の URL。
@@ -101,6 +130,16 @@ fn same_origin(a: &Url, b: &Url) -> bool {
     a.scheme() == b.scheme()
         && a.host_str() == b.host_str()
         && a.port_or_known_default() == b.port_or_known_default()
+}
+
+/// 埋め込みとして中で通す host か。
+///
+/// 完全一致でみる。副ドメイン（`evil.kifu-lab.vercel.app`）や後ろに足した
+/// もの（`kifu-lab.vercel.app.evil.test`）まで通すと、名前の似た別のサイトを
+/// アプリの中で開けてしまう。
+fn is_embed_host(url: &Url) -> bool {
+    url.host_str()
+        .is_some_and(|host| EMBED_HOSTS.contains(&host.to_ascii_lowercase().as_str()))
 }
 
 /// 認証のために通す host か。
@@ -190,6 +229,48 @@ mod tests {
         assert_eq!(route_str("https://vercel.com.evil.test/"), Route::Os);
         // http では通さない
         assert_eq!(route_str("http://vercel.com/sso-api"), Route::Os);
+    }
+
+    fn navigation_str(target: &str) -> Route {
+        route_navigation(&app(), &Url::parse(target).unwrap())
+    }
+
+    /// 本文に埋め込むページは、直接の移動（iframe）ならアプリの中で読む
+    #[test]
+    fn embed_host_loads_in_app_on_navigation() {
+        assert_eq!(
+            navigation_str("https://kifu-lab.vercel.app/s/abc?move=6&region=tl13"),
+            Route::InApp
+        );
+        assert_eq!(navigation_str("https://kifu.tsumego.jp/s/abc"), Route::InApp);
+        // 同じ origin・OS へ渡すものの扱いは route と変わらない
+        assert_eq!(
+            navigation_str("https://life-record.example.com/today"),
+            Route::InApp
+        );
+        assert_eq!(navigation_str("https://example.com/"), Route::Os);
+        assert_eq!(navigation_str("mailto:someone@example.com"), Route::Os);
+    }
+
+    /// リンクを押したとき（handoff 経由）は、埋め込み先でもブラウザで開く
+    #[test]
+    fn embed_host_link_still_goes_to_os() {
+        assert_eq!(route_str("https://kifu-lab.vercel.app/s/abc"), Route::Os);
+        assert_eq!(route_str("https://kifu.tsumego.jp/s/abc"), Route::Os);
+    }
+
+    /// 埋め込みの例外は、挙げた host そのものだけ
+    #[test]
+    fn embed_host_exception_is_narrow() {
+        // 副ドメイン
+        assert_eq!(navigation_str("https://evil.kifu-lab.vercel.app/"), Route::Os);
+        // ホスト名の後ろに足しただけの紛らわしいもの
+        assert_eq!(
+            navigation_str("https://kifu-lab.vercel.app.evil.test/"),
+            Route::Os
+        );
+        // http では通さない
+        assert_eq!(navigation_str("http://kifu-lab.vercel.app/s/abc"), Route::Os);
     }
 
     /// メールと電話は OS へ渡す

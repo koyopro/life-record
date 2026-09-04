@@ -1108,6 +1108,19 @@ sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
 
 > 埋め込む側（スマート棋譜）が `X-Frame-Options: DENY` を返していると、
 > こちらが何をしても表示できない。埋め込みを許すのは相手側の設定。
+> **Service Worker を入れている端末では、相手側がその応答をプリキャッシュした
+> 殻（`index.html`）で返すことがある**。その殻は `/index.html` としての応答
+> なので `X-Frame-Options` を持っており、同じように弾かれる。相手側で
+> 共有 URL を Service Worker の肩代わりから外す必要がある。
+
+### macOS アプリでは移動の判定に例外が要る
+
+macOS アプリ（[16-macos-app.md](16-macos-app.md) 16.2）は、別 origin への移動を
+既定のブラウザへ渡す。**iframe の読み込みも同じ「移動」として来る**ので、
+そのままでは埋め込みの枠が空のまま、そのページがブラウザで開いてしまう。
+
+そのため、`IFRAME_HOSTS` と同じ一覧を Rust 側にも置いてある
+（`src-tauri/src/url_rules.rs` の `EMBED_HOSTS`）。**増やすときは両方に足す。**
 
 ### 編集
 

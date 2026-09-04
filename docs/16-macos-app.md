@@ -52,6 +52,7 @@ WebView の中に外部サイトが出ないようにする。開く先は macOS
 |---|---|
 | Life Record 自身（同一 origin） | Tauri のウィンドウの中 |
 | `https://vercel.com/…`（認証の経由先。16.1） | Tauri のウィンドウの中 |
+| 本文に埋め込むページ（`EMBED_HOSTS`。下記） | Tauri のウィンドウの中（iframe として） |
 | `http:` / `https:` の別 origin | macOS の既定のブラウザ |
 | `mailto:` `tel:` `sms:` `facetime:` | macOS の既定のアプリ |
 | それ以外（`file:` や独自スキーム） | 開かない |
@@ -59,6 +60,27 @@ WebView の中に外部サイトが出ないようにする。開く先は macOS
 判定は Rust 側（`src-tauri/src/url_rules.rs`）だけが持つ。移動の直前に
 呼ばれる `on_navigation` で判定し、外部なら移動を取り消して OS へ渡す
 （`src-tauri/src/main.rs`）。
+
+### 埋め込み（iframe）は例外にする
+
+`on_navigation` には**フレームの区別が渡ってこない**。wry は
+`decidePolicyForNavigationAction` の URL だけを渡すので、本文の埋め込み
+（`[URL]`、[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.12）が読み込む
+URL も「別 origin への移動」として来る。そのまま外部として扱うと、
+**埋め込みの枠は空のまま、そのページがブラウザで開いてしまう**。
+
+そこで、埋め込みとして出す host（`url_rules.rs` の `EMBED_HOSTS`）だけを
+**直接の移動に限って**中で通す（`route_navigation`）。
+
+- 一覧は画面側（`shared/utils/scrapbox/parse.ts` の `IFRAME_HOSTS`）と同じもの。
+  片方だけ増やすと、記法は埋め込みになるのにアプリではブラウザが開く、という
+  食い違いになる
+- **リンクを押したときは変わらない。** `target="_blank"` のリンクは
+  `open-external.js` 経由（16.3）で来るので、そちらは埋め込み先でも
+  これまでどおりブラウザで開く
+- 完全一致・`https` だけ。副ドメインや後ろに足したものは通さない
+- 埋め込みは `sandbox` 付きで、こちらの画面を動かす権限は渡していない
+  （11.12）。中のページがアプリのタブを乗っ取ることはない
 
 ## 16.3 新しいタブ・ウィンドウを開こうとするリンク
 

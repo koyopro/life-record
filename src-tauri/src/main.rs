@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
-use url_rules::{handoff, route, Route};
+use url_rules::{handoff, route, route_navigation, Route};
 
 /// メニューの項目。押されたかを id で見分ける。
 const RELOAD_MENU_ID: &str = "reload";
@@ -193,7 +193,11 @@ fn decide(app: &AppHandle, origin: &Url, url: &Url) -> bool {
         return false;
     }
 
-    match route(origin, url) {
+    /*
+     * 直接の移動。本文の埋め込み（iframe）の読み込みもここに来るので、
+     * 埋め込みの host のぶんだけ緩い判定を使う（url_rules::route_navigation）。
+     */
+    match route_navigation(origin, url) {
         Route::InApp => true,
         Route::Os => {
             open_in_os(app, url);

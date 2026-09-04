@@ -230,6 +230,11 @@ const TABLE_MARKER = 'table:'
  *
  * 埋め込み自体の仕組みは囲碁とは関係がなく、ここに並ぶのは
  * 「iframe で置いて読めるページを出しているホスト」でしかない。
+ *
+ * **macOS アプリの `EMBED_HOSTS`（`src-tauri/src/url_rules.rs`）と同じ一覧。**
+ * アプリは別 origin への移動をブラウザへ渡すが、iframe の読み込みも同じ
+ * 「移動」として来るため、そちらにも同じ一覧が要る（docs/16-macos-app.md 16.2）。
+ * 片方だけ増やすと、記法は埋め込みになるのにアプリではブラウザが開く。
  */
 const IFRAME_HOSTS = ['kifu.tsumego.jp', 'kifu-lab.vercel.app']
 
