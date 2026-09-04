@@ -11,6 +11,7 @@ import {
   dropPrefixUnit,
   dropsIndentOnEnter,
   iframesIn,
+  IFRAME_DEFAULT_HEIGHT,
   imagesIn,
   indentOf,
   isIframeUrl,
@@ -2155,6 +2156,7 @@ defineExpose({
     ref="editorRoot"
     class="editor"
     :class="{ 'editor--dragging': dragging, 'editor--view': view }"
+    :style="{ '--sb-media-max-h': `${IFRAME_DEFAULT_HEIGHT}px` }"
     :aria-label="props.ariaLabel"
     tabindex="-1"
     v-bind="keyboardSurface"
@@ -3052,8 +3054,9 @@ defineExpose({
   cursor: zoom-in;
   /* 縦長の画像が場所を取りすぎないよう、高さで頭打ちにする。
      幅・高さのどちらも指定しないことで、img 本来の縦横比を保ったまま
-     縮む（全体が見える。切り取りはしない） */
-  max-height: 300px;
+     縮む（全体が見える。切り取りはしない）。
+     頭打ちは埋め込み（`[URL]`）の高さと同じ値。本文の中で背が揃う */
+  max-height: var(--sb-media-max-h);
 }
 
 .editor :deep(.sb-image--large) {

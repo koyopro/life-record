@@ -242,8 +242,13 @@ const IFRAME_HOSTS = ['kifu.tsumego.jp', 'kifu-lab.vercel.app']
  * 埋め込みの既定の高さ（px）。
  *
  * 横幅は本文の幅いっぱいに広げるので、決めるのは高さだけ。
+ *
+ * **本文に混ぜる画像の高さの頭打ちも同じ値にする**（`--sb-media-max-h`）。
+ * 埋め込みと画像が本文の中で同じ大きさに収まり、並べたときに背が揃う。
+ * 揃えるためにここを唯一の出どころにし、画面側は CSS 変数で受け取る
+ * （ScrapboxEditor.vue）。
  */
-export const IFRAME_DEFAULT_HEIGHT = 600
+export const IFRAME_DEFAULT_HEIGHT = 420
 
 /**
  * 埋め込みとして出す URL か。
