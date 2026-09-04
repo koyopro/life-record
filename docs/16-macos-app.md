@@ -25,13 +25,25 @@ Nitro の API（`server/`）が要るので、書き出した静的ファイル�
 | | 行き先 |
 |---|---|
 | `npm run tauri:dev` | `http://localhost:3000`（手元の dev サーバー） |
+| `npm run tauri:build:prod` | 本番（デプロイ先。package.json に書いてある） |
 | `npm run tauri:build` | `LIFE_RECORD_APP_URL`（未指定なら `http://localhost:3000`） |
 
 配布する .app はデプロイ先を指すことになるので、ビルド時に URL を渡す。
+**普段使う本番向けのビルドは `tauri:build:prod`** で、URL は package.json に
+埋めてある（毎回打たなくて済むように。開発者ひとりのサービスなので、
+デプロイ先を隠す必要は無い）。別の行き先を指したいときだけ URL を渡す。
 
 ```bash
+# 本番（デプロイ先）を指す .app / .dmg
+npm run tauri:build:prod
+
+# 行き先を指定して作る（プレビュー環境など）
 LIFE_RECORD_APP_URL="https://<デプロイ先>" npm run tauri:build
 ```
+
+書き出し先は `src-tauri/target/release/bundle/` の `macos/Life Record.app` と
+`dmg/Life Record_<版>_aarch64.dmg`。入れ替えるときは `.app` を
+`/Applications` へ上書きコピーする（アプリを終了してから）。
 
 サイト全体を Vercel の Deployment Protection で守っているため
 （[07-open-questions.md](07-open-questions.md) Q3）、アプリからも最初に

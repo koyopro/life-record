@@ -11,6 +11,7 @@
     "tauri": "node scripts/tauri.mjs",
     "tauri:dev": "node scripts/tauri.mjs dev",
     "tauri:build": "node scripts/tauri.mjs build",
+    "tauri:build:prod": "LIFE_RECORD_APP_URL=https://life-record-ky.vercel.app node scripts/tauri.mjs build",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:watch": "vitest",

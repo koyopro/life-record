@@ -91,7 +91,10 @@ Tauri v2 で、Web 版と同じ Life Record を macOS のアプリとして開�
 # 手元の dev サーバーを Tauri のウィンドウで開く
 npm run tauri:dev
 
-# 配布する .app / .dmg（デプロイ先を指す）
+# 本番（デプロイ先）を指す .app / .dmg
+npm run tauri:build:prod
+
+# 行き先を指定して作る（プレビュー環境など）
 LIFE_RECORD_APP_URL="https://<デプロイ先>" npm run tauri:build
 ```
 
