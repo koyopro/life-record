@@ -22,3 +22,11 @@ export function sortSettingKey(screen: string): string {
 export function groupSettingKey(screen: string): string {
   return `sort:${screen}:group`
 }
+
+/**
+ * 「自分のアイコン」を覚える鍵（docs/11-scrapbox-notation.md 11.8）。
+ *
+ * 値は登録したアイコンの名前（`:` は付けない）。誰が「自分」かはコードに
+ * 書かず、登録したアイコンの中から選んでもらう。空文字は「選んでいない」。
+ */
+export const MY_ICON_SETTING_KEY = 'icon:me'

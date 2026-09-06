@@ -11,6 +11,7 @@ import { iconNameFromFileName, normalizeIconName } from '~~/shared/types/icon'
 useHead({ title: 'アイコン' })
 
 const { icons, pending, create, remove } = useIcons()
+const { name: myIconName, choose: chooseMyIcon } = useMyIcon()
 const { ask } = useConfirm()
 const { upload, uploading, errorMessage: uploadError } = useImageUpload()
 
@@ -92,9 +93,18 @@ async function onRemove(id: string, iconName: string) {
   errorMessage.value = null
   try {
     await remove(id)
+    // 消したアイコンを選んだままにしない（Ctrl+I で文字だけが入ってしまう）
+    if (myIconName.value === iconName) chooseMyIcon(null)
   } catch (e) {
     errorMessage.value = messageOf(e)
   }
+}
+
+/** 「自分」ボタンの読み上げ。押すとどうなるかを言う（`aria-pressed` は状態）。 */
+function mineLabel(iconName: string): string {
+  return iconName === myIconName.value
+    ? `「:${iconName}:」を自分のアイコンから外す`
+    : `「:${iconName}:」を自分のアイコンにする`
 }
 
 function messageOf(e: unknown): string {
@@ -109,6 +119,7 @@ function messageOf(e: unknown): string {
     <p class="page__lead">
       登録した画像は、本文で <code>:name:</code> と書くと出せます
       （<code>:</code> を打つと候補が出ます）。
+      「自分」に選んだ1つは、本文で <code>Ctrl</code> + <code>I</code> を押すと入ります。
     </p>
 
     <form class="add" @submit.prevent="submit">
@@ -168,6 +179,16 @@ function messageOf(e: unknown): string {
       <li v-for="icon in icons" :key="icon.id" class="icons__row">
         <img class="icons__image" :src="icon.path" :alt="`:${icon.name}:`" loading="lazy" />
         <code class="icons__name">:{{ icon.name }}:</code>
+        <button
+          type="button"
+          class="icons__mine"
+          :class="{ 'icons__mine--on': icon.name === myIconName }"
+          :aria-pressed="icon.name === myIconName"
+          :aria-label="mineLabel(icon.name)"
+          @click="chooseMyIcon(icon.name)"
+        >
+          自分
+        </button>
         <button
           type="button"
           class="icons__remove"
@@ -348,6 +369,24 @@ function messageOf(e: unknown): string {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 0.875rem;
+}
+
+.icons__mine {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  min-height: 1.75rem;
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+}
+
+/* 選んでいる1つは、一覧の中で拾えるよう塗りつぶす */
+.icons__mine--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 .icons__remove {

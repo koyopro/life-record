@@ -294,3 +294,27 @@ export function searchEmoji(query: string, limit = 8): EmojiEntry[] {
 export function iconInsertion(name: string, following = ''): string {
   return /^\s/.test(following) ? `:${name}:` : `:${name}: `
 }
+
+/**
+ * アイコンをキャレットの位置へ入れた結果（`Ctrl` + `I`、11.8「自分のアイコン」）。
+ *
+ * 選択範囲があればそれを置き換える。差し込む文字列そのものは
+ * `iconInsertion` と同じで、後ろに続く文字を見て空白を足すかどうかを決める。
+ */
+export function insertIconAt(
+  value: string,
+  start: number,
+  end: number,
+  name: string,
+): { value: string; caret: number } {
+  const from = Math.min(Math.max(start, 0), value.length)
+  const to = Math.min(Math.max(Math.max(end, from), 0), value.length)
+
+  const following = value.slice(to)
+  const inserted = iconInsertion(name, following)
+
+  return {
+    value: value.slice(0, from) + inserted + following,
+    caret: from + inserted.length,
+  }
+}

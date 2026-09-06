@@ -1,4 +1,5 @@
-import type { IconDto } from '~~/shared/types/icon'
+import { normalizeIconName, type IconDto } from '~~/shared/types/icon'
+import { MY_ICON_SETTING_KEY } from '~~/shared/types/setting'
 
 /**
  * 自分で登録したアイコン（docs/11-scrapbox-notation.md 11.8）。
@@ -106,4 +107,45 @@ export function useIcons() {
   }
 
   return { icons, pending, refresh, map, search, create, remove }
+}
+
+/**
+ * 自分のアイコン（`Ctrl` + `I` で本文へ入る1つ）。
+ *
+ * **誰が「自分」かはコードに書かない。** 登録したアイコンのどれを使うかを
+ * `/icons` で選び、選んだ名前を設定（`icon:me`）としてサーバーに預ける
+ * （docs/15-client-state.md 14.7）。名前を埋め込むと、名前を変えるだけで
+ * 直しが要り、この人しか使えないアプリになる。
+ */
+export function useMyIcon() {
+  const { icons } = useIcons()
+  const { track, set } = useSettings()
+
+  /** 選んでいるアイコンの名前。選んでいなければ null。 */
+  const name = useState<string | null>('icons:me', () => null)
+
+  // 控え → サーバーの順に届く。空文字（選び直して外した）は null として扱う
+  track(MY_ICON_SETTING_KEY, (value) => {
+    name.value = normalizeIconName(value)
+  })
+
+  /**
+   * 選んでいるアイコン。一覧が届くまでと、消したあとは null。
+   *
+   * 名前だけは残っているので、`Ctrl` + `I` は一覧を待たずに入れられる。
+   */
+  const icon = computed(
+    () => icons.value.find((entry) => entry.name === name.value) ?? null,
+  )
+
+  /** 選び直す。null（または同じ名前）を渡すと外れる。 */
+  function choose(next: string | null): void {
+    const normalized = next ? normalizeIconName(next) : null
+    const value = normalized === name.value ? null : normalized
+
+    name.value = value
+    set(MY_ICON_SETTING_KEY, value ?? '')
+  }
+
+  return { name, icon, choose }
 }

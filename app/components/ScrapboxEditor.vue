@@ -19,7 +19,12 @@ import {
   parseScrapbox,
 } from '~~/shared/utils/scrapbox/parse'
 import type { Line } from '~~/shared/utils/scrapbox/types'
-import { iconInsertion, searchEmoji, type EmojiEntry } from '~~/shared/utils/emoji'
+import {
+  iconInsertion,
+  insertIconAt,
+  searchEmoji,
+  type EmojiEntry,
+} from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
 import { caretAfterSplit } from '~/utils/caret-shift'
@@ -559,6 +564,9 @@ type PickerEntry =
 
 const { map: iconMap, search: searchIcons } = useIcons()
 
+/** `Ctrl` + `I` で入れる「自分のアイコン」の名前（11.8）。選んでいなければ null。 */
+const { name: myIconName } = useMyIcon()
+
 /**
  * 候補。自分で登録したアイコンを先に出す。
  *
@@ -886,6 +894,10 @@ function onKeydown(event: KeyboardEvent) {
     case 't':
       if (event.ctrlKey) return insertToday(event)
       return
+    case 'i':
+      // Scrapbox の Ctrl+I（自分のアイコンを入れる）に合わせる
+      if (event.ctrlKey) return insertMyIcon(event)
+      return
     case 'z':
     case 'Z':
       if (!event.metaKey && !event.ctrlKey) return
@@ -996,6 +1008,35 @@ function insertToday(event: KeyboardEvent) {
   replaceActiveLine(value)
   void setCaret(caret, caret)
   lastDateInsert = state
+}
+
+/**
+ * 自分のアイコンをキャレットの位置へ入れる（`Ctrl` + `I`、Scrapbox に倣う）。
+ *
+ * どのアイコンかは `/icons` で選んだもの（`useMyIcon`）。**選んでいなければ
+ * 何もしない。** 代わりに何かを入れると、押した人の意図しない文字が残る。
+ *
+ * 名前だけで判断し、一覧が届いているかは見ない（届く前でも押せる）。選んだ
+ * アイコンを消したときは、`/icons` 側で選択も外れる。
+ */
+function insertMyIcon(event: KeyboardEvent) {
+  const el = input.value
+  const name = myIconName.value
+  if (activeIndex.value === null || !el || !name) return
+  event.preventDefault()
+
+  const start = el.selectionStart ?? activeText.value.length
+  const { value, caret } = insertIconAt(
+    activeText.value,
+    start,
+    el.selectionEnd ?? start,
+    name,
+  )
+
+  replaceActiveLine(value)
+  void setCaret(caret, caret)
+  // 入れた `:name:` を、候補を出すきっかけとして拾い直させない
+  closePickers()
 }
 
 /**
