@@ -244,6 +244,26 @@ function selectItem(item: ItemDto) {
   list.toggleSelect(item.id)
 }
 
+/**
+ * 行を押した（マウス・指）。カーソルを動かし、**チェックはその行だけに絞る**。
+ *
+ * チェックしたまま別の行を押したときに、そのあとの操作（`c` / `d` など）が
+ * チェックのほうへ効いてしまうのを避ける。押した行にチェックが入っていれば
+ * それだけを残し、入っていなければすべて外す。
+ *
+ * 複数チェックしたいときは、四角を続けて押す（そちらはカーソルだけを動かす）。
+ */
+function focusFromPointer(id: string) {
+  list.focusItem(id)
+  list.keepOnlySelected(id)
+}
+
+/** タイトルを押して開いた（マウス・指）。行を押したときと同じくチェックを絞る。 */
+function openFromPointer(item: ItemDto) {
+  list.keepOnlySelected(item.id)
+  open(item)
+}
+
 function onDetailRemoved(id: string) {
   if (pinnedId.value === id) pinnedId.value = null
   // 詳細側の削除も裏で送られる。取り直しはその後ろに並べる
@@ -479,10 +499,10 @@ defineExpose({
                 :selected="list.selectedIds.value.has(item.id)"
                 :pending="item.syncState !== 'synced'"
                 :ignore-status="view === 'all'"
-                @focus="list.focusItem(item.id)"
+                @focus="focusFromPointer(item.id)"
                 @select="selectItem(item)"
                 @complete="actions?.toggleComplete(item)"
-                @open="open(item)"
+                @open="openFromPointer(item)"
                 @longpress="actions?.openSheet(item)"
                 @filter-tag="selectTag"
               />

@@ -337,7 +337,7 @@ function openItem(item: ItemDto) {
  * ⌘ + クリックや中クリックで別タブに開けるようにしておきたいため。
  */
 function onDiaryClick(row: Row, event: MouseEvent) {
-  focusRow(row.id)
+  focusFromPointer(row)
   if (!split.value) return
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   event.preventDefault()
@@ -352,6 +352,23 @@ function onDiaryClick(row: Row, event: MouseEvent) {
 function selectRow(row: Row) {
   focusRow(row.id)
   if (row.hit.item) list.toggleSelect(row.hit.item.id)
+}
+
+/**
+ * 行を押した（マウス・指）。カーソルを動かし、**チェックはその行だけに絞る**
+ * （一覧と同じ。docs/08-todo-management.md 8.4）。
+ *
+ * 日記の行にはチェックが無いので、押せばチェックはすべて外れる。
+ */
+function focusFromPointer(row: Row) {
+  focusRow(row.id)
+  list.keepOnlySelected(row.hit.item?.id)
+}
+
+/** タイトルを押して開いた（マウス・指）。行を押したときと同じくチェックを絞る。 */
+function openFromPointer(row: Row) {
+  list.keepOnlySelected(row.hit.item?.id)
+  open(row)
 }
 
 /**
@@ -563,10 +580,10 @@ useShortcuts(shortcuts)
             :item="row.item"
             :focused="index === cursor"
             :selected="list.selectedIds.value.has(row.item.id)"
-            @focus="focusRow(row.id)"
+            @focus="focusFromPointer(row)"
             @select="selectRow(row)"
             @complete="actions?.toggleComplete(row.item)"
-            @open="open(row)"
+            @open="openFromPointer(row)"
             @longpress="actions?.openSheet(row.item)"
             @filter-tag="selectTag"
           />

@@ -303,6 +303,25 @@ export function useItemList(options: Options) {
     selectedIds.value = new Set()
   }
 
+  /**
+   * 押した行だけを残し、他のチェックを外す（行をマウス・指で押したとき）。
+   *
+   * チェックしたまま別の行を押すと、そのあとの操作がどちらに効くのか
+   * 読み取れない（`targets` はチェックのほうを優先する）。押した行が
+   * チェックされていなければ、チェックはすべて外れる。
+   *
+   * **カーソルの移動（`j` / `k`）では外さない。** キーボードでは行を移りながら
+   * `i` を重ねて複数を選ぶため（docs/08-todo-management.md 8.4）。指で選ぶ側は
+   * 四角を続けて押せば複数になるので、こちらだけ1件に戻す。
+   */
+  function keepOnlySelected(id?: string) {
+    const current = selectedIds.value
+    if (current.size === 0) return
+    if (id && current.has(id) && current.size === 1) return
+
+    selectedIds.value = id && current.has(id) ? new Set([id]) : new Set()
+  }
+
   /** 表示中のものをすべて選ぶ（`*` `a`、RTM の Select All）。 */
   function selectAll() {
     selectedIds.value = new Set(items.value.map((item) => item.id))
@@ -583,6 +602,7 @@ export function useItemList(options: Options) {
     focusItem,
     toggleSelect,
     clearSelection,
+    keepOnlySelected,
     selectAll,
     selectByDue,
     complete,
