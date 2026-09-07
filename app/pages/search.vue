@@ -568,11 +568,19 @@ useShortcuts(shortcuts)
         class="results"
         :class="{ 'results--selecting': list.selectedIds.value.size }"
       >
+        <!--
+          カーソル・チェックの色は、抜粋（.note-line）まで敷けるように
+          行の側でも持つ。カードだけが色付くと、下の1行が別の結果に見える。
+        -->
         <div
           v-for="(row, index) in rows"
           :key="row.id"
           class="row"
-          :class="{ 'row--noted': row.item && row.hit.excerpt }"
+          :class="{
+            'row--noted': row.item && row.hit.excerpt,
+            'row--focused': index === cursor,
+            'row--selected': row.item && list.selectedIds.value.has(row.item.id),
+          }"
           :data-item-id="row.id"
         >
           <ItemCard
@@ -819,6 +827,24 @@ useShortcuts(shortcuts)
  */
 .row--noted :deep(.card) {
   border-bottom: 0;
+}
+
+/*
+ * カーソル位置・チェックの色は、**抜粋の行まで敷く**（ItemCard と同じ色）。
+ *
+ * 抜粋はカードとひと続きの1件なので、カードだけが色付くと、下の1行が
+ * 色の付いていない別の結果に見えてしまう。
+ */
+.row--focused .note-line {
+  background: var(--cursor-bg);
+}
+
+.row--selected .note-line {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.row--focused.row--selected .note-line {
+  background: color-mix(in srgb, var(--accent) 10%, var(--cursor-bg));
 }
 
 /*
