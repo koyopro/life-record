@@ -4,6 +4,7 @@ import type { Recurrence } from '~~/shared/types/recurrence'
 import { describeRecurrence } from '~~/shared/utils/recurrence'
 import {
   composeSmartAddInput,
+  isTagStart,
   mergeSmartAddOverrides,
   parseSmartAdd,
   type SmartAddDue,
@@ -269,6 +270,9 @@ function closeTagPicker() {
  *
  * 対象は、`#` からキャレットまでに区切り（空白・`,`・`#`）を挟まないもの。
  * SmartAdd のタグ記法（`#([^\s,#]+)`）と同じ切り方にする。
+ *
+ * 語の途中の `#`（URL のフラグメントなど）では出さない。タグにならない
+ * ものに候補を出すと、URL を貼るたびに候補が割り込む（`isTagStart`）。
  */
 function updateTagTrigger() {
   const el = textarea.value
@@ -287,7 +291,7 @@ function updateTagTrigger() {
   }
 
   const query = before.slice(at + 1)
-  if (/[\s,#]/.test(query)) {
+  if (/[\s,#]/.test(query) || !isTagStart(text.value, at)) {
     closeTagPicker()
     return
   }

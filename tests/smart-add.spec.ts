@@ -191,3 +191,46 @@ describe('mergeSmartAddOverrides', () => {
     expect(values.dueCleared).toBe(false)
   })
 })
+
+/**
+ * タグとして拾う `#`（docs/09-tags.md 9.4）。
+ *
+ * どこにあってもタグにすると、URL の中の `#` まで拾って、書いた覚えのない
+ * タグができる。
+ */
+describe('#（タグ）の切り出し', () => {
+  const now = new Date(2026, 7, 18)
+
+  it('URL の中の `#` はタグにしない', () => {
+    const url = 'https://www.chatwork.com/#!rid138319606-2148719560646594560'
+    const parsed = parseSmartAdd(`返信する ${url}`, now)
+
+    expect(parsed.tags).toEqual([])
+    expect(parsed.url).toBe(url)
+    expect(parsed.title).toBe('返信する')
+    expect(parsed.warnings).toEqual([])
+  })
+
+  it('URL のあとに書いたタグは、これまでどおり拾う', () => {
+    const parsed = parseSmartAdd(
+      '返信する https://example.com/#anchor #仕事',
+      now,
+    )
+
+    expect(parsed.tags).toEqual(['仕事'])
+    expect(parsed.url).toBe('https://example.com/#anchor')
+  })
+
+  it('行頭・空白の直後の `#` はタグ', () => {
+    expect(parseSmartAdd('#買い物 牛乳', now).tags).toEqual(['買い物'])
+    expect(parseSmartAdd('牛乳を買う #買い物 #急ぎ', now).tags).toEqual(['買い物', '急ぎ'])
+  })
+
+  it('語の途中の `#` はタグにせず、書いた文字のまま残す', () => {
+    const parsed = parseSmartAdd('C#の勉強', now)
+
+    expect(parsed.tags).toEqual([])
+    expect(parsed.title).toBe('C#の勉強')
+    expect(parsed.warnings).toEqual([])
+  })
+})

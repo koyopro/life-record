@@ -267,6 +267,21 @@ function extractRecurrence(input: string, warnings: string[]) {
 }
 
 /**
+ * その位置の `#` を、タグの始まりとして扱うか（docs/09-tags.md 9.4）。
+ *
+ * **行頭か、空白の直後だけ**をタグとする。どこにあってもタグにすると、
+ * URL の中の `#`（`https://example.com/#!rid123`）まで拾ってしまい、
+ * 書いた覚えのないタグができる。本文の記法（`#タグ`。
+ * [11-scrapbox-notation.md] の hashtag）と同じ切り方でもある。
+ *
+ * 候補を出す側（`ItemComposer`）もこれを見る。同じ規則を2か所で書くと、
+ * 候補は出るのにタグにならない（またはその逆）という食い違いが起きる。
+ */
+export function isTagStart(text: string, at: number): boolean {
+  return at === 0 || /\s/.test(text[at - 1] ?? '')
+}
+
+/**
  * `#買い物` のようなタグ指定を取り出す（docs/09-tags.md 9.4）。
  *
  * RTM では `#` がリストとタグの両方に使われるが、このサービスに
@@ -275,7 +290,10 @@ function extractRecurrence(input: string, warnings: string[]) {
 function extractTags(input: string, warnings: string[]) {
   const tags: string[] = []
 
-  const rest = input.replace(/#([^\s,#]+)/g, (token, raw: string) => {
+  const rest = input.replace(/#([^\s,#]+)/g, (token, raw: string, offset: number) => {
+    // 語の途中の `#`（URL のフラグメントなど）はタグにしない
+    if (!isTagStart(input, offset)) return token
+
     const name = normalizeTagName(raw)
     if (!name) {
       warnings.push(`「${token}」はタグ名として使えません`)
