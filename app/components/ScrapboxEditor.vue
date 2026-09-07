@@ -27,6 +27,7 @@ import {
 } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
+import { lineKeysOf } from '~/utils/line-keys'
 import { replaceNthOccurrence } from '~/utils/todo-link'
 import { buildItemDraft } from '~/utils/item-draft'
 import { caretAfterSplit } from '~/utils/caret-shift'
@@ -96,6 +97,14 @@ const locked = computed(() => props.readonly || props.view)
 /** 行の配列。空文字でも1行として扱う。 */
 const rawLines = computed(() => model.value.replace(/\r\n?/g, '\n').split('\n'))
 const parsed = computed(() => parseScrapbox(model.value))
+
+/**
+ * 行を見分ける印（`v-for` の key）。**行番号は使わない**（`line-keys.ts`）。
+ *
+ * 行番号を key にすると、行が増減したときに中身が1つずれた要素へ移り、
+ * 埋め込み（`iframe`）が作り直されて外のページを読み直してしまう。
+ */
+const lineKeys = computed(() => lineKeysOf(parsed.value.map((line) => line.raw)))
 
 const activeIndex = ref<number | null>(null)
 /**
@@ -2511,7 +2520,7 @@ defineExpose({
       <div
         v-for="(line, index) in parsed"
         v-show="index !== activeIndex"
-        :key="index"
+        :key="lineKeys[index]"
         :class="lineClass(line)"
         :style="{
           order: index,
