@@ -89,12 +89,32 @@ describe('埋め込み', () => {
     expect(html).not.toContain('allow-popups-to-escape-sandbox')
   })
 
+  it('そのページを開くボタンを、埋め込みに重ねて添える', () => {
+    const html = renderInline(nodesOf(`[${url}]`))
+
+    expect(html).toContain('class="sb-embed"')
+    expect(html).toContain(`<a class="sb-embed__open" href="${url}"`)
+    // 別のタブで開く（macOS アプリでは既定のブラウザ。docs/16-macos-app.md 16.3）
+    expect(html).toContain('target="_blank"')
+    expect(html).toContain('rel="noopener noreferrer"')
+  })
+
   it('URL に記号が混ざっても、HTML として解釈させない', () => {
     const html = renderInline([
       { type: 'iframe', url: 'https://kifu-lab.vercel.app/s/a?b="><script>', height: 600 },
     ])
     expect(html).not.toContain('<script>')
     expect(html).toContain('&quot;&gt;&lt;script&gt;')
+    // 開くボタンの href・title にも、エスケープしたものだけを入れる
+    expect(html).not.toContain('"><script>')
+  })
+
+  it('埋め込みにしない URL では、開くボタンも出さない', () => {
+    const html = renderInline([
+      { type: 'iframe', url: 'javascript:alert(1)', height: 600 },
+    ])
+    expect(html).not.toContain('sb-embed__open')
+    expect(html).toBe('javascript:alert(1)')
   })
 
   it('抜粋には、書かれた URL をそのまま残す', () => {

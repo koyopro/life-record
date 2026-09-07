@@ -3359,6 +3359,49 @@ defineExpose({
  * 横幅いっぱいの箱なので、`[[画像URL]]` と同じように行の中で塊として置く。
  * 高さは記法から決まる値を style で受ける。
  */
+/*
+ * 埋め込みと、その上に重ねる「開く」ボタンの土台
+ * （docs/11-scrapbox-notation.md 11.12「そのページを開く」）。
+ *
+ * 高さは iframe が決めるので、この囲みは場所を取らない。
+ */
+.editor :deep(.sb-embed) {
+  position: relative;
+  display: block;
+}
+
+/*
+ * そのページを開く（別のタブ。macOS アプリでは既定のブラウザ）。
+ *
+ * **埋め込みの右下に重ねる。** 下に置くと埋め込みの高さが変わり、本文の中で
+ * 画像や他の埋め込みと背が揃わなくなる。中の操作 UI を覆わないよう小さくし、
+ * 普段は控えめに、指したときだけはっきり出す。
+ */
+.editor :deep(.sb-embed__open) {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  text-decoration: none;
+  opacity: 0.75;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 18%);
+}
+
+.editor :deep(.sb-embed__open:hover),
+.editor :deep(.sb-embed__open:focus-visible) {
+  opacity: 1;
+  color: var(--text);
+}
+
 .editor :deep(.sb-iframe) {
   display: block;
   width: 100%;

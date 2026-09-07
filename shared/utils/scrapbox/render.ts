@@ -249,7 +249,7 @@ function renderIframe(node: IframeNode): string {
   if (!src) return escapeHtml(node.url)
 
   const url = escapeHtml(src)
-  return (
+  const frame =
     `<iframe class="sb-iframe" src="${url}" style="height:${node.height}px"` +
     ` title="${url}" loading="lazy"` +
     /*
@@ -263,7 +263,24 @@ function renderIframe(node: IframeNode): string {
      *   `allow-modals`、`allow-popups-to-escape-sandbox`
      */
     ` sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`
-  )
+
+  /*
+   * そのページを開く小さなボタンを、**埋め込みの右下に重ねて**置く。
+   *
+   * 開く道を親（こちら）側に持つのは、埋め込みの中からはきれいに開けない
+   * ため（docs/11-scrapbox-notation.md 11.12「そのページを開く」）。
+   * sandbox には `allow-top-navigation` も `allow-popups-to-escape-sandbox` も
+   * 渡していないので、中のページからはこちらの画面を動かせない。
+   *
+   * 重ねるのは、**埋め込みの高さを変えないため**（下に1行足すと、本文の中で
+   * 埋め込みの背が揃わなくなる）。中の操作 UI を覆わないよう、隅に小さく置く。
+   */
+  const open =
+    `<a class="sb-embed__open" href="${url}" target="_blank" rel="noopener noreferrer"` +
+    ` title="${url} を開く" aria-label="${url} を別のタブで開く">` +
+    `<span aria-hidden="true">↗</span></a>`
+
+  return `<span class="sb-embed">${frame}${open}</span>`
 }
 
 /**
