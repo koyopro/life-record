@@ -1142,6 +1142,18 @@ async function removeSection(section: SectionDto) {
         </ul>
       </section>
 
+      <!--
+        このタスクを指している本文（docs/11-scrapbox-notation.md 11.11）。
+        月のページと同じ部品・同じ見せ方で、下端に置く。
+        指しているものが無いうちは出さない（本体は上の作業記録なので、
+        空の箱を毎回残さない）。
+      -->
+      <BacklinkList
+        :path="`/items/${id}`"
+        title="このタスクを指しているもの"
+        :show-empty="false"
+      />
+
       <div class="page__actions">
         <button type="button" class="page__delete" @click="remove">
           このタスクを削除

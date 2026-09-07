@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { DiarySummaryDto } from '~~/shared/types/diary'
-import type { Backlink } from '~~/shared/types/backlink'
 import {
   WEEKDAYS,
   firstDayOfMonth,
@@ -143,22 +142,10 @@ function onDateInput(event: Event) {
 const path = computed(() => diaryMonthPath(month.value))
 
 /*
- * バックリンクはサーバーの部分一致検索に頼っており、手元では組み立て直せない
- * （検索と同じ制約。docs/12-offline.md 12.9）。そのぶん**前回の内容を控える**
- * ので、一度見た月へ戻ったときは取り直しを待たずにそのまま出る
- * （オフラインでも、最後に見た内容までは読める）。
+ * 出すのは `BacklinkList`（タスクの詳細と同じ部品）。取得も控えもそちらが
+ * 持つので、ここでは取り直しの合図だけを持つ。
  */
-const backlinkStore = useBacklinkStore()
-const { pending: backlinksPending, refresh: refreshBacklinks } = backlinkStore.track(path)
-
-/** 控えを持っていれば、それがそのまま画面に出るもの。 */
-const backlinks = computed<Backlink[]>(() => backlinkStore.linksOf(path.value) ?? [])
-
-const KIND_LABELS: Record<Backlink['kind'], string> = {
-  item: 'メモ',
-  section: '作業記録',
-  diary: '日記',
-}
+const backlinkList = ref<{ refresh: () => void } | null>(null)
 
 const itemStore = useItemStore()
 const creating = ref(false)
@@ -229,7 +216,7 @@ onUnmounted(() => {
  * 振り返りを作って戻ってきたときに、下の一覧へ出るようにする。バック
  * リンクはサーバーが本文から引き直すので、送信が済むまでは現れない。
  */
-onActivated(() => void refreshBacklinks())
+onActivated(() => backlinkList.value?.refresh())
 </script>
 
 <template>
@@ -326,59 +313,29 @@ onActivated(() => void refreshBacklinks())
       この月を指している本文。中間テーブルは持たず、本文に書かれた
       リンクをサーバーが引き直して並べる（docs/11-scrapbox-notation.md 11.11）
     -->
-    <section class="links">
-      <header class="links__head">
-        <h2 class="links__title">この月を指しているもの</h2>
-        <div class="links__actions">
-          <button type="button" class="links__button" @click="copyLink">
-            {{ copied ? 'コピーした' : 'リンクをコピー' }}
-          </button>
-          <button
-            type="button"
-            class="links__button"
-            :disabled="creating"
-            @click="createRetrospective"
-          >
-            {{ creating ? '作成中…' : '振り返りを作る' }}
-          </button>
-        </div>
-      </header>
+    <BacklinkList
+      ref="backlinkList"
+      :path="path"
+      title="この月を指しているもの"
+    >
+      <template #actions>
+        <button type="button" class="links__button" @click="copyLink">
+          {{ copied ? 'コピーした' : 'リンクをコピー' }}
+        </button>
+        <button
+          type="button"
+          class="links__button"
+          :disabled="creating"
+          @click="createRetrospective"
+        >
+          {{ creating ? '作成中…' : '振り返りを作る' }}
+        </button>
+      </template>
 
-      <p v-if="createFailed" class="page__error" role="alert">{{ createFailed }}</p>
-
-      <ul v-if="backlinks.length" class="links__list">
-        <li v-for="link in backlinks" :key="link.id" class="link">
-          <NuxtLink class="link__body" :to="link.path">
-            <span class="link__kind">{{ KIND_LABELS[link.kind] }}</span>
-            <span class="link__title">{{ link.title }}</span>
-            <span v-if="link.kind !== 'item'" class="link__date">
-              {{ formatAppDate(link.date) }}
-            </span>
-          </NuxtLink>
-
-          <!--
-            指してきた本文の冒頭だけ。続きはリンク先で読む。
-            リンクの外に置く（記法の中のリンクが入れ子にならないように）
-          -->
-          <div v-if="link.head.text" class="link__head">
-            <ScrapboxEditor
-              view
-              :model-value="link.head.text"
-              :aria-label="`「${link.title}」の冒頭`"
-            />
-            <p v-if="link.head.truncated" class="link__more">…</p>
-          </div>
-        </li>
-      </ul>
-
-      <p v-else-if="backlinksPending" class="page__placeholder">
-        読み込み中…
-      </p>
-
-      <p v-else class="links__empty">
-        まだありません。本文に <code>[{{ path }}]</code> と書くと、ここに出る。
-      </p>
-    </section>
+      <template #notice>
+        <p v-if="createFailed" class="page__error" role="alert">{{ createFailed }}</p>
+      </template>
+    </BacklinkList>
   </div>
 </template>
 
@@ -572,33 +529,7 @@ onActivated(() => void refreshBacklinks())
   color: var(--accent);
 }
 
-/* この月を指しているもの。カレンダーと同じ幅に収める */
-.links {
-  display: grid;
-  gap: 0.5rem;
-  max-width: 900px;
-}
-
-.links__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.links__title {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-.links__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
+/* バックリンクの見出しに差し込むボタン（BacklinkList の #actions） */
 .links__button {
   background: transparent;
   border: 1px solid var(--border);
@@ -612,85 +543,6 @@ onActivated(() => void refreshBacklinks())
 
 .links__button:disabled {
   opacity: 0.6;
-}
-
-.links__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-/* 見出しの行と冒頭を縦に積む。枠（背景）は行ごとに1つ */
-.link {
-  background: var(--surface);
-  display: grid;
-  gap: 0.375rem;
-  padding: 0.5rem 0.625rem;
-  min-width: 0;
-}
-
-.link__body {
-  color: inherit;
-  text-decoration: none;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.link__kind {
-  color: var(--text-muted);
-  font-size: 0.6875rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 0.375rem;
-  flex-shrink: 0;
-}
-
-.link__title {
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.link__date {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/*
- * 指してきた本文の冒頭。日記の「この日にやったこと」と同じ顔にする
- * （見出しの行より控えめに、記法はそのまま解釈して出す）。
- */
-.link__head {
-  padding-left: 0.75rem;
-  border-left: 2px solid var(--border);
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  min-width: 0;
-}
-
-.link__more {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  line-height: 1;
-}
-
-.links__empty {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-}
-
-.links__empty code {
-  font-size: 0.75rem;
 }
 
 .page__error {
