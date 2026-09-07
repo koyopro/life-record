@@ -35,7 +35,7 @@ describe('アプリ内のページへのリンク', () => {
   it('uuid の形をしていない id はリンクにしない', () => {
     const [line] = parseScrapbox('[/items/not-a-uuid]')
     if (line!.type !== 'text') throw new Error('unreachable')
-    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/items/not-a-uuid' }])
+    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/items/not-a-uuid', raw: '[/items/not-a-uuid]' }])
   })
 
   it('[/diary/YYYY-MM-DD] は日記へのリンクになる', () => {
@@ -53,7 +53,7 @@ describe('アプリ内のページへのリンク', () => {
   it('実在しない日付はリンクにしない', () => {
     const [line] = parseScrapbox('[/diary/2026-02-31]')
     if (line!.type !== 'text') throw new Error('unreachable')
-    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/2026-02-31' }])
+    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/2026-02-31', raw: '[/diary/2026-02-31]' }])
   })
 
   it('[/diary/month/YYYY-MM] は月のページへのリンクになる', () => {
@@ -83,7 +83,7 @@ describe('アプリ内のページへのリンク', () => {
   it('ありえない月はリンクにしない', () => {
     const [line] = parseScrapbox('[/diary/month/2026-13]')
     if (line!.type !== 'text') throw new Error('unreachable')
-    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/month/2026-13' }])
+    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/month/2026-13', raw: '[/diary/month/2026-13]' }])
   })
 
   /*
@@ -98,7 +98,7 @@ describe('アプリ内のページへのリンク', () => {
   it('月を日付の位置に書いても、日記のリンクにはならない', () => {
     const [line] = parseScrapbox('[/diary/2026-09]')
     if (line!.type !== 'text') throw new Error('unreachable')
-    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/2026-09' }])
+    expect(line!.nodes).toEqual([{ type: 'pageLink', title: '/diary/2026-09', raw: '[/diary/2026-09]' }])
   })
 
   it('レンダリングすると、同じタブで開く内部リンクとして出る', () => {

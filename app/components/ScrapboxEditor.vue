@@ -27,6 +27,8 @@ import {
 } from '~~/shared/utils/emoji'
 import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
+import { replaceNthOccurrence } from '~/utils/todo-link'
+import { buildItemDraft } from '~/utils/item-draft'
 import { caretAfterSplit } from '~/utils/caret-shift'
 import { insertImageLines, type ImageInsert } from '~/utils/image-insert'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
@@ -567,6 +569,9 @@ const { map: iconMap, search: searchIcons } = useIcons()
 /** `Ctrl` + `I` で入れる「自分のアイコン」の名前（11.8）。選んでいなければ null。 */
 const { name: myIconName } = useMyIcon()
 
+/** 本文の TODO リンクを押したときに出すポップオーバー（11.13）。 */
+const todoLink = useTodoLinkPopover()
+
 /**
  * 候補。自分で登録したアイコンを先に出す。
  *
@@ -684,6 +689,30 @@ const linkMatches = computed(() =>
     : searchItemsForLink(itemStore.items.value, linkQuery.value),
 )
 
+/**
+ * 候補の並び。当てはまるタスクの後ろに「新しく作る」を足す
+ * （docs/11-scrapbox-notation.md 11.13）。
+ *
+ * **1件も当てはまらないときは何も出さない**（これまでどおり）。`[` は他の
+ * 記法の始まりでもあり、ただ括弧で囲みたいだけのときに「作る」を出し続けると
+ * 書くたびに邪魔になる。当てはまるものが無いまま書いた `[題]` は、押した
+ * ときにポップオーバーから作れる（11.13）。
+ */
+type LinkOption =
+  | { kind: 'item'; item: (typeof linkMatches.value)[number] }
+  | { kind: 'create'; title: string }
+
+const linkOptions = computed<LinkOption[]>(() => {
+  const found = linkMatches.value
+  if (found.length === 0) return []
+
+  const title = linkQuery.value.trim()
+  return [
+    ...found.map((item): LinkOption => ({ kind: 'item', item })),
+    ...(title ? [{ kind: 'create', title } as LinkOption] : []),
+  ]
+})
+
 function closeLinkPicker() {
   linkStart.value = null
   linkQuery.value = ''
@@ -734,6 +763,29 @@ function selectLink(item: { id: string; title: string }) {
   closeLinkPicker()
 }
 
+/**
+ * 候補を選んだ。タスクなら、そのままリンクにする。
+ *
+ * 「新しく作る」を選んだときは、打った題でタスクを作ってからリンクにする。
+ * id は手元で決まる（`buildItemDraft`）ので、**先にリンクを差し込んでから**
+ * 作りにいく。待ってから差し込むと、その間に入力欄からフォーカスが外れる。
+ */
+function selectLinkOption(option: LinkOption) {
+  if (option.kind === 'item') {
+    selectLink(option.item)
+    return
+  }
+
+  const built = buildItemDraft(option.title)
+  if ('error' in built) {
+    closeLinkPicker()
+    return
+  }
+
+  selectLink({ id: built.draft.id, title: option.title })
+  void itemStore.create(built.draft, option.title)
+}
+
 // --- 候補（絵文字・タスクのリンク）に共通の扱い ---------------------------
 
 function closePickers() {
@@ -771,11 +823,11 @@ function onSuggestKeydown(event: KeyboardEvent): boolean {
         }
       : linkStart.value !== null
         ? {
-            visible: linkMatches.value.length > 0,
-            count: linkMatches.value.length,
+            visible: linkOptions.value.length > 0,
+            count: linkOptions.value.length,
             index: linkIndex,
             close: closeLinkPicker,
-            select: () => selectLink(linkMatches.value[linkIndex.value]!),
+            select: () => selectLinkOption(linkOptions.value[linkIndex.value]!),
           }
         : null
 
@@ -1427,6 +1479,10 @@ function onContainerMousedown() {
 
 function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
+
+  // 本文から TODO を指すリンクは、画面を移さずその場で開く（11.13）
+  if (openTodoLink(event, target, index)) return
+
   if (target?.closest('a')) return
 
   /*
@@ -1445,6 +1501,108 @@ function onLineClick(event: MouseEvent, index: number) {
   }
 
   void activate(index)
+}
+
+/**
+ * 本文の TODO リンクを押した（docs/11-scrapbox-notation.md 11.13）。
+ *
+ * 扱うのは2つ。どちらも同じポップオーバーを出す。
+ *
+ * - `[題]` … リンク先がまだ決まっていない。押した時点で手元の TODO から探す
+ * - `[/items/<id> 題]` … リンク先が決まっている。**画面を移さない**（日記を
+ *   書いている流れを切らないため。移りたいときはポップオーバーの
+ *   「TODO を開く」から）
+ *
+ * 扱ったなら true を返す（その行の編集には入らない）。修飾キー付き・
+ * 中クリックはブラウザに譲る（別タブで開きたいときのため）。
+ */
+function openTodoLink(
+  event: MouseEvent,
+  target: HTMLElement | null,
+  index: number,
+): boolean {
+  if (!target) return false
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false
+
+  const pageLink = target.closest<HTMLElement>('.sb-page-link--todo')
+  if (pageLink) {
+    event.preventDefault()
+    openPageLink(pageLink, index)
+    return true
+  }
+
+  const anchor = target.closest<HTMLAnchorElement>('a.sb-link--internal')
+  const itemId = anchor ? itemIdFromUrl(anchor.getAttribute('href') ?? '') : null
+  if (anchor && itemId) {
+    event.preventDefault()
+    todoLink.open({
+      text: anchor.textContent ?? '',
+      itemId,
+      anchor: anchorRect(anchor),
+    })
+    return true
+  }
+
+  return false
+}
+
+/**
+ * リンク先の決まっていない `[題]` を開く。
+ *
+ * 決まったら、その `[題]` を `[/items/<id> 題]` へ書き換える（以後は id で
+ * 行き先が決まり、題を変えても同じ題が増えても動かない）。同じ行に同じ
+ * `[題]` が並んでいることがあるので、**押したものが何番目か**を数えて渡す
+ * （描いた順と書かれた順は同じ）。
+ *
+ * 読むだけの本文（`view`）では書き換え先が無いので、決まっても本文は
+ * そのまま（その場の記録だけを受け持つ）。
+ */
+function openPageLink(el: HTMLElement, index: number) {
+  const text = el.dataset.todoText ?? el.textContent ?? ''
+  const raw = el.dataset.todoRaw ?? ''
+  const line = el.closest('[data-line-index]')
+  const occurrence = line
+    ? [...line.querySelectorAll<HTMLElement>('.sb-page-link--todo')]
+        .filter((other) => other.dataset.todoRaw === raw)
+        .indexOf(el)
+    : 0
+
+  todoLink.open(
+    { text, itemId: null, anchor: anchorRect(el) },
+    locked.value || occurrence < 0
+      ? undefined
+      : (itemId) => resolvePageLink(index, raw, occurrence, text, itemId),
+  )
+}
+
+/** `[題]` を `[/items/<id> 題]` に置き換える。見出しは書かれたままを残す。 */
+function resolvePageLink(
+  index: number,
+  raw: string,
+  occurrence: number,
+  text: string,
+  itemId: string,
+) {
+  const lines = [...rawLines.value]
+  const line = lines[index]
+  if (line === undefined) return
+
+  const next = replaceNthOccurrence(
+    line,
+    raw,
+    occurrence,
+    itemLinkText({ id: itemId, title: text }),
+  )
+  if (next === line) return
+
+  lines[index] = next
+  commit(lines)
+}
+
+/** ポップオーバーを寄せる先（押したリンクの位置）。 */
+function anchorRect(el: HTMLElement) {
+  const rect = el.getBoundingClientRect()
+  return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
 }
 
 /**
@@ -2305,22 +2463,30 @@ defineExpose({
             （書くたびに邪魔になる）。
           -->
           <ul
-            v-if="emojiStart === null && linkMatches.length"
+            v-if="emojiStart === null && linkOptions.length"
             class="editor__suggest"
             role="listbox"
             aria-label="リンクするタスクの候補"
           >
             <li
-              v-for="(item, i) in linkMatches"
-              :key="item.id"
+              v-for="(option, i) in linkOptions"
+              :key="option.kind === 'item' ? option.item.id : '__create'"
               class="editor__suggest-item"
               :class="{ 'editor__suggest-item--active': i === linkIndex }"
               role="option"
               :aria-selected="i === linkIndex"
-              @mousedown.prevent="selectLink(item)"
+              @mousedown.prevent="selectLinkOption(option)"
             >
-              <span class="editor__suggest-title">{{ item.title }}</span>
-              <span v-if="item.status === 'closed'" class="editor__suggest-name">完了</span>
+              <template v-if="option.kind === 'item'">
+                <span class="editor__suggest-title">{{ option.item.title }}</span>
+                <span v-if="option.item.status === 'closed'" class="editor__suggest-name">
+                  完了
+                </span>
+              </template>
+              <!-- 当てはまるものが無い題は、ここから作ってそのままリンクにする -->
+              <span v-else class="editor__suggest-title">
+                ＋「{{ option.title }}」で新しいTODOを作成
+              </span>
             </li>
           </ul>
         </div>
@@ -3074,6 +3240,23 @@ defineExpose({
 .editor :deep(.sb-page-link) {
   color: var(--accent);
   border-bottom: 1px dotted currentcolor;
+}
+
+/*
+ * リンク先の決まっていない `[題]`（押すとポップオーバーが出る。11.13）。
+ *
+ * `button` の既定の見た目を消して、周りの文字と地続きに出す。決まっている
+ * リンク（点線）と見分けが付くよう、下線は破線にする。
+ */
+.editor :deep(.sb-page-link--todo) {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed currentcolor;
+  border-radius: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
 }
 
 .editor :deep(.sb-hashtag) {

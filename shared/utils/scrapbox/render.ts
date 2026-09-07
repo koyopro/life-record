@@ -1,5 +1,5 @@
 import { parseScrapbox } from './parse'
-import type { IframeNode, Inline, Line } from './types'
+import type { IframeNode, Inline, Line, PageLinkNode } from './types'
 
 /**
  * AST から HTML を作る（docs/11-scrapbox-notation.md）。
@@ -175,8 +175,7 @@ function renderNode(node: Inline, options: RenderOptions): string {
     }
 
     case 'pageLink':
-      // ページの概念がまだないので、リンクにはせず印だけ付ける
-      return `<span class="sb-page-link">${escapeHtml(node.title)}</span>`
+      return renderPageLink(node)
 
     case 'image': {
       const src = safeUrl(node.src)
@@ -205,6 +204,32 @@ function renderNode(node: Inline, options: RenderOptions): string {
       return `<img class="sb-icon" src="${escapeHtml(safe)}" alt="${escapeHtml(node.raw)}" title="${escapeHtml(node.raw)}" loading="lazy" />`
     }
   }
+}
+
+/**
+ * `[題]` を、**リンク先の決まっていない TODO へのリンク**として出す
+ * （docs/11-scrapbox-notation.md 11.13）。
+ *
+ * 押したときに手元の TODO から探すので、ここでは一覧を見ない（見ようとすると、
+ * 本文に書かれたリンクの数だけ検索が要る）。書かれたままの文字列（`raw`）を
+ * 添えておき、リンク先が決まったところで本文のその部分を書き換える。
+ *
+ * `button` にするのは、キーボードでも同じように開けるようにするため
+ * （`span` + `role` では Enter で押せない）。行き先が決まっていないので
+ * `a` にはしない。
+ *
+ * 題が `/` で始まるもの（`[/items/壊れたid]` など）はアプリ内のパスの
+ * 書き損じで、TODO の題ではない。押せるようにはせず、印だけ付けて出す。
+ */
+function renderPageLink(node: PageLinkNode): string {
+  const title = escapeHtml(node.title)
+  if (node.title.startsWith('/')) return `<span class="sb-page-link">${title}</span>`
+
+  return (
+    `<button type="button" class="sb-page-link sb-page-link--todo"` +
+    ` data-todo-text="${title}" data-todo-raw="${escapeHtml(node.raw)}"` +
+    ` title="「${title}」の作業記録を書く">${title}</button>`
+  )
 }
 
 /**

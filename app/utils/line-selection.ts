@@ -17,11 +17,15 @@ export interface LinePoint {
  *
  * ボタンの中（コードブロックの「コピー」）は行の文字ではないので飛ばす。
  * 数えてしまうと、その行の行末や桁がボタンの文字の中を指してしまう。
+ *
+ * ただし `[題]`（リンク先の決まっていない TODO リンク。
+ * docs/11-scrapbox-notation.md 11.13）は**本文の文字そのもの**で、
+ * キーボードでも押せるようにボタンにしているだけなので数える。
  */
 function textNodesIn(el: Element): Text[] {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) =>
-      node.parentElement?.closest('button')
+      node.parentElement?.closest('button:not(.sb-page-link)')
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT,
   })

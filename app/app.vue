@@ -270,6 +270,13 @@ useShortcuts(shortcuts)
         アプリの中で出す（docs/16-macos-app.md 16.8）。
       -->
       <ConfirmDialog />
+
+      <!--
+        本文の TODO リンク（`[題]` / `[/items/<id> 題]`）を押したときの
+        ポップオーバー（docs/11-scrapbox-notation.md 11.13）。本文はどの画面でも
+        同じ部品で描いているので、ここに1つだけ置く（ImageViewer と同じ）。
+      -->
+      <TodoLinkPopover />
     </div>
   </div>
 </template>

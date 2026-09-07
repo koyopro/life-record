@@ -143,10 +143,20 @@ export interface LinkNode {
   nodes: Inline[]
 }
 
-/** `[ページ名]`。このサービスでは今のところ遷移先を持たない。 */
+/**
+ * `[題]`。**リンク先の決まっていない TODO へのリンク**として扱う
+ * （docs/11-scrapbox-notation.md 11.13）。
+ *
+ * 題は一意ではないので、記法を読む時点では行き先を決められない
+ * （アイコンと同じで、一覧はサーバーにある）。押したときに手元の TODO から
+ * 探し、決まったところで `[/items/<id> 題]` へ書き換える。書き換えるために、
+ * 書かれたままの文字列も持っておく。
+ */
 export interface PageLinkNode {
   type: 'pageLink'
   title: string
+  /** 書かれたままの `[題]`。リンク先を決めたときに、これを目印に書き換える。 */
+  raw: string
 }
 
 export interface ImageNode {

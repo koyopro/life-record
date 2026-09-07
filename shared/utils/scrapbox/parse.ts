@@ -464,7 +464,13 @@ export function parseInline(input: string): Inline[] {
       const bracket = readBracket(input, i)
       if (bracket) {
         flush()
-        nodes.push(...classifyBracket(bracket.inner, bracket.double))
+        nodes.push(
+          ...classifyBracket(
+            bracket.inner,
+            bracket.double,
+            input.slice(i, bracket.end),
+          ),
+        )
         i = bracket.end
         continue
       }
@@ -557,8 +563,13 @@ function readBracket(
   return { inner: input.slice(open, i), end: i + 1, double: false }
 }
 
-/** 角括弧の中身が何を指しているかを判定する。 */
-function classifyBracket(inner: string, double: boolean): Inline[] {
+/**
+ * 角括弧の中身が何を指しているかを判定する。
+ *
+ * @param raw 書かれたままの `[...]`。ページリンク（＝リンク先の決まっていない
+ *   TODO へのリンク）が、あとで自分の書かれた形を辿れるようにするために持つ。
+ */
+function classifyBracket(inner: string, double: boolean, raw: string): Inline[] {
   const content = inner.trim()
   if (!content) return [{ type: 'text', value: double ? '[[]]' : '[]' }]
 
@@ -653,8 +664,8 @@ function classifyBracket(inner: string, double: boolean): Inline[] {
     ]
   }
 
-  // 残りはページリンク
-  return [{ type: 'pageLink', title: content }]
+  // 残りはページリンク（リンク先の決まっていない TODO へのリンク。11.13）
+  return [{ type: 'pageLink', title: content, raw }]
 }
 
 function isUrl(value: string): boolean {
