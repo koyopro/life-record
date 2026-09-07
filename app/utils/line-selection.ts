@@ -81,6 +81,46 @@ export function linePointAt(el: Element, column: number): LinePoint {
 }
 
 /**
+ * 押した場所が、その行の何文字目かを返す（クリックした所から書き始めるため）。
+ *
+ * ブラウザに「その座標にキャレットを置くならどこか」を聞き（`caretPositionFromPoint`。
+ * 対応していないブラウザでは `caretRangeFromPoint`）、返ってきた位置を行の
+ * 先頭からの文字数に直す。行の外を指していたら null。
+ *
+ * 数え方は `linePointAt`（桁 → 位置）の逆。**表示されている文字で数える**ので、
+ * 記法のある行では書いた文字数とずれる。呼ぶ側で、ずれない行かどうかを
+ * 確かめてから使う（ScrapboxEditor の `clickedColumn`）。
+ */
+export function columnAtPoint(el: Element, x: number, y: number): number | null {
+  const point = caretPointFromPoint(x, y)
+  if (!point || !el.contains(point.node)) return null
+
+  let seen = 0
+  for (const text of textNodesIn(el)) {
+    if (text === point.node) return seen + Math.min(point.offset, text.length)
+    seen += text.length
+  }
+  return null
+}
+
+/** 座標 → （テキストノード, その中の位置）。ブラウザによって呼び名が違う。 */
+function caretPointFromPoint(x: number, y: number): { node: Node; offset: number } | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null
+  }
+
+  const position = doc.caretPositionFromPoint?.(x, y)
+  if (position) return { node: position.offsetNode, offset: position.offset }
+
+  // Safari と、古い Chrome / WebView（標準になる前の呼び名）
+  const range = doc.caretRangeFromPoint?.(x, y)
+  return range ? { node: range.startContainer, offset: range.startOffset } : null
+}
+
+/**
  * 囲みの中から、その行番号の要素を探す。
  *
  * **必ず自分の囲みの中だけを見る。** 1つの画面に本文が複数ある

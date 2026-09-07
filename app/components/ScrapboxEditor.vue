@@ -32,6 +32,7 @@ import { replaceNthOccurrence } from '~/utils/todo-link'
 import { buildItemDraft } from '~/utils/item-draft'
 import { caretAfterSplit } from '~/utils/caret-shift'
 import { insertImageLines, type ImageInsert } from '~/utils/image-insert'
+import { hasTextSelection } from '~/utils/keyboard-surface'
 import { isItemLinkDrag, readItemLinkDrag, type ItemDragPayload } from '~/utils/item-drag'
 import {
   itemIdFromUrl,
@@ -43,6 +44,7 @@ import { writeToClipboard } from '~/utils/clipboard'
 import {
   clampColumn,
   closestLineIn,
+  columnAtPoint,
   lineElementAt,
   linePoint,
   linePointAt,
@@ -90,6 +92,17 @@ const props = withDefaults(
   }>(),
   { placeholder: '', ariaLabel: '本文', readonly: false, view: false },
 )
+
+/**
+ * 読むだけの本文で、行の文字を押した。
+ *
+ * 「読むだけ」をやめて書けるようにするかは、置いている側が決める
+ * （過去の作業記録は、押した場所から編集に入る。ItemSectionRecord.vue）。
+ * `column` は押した場所の桁で、決められなければ null（行末から書き始める）。
+ */
+const emit = defineEmits<{
+  editRequest: [{ index: number; column: number | null }]
+}>()
 
 /** 書き換えを受け付けないか。`view` は読むだけを含む。 */
 const locked = computed(() => props.readonly || props.view)
@@ -1509,7 +1522,44 @@ function onLineClick(event: MouseEvent, index: number) {
     return
   }
 
-  void activate(index)
+  /*
+   * 文字をなぞって選んだだけのときは、編集に入らない。
+   *
+   * なぞり終わりでも click は起きるので、そのまま編集に入ると入力欄へ
+   * 差し替わって選択が消える（読むだけの本文から写せなくなる）。
+   */
+  if (hasTextSelection()) return
+
+  const column = clickedColumn(event, parsed.value[index])
+
+  // 読むだけの本文は、置いている側に「書きたい」とだけ伝える
+  if (locked.value) {
+    emit('editRequest', { index, column })
+    return
+  }
+
+  void activate(index, column ?? 'end')
+}
+
+
+/**
+ * 押した場所の桁（クリックした所から書き始められるようにする）。
+ *
+ * 表示は記法を解釈した結果なので、**書いた文字と表示の文字がずれる行**
+ * （リンク・画像・アイコンなどを含む行）では桁を決められない。その行は
+ * これまでどおり行末から書き始める（`null`）。
+ */
+function clickedColumn(event: MouseEvent, line: Line | undefined): number | null {
+  if (!line) return null
+  if (line.type !== 'text' && line.type !== 'quote') return null
+  // 記法を含む行は、表示の桁をそのまま当てると別の場所を指す
+  if (!line.nodes.every((node) => node.type === 'text')) return null
+
+  const el = (event.target as HTMLElement | null)?.closest('[data-line-index]')
+  if (!el) return null
+
+  const column = columnAtPoint(el, event.clientX, event.clientY)
+  return column === null ? null : Math.min(column, line.content.length)
 }
 
 /**
@@ -2356,6 +2406,8 @@ function onPick(event: Event) {
 
 defineExpose({
   focus: () => activate(rawLines.value.length - 1),
+  /** 指した行・桁から書き始める（`editRequest` を受けた側が呼ぶ）。 */
+  focusAt: (index: number, column: number | null) => activate(index, column ?? 'end'),
 })
 </script>
 

@@ -43,13 +43,32 @@ const dateLabel = computed(() => formatAppDate(props.section.date))
 /** 中身を隠せるようにする。日をまたぐ記録が増えると、当日の枠が下へ遠のくため。 */
 const open = ref(true)
 
-/** 編集アイコンで開く。開くまでは日付も並べ替えも動かせない。 */
+/**
+ * 書ける状態か。**文章を押せばそのまま入る**（編集アイコンからでも入れる）。
+ *
+ * 既定を確定済みの見た目にしているのは、どれが今日書く欄なのかを見分ける
+ * ためで、直すのに手間をかけさせたいわけではない。日付・並べ替え・削除は
+ * 書ける状態のときだけ出す（読み返しているときに押し間違えないため）。
+ */
 const editing = ref(false)
 
 function toggleEditing() {
   editing.value = !editing.value
   // 畳んだまま編集に入ると、書く場所が見えない
   if (editing.value) open.value = true
+}
+
+/**
+ * 読むだけの本文で、行の文字を押した（`ScrapboxEditor` の `editRequest`）。
+ *
+ * 書ける状態に変えて、**押した場所からそのまま書き始められる**ようにする。
+ * 読むだけの本文と書ける本文は別の部品なので、差し替わったあと（`nextTick`）に
+ * 行と桁を渡す。桁が決められない行（記法を含む行）は行末から。
+ */
+function startEditingAt(at: { index: number; column: number | null }) {
+  editing.value = true
+  open.value = true
+  void nextTick(() => editor.value?.focusAt(at.index, at.column))
 }
 
 // 別の記録を指すようになったら、開きかけの編集は持ち越さない
@@ -84,7 +103,10 @@ function onDateInput(event: Event) {
 /** 日付の入力欄を作り直すための番号（onDateInput を参照）。 */
 const dateInputKey = ref(0)
 
-const editor = ref<{ focus: () => void } | null>(null)
+const editor = ref<{
+  focus: () => void
+  focusAt: (index: number, column: number | null) => void
+} | null>(null)
 
 defineExpose({
   focus: () => {
@@ -188,12 +210,17 @@ defineExpose({
         :aria-label="`${dateLabel} の作業記録`"
         placeholder="この日にやったこと"
       />
-      <!-- 読むだけの間は確定済みの見た目にする（入力欄には見せない） -->
+      <!--
+        読むだけの間は確定済みの見た目にする（入力欄には見せない）。
+        押されたら、その場所から書ける状態に変える（`startEditingAt`）。
+      -->
       <ScrapboxEditor
         v-else
         view
         :model-value="section.body"
         :aria-label="`${dateLabel} の作業記録`"
+        class="record__reading"
+        @edit-request="startEditingAt"
       />
     </template>
 
@@ -279,6 +306,11 @@ defineExpose({
 
 .record__button--danger {
   color: var(--danger);
+}
+
+/* 押せば書ける状態になるので、文字の上ではその形にする */
+.record__reading {
+  cursor: text;
 }
 
 .record__error {
