@@ -330,6 +330,24 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.moveCursor(-1),
   },
   {
+    keys: ['G'],
+    shift: true,
+    label: '一番下のタスクへ',
+    group: '移動',
+    run: () => list.moveCursorTo('last'),
+  },
+  {
+    /*
+     * `g` `g`（vi と同じ）。移動の2打鍵は `g` に寄せてあるので
+     * （`g` `t` など。docs/08-todo-management.md 8.4）、その並びに収まる。
+     */
+    prefix: 'g',
+    keys: ['g'],
+    label: '一番上のタスクへ',
+    group: '移動',
+    run: () => list.moveCursorTo('first'),
+  },
+  {
     keys: ['o', 'Enter'],
     display: 'o',
     label: 'タスクを開く',

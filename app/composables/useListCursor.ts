@@ -81,6 +81,18 @@ export function useListCursor<T extends CursorRow>(
     focusedId.value = list[next]?.id ?? null
   }
 
+  /**
+   * 一覧の端へ移す（`g` `g` で先頭、`Shift`+`G` で末尾）。
+   *
+   * 端までは `j` / `k` の折り返しでも行けるが、件数が多いと押しっぱなしに
+   * なる。vi と同じ打鍵で一足飛びに行けるようにする。
+   */
+  function moveCursorTo(edge: 'first' | 'last') {
+    const list = rows.value
+    if (list.length === 0) return
+    focusedId.value = (edge === 'first' ? list[0] : list.at(-1))?.id ?? null
+  }
+
   /** その行へカーソルを移す。一覧に無い id なら何もしない。 */
   function focusRow(id: string) {
     if (rows.value.some((row) => row.id === id)) focusedId.value = id
@@ -109,5 +121,5 @@ export function useListCursor<T extends CursorRow>(
     },
   )
 
-  return { focusedId, cursor, cursorRow, moveCursor, focusRow, listEl }
+  return { focusedId, cursor, cursorRow, moveCursor, moveCursorTo, focusRow, listEl }
 }

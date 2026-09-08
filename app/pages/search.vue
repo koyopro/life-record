@@ -231,7 +231,8 @@ const taskIds = computed(() => [
 // 左に結果・右にタスクの詳細を並べる。探した結果をその場で片付けられる
 // ようにするため、いちいち詳細画面へ移らずに済ませたい。
 
-const { cursor, cursorRow, moveCursor, focusRow, listEl } = useListCursor(rows)
+const { cursor, cursorRow, moveCursor, moveCursorTo, focusRow, listEl } =
+  useListCursor(rows)
 
 /** カーソルが指しているタスク。日記の行にいる間は null（操作の対象も空になる）。 */
 const focusedItemId = computed(() => cursorRow.value?.hit.item?.id ?? null)
@@ -430,6 +431,24 @@ const shortcuts = computed<Shortcut[]>(() => [
     label: '前の結果へ',
     group: '移動',
     run: () => moveCursor(-1),
+  },
+  {
+    keys: ['G'],
+    shift: true,
+    label: '一番下の結果へ',
+    group: '移動',
+    run: () => moveCursorTo('last'),
+  },
+  {
+    /*
+     * `g` `g`（vi と同じ）。移動の2打鍵は `g` に寄せてあるので
+     * （`g` `t` など。docs/08-todo-management.md 8.4）、その並びに収まる。
+     */
+    prefix: 'g',
+    keys: ['g'],
+    label: '一番上の結果へ',
+    group: '移動',
+    run: () => moveCursorTo('first'),
   },
   {
     keys: ['o', 'Enter'],

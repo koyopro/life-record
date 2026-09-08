@@ -259,7 +259,7 @@ export function useItemList(options: Options) {
    * **消える前にその下にあったもの**へ移す（`nextFocusAfterRemoval`）。
    */
   const own = useListCursor(items, { onMissing: nextFocusAfterRemoval })
-  const { cursor, moveCursor, focusRow: focusItem, listEl } = own
+  const { cursor, moveCursor, moveCursorTo, focusRow: focusItem, listEl } = own
 
   /**
    * カーソルが指している Item。
@@ -599,6 +599,7 @@ export function useItemList(options: Options) {
     targets,
     canUndo: undoStack.canUndo,
     moveCursor,
+    moveCursorTo,
     focusItem,
     toggleSelect,
     clearSelection,
