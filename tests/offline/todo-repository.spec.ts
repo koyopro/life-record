@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   allItems,
+  deleteItem,
   getItem,
   lastFetchedAt,
   listConflicts,
@@ -54,6 +55,53 @@ describe('TodoRepository', () => {
 
     const ids = (await allItems()).map((item) => item.id)
     expect(ids).toEqual([kept.id])
+  })
+
+  /**
+   * 削除も同じ行き違いが起きる。ただし消したものは手元に残っていないので、
+   * `keepsLocal`（手元の写しを見て決める）が効かない。「消した」と「まだ
+   * 知らない」の区別が付かず、消したものが一覧へ戻って見える
+   * （リロードすると消えている）。
+   */
+  it('削除より前に出した取得の応答では、消したものを戻さない', async () => {
+    const item = itemDto()
+    await mergeServerItems([item], FRESH_FETCH)
+
+    // 削除が通って、手元からも消えた
+    await deleteItem(item.id)
+    expect(await getItem(item.id)).toBeUndefined()
+
+    // 消す前に取りに行った応答が、いま届く（まだ入っている）
+    await mergeServerItems([item], FRESH_FETCH)
+
+    expect(await getItem(item.id)).toBeUndefined()
+  })
+
+  it('サーバーの一覧から消えていれば、覚え書きも捨てる', async () => {
+    const item = itemDto()
+    await mergeServerItems([item], FRESH_FETCH)
+    await deleteItem(item.id)
+
+    // 削除を織り込んだ応答。ここで覚えておく必要はなくなる
+    await mergeServerItems([], FRESH_FETCH)
+
+    // 他の端末で取り消された（同じ id で作り直す）。今度は出す
+    await mergeServerItems([item], FRESH_FETCH)
+    expect(await getItem(item.id)).toBeDefined()
+  })
+
+  it('古い覚え書きは捨てる。いつまでも消し続けない', async () => {
+    const item = itemDto()
+    await mergeServerItems([item], FRESH_FETCH)
+
+    const longAgo = new Date('2026-08-18T00:00:00.000Z')
+    await deleteItem(item.id, longAgo)
+
+    // 応答の行き違いでは説明の付かない間が空いている
+    const now = new Date(longAgo.getTime() + 60 * 60 * 1000)
+    await mergeServerItems([item], FRESH_FETCH, now)
+
+    expect(await getItem(item.id)).toBeDefined()
   })
 
   /**

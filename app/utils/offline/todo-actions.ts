@@ -1,6 +1,6 @@
 import type { ItemDetailDto, ItemDto, ItemPatch } from '~~/shared/types/item'
 import type { LocalItem, SyncState } from './local-database'
-import { getItem, putItem, toLocalItem } from './todo-repository'
+import { forgetDeletedItem, getItem, putItem, toLocalItem } from './todo-repository'
 import { cancelOperations, enqueueOperation, listOperations } from './sync-queue'
 import { takeDeletedSnapshot } from './deleted-snapshots'
 
@@ -132,6 +132,9 @@ export async function restoreTodos(
     const snapshot = takeDeletedSnapshot(id) ?? (local ? toSnapshot(local) : null)
     if (!snapshot) continue
 
+    // 同じ id で作り直すので、消したことの覚え書きは外す。
+    // 残したままだと、戻したものが取り直しで消える側に回る
+    await forgetDeletedItem(id)
     await putItem(toLocalItem(pickItemFields(snapshot), 'pending_create'))
     await enqueueOperation(
       { kind: 'restore', itemIds: [id], payload: { snapshot } },

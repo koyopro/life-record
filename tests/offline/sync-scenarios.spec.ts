@@ -433,6 +433,33 @@ describe('オンライン復帰', () => {
     expect(await listOperations()).toEqual([])
   })
 
+  /**
+   * 消したものが一覧へ戻って見えた（リロードすると消えている）。
+   *
+   * 削除より前に出した取得の応答が、削除の後で届くと起きる。手元から
+   * 消えているぶん「消した」と「まだ知らない」の区別が付かず、その応答が
+   * 書き戻していた。
+   */
+  it('削除より前に出した取得の応答が届いても、一覧に戻らない', async () => {
+    const item = itemDto()
+    const remote = server([item])
+    await mergeServerItems([item], FRESH_FETCH)
+
+    // 消す前に取りに行った応答。この時点の一覧を控えておく
+    const inFlight = [...remote.items.values()]
+
+    await removeTodos([item.id])
+    await sync(remote)
+    expect(remote.items.has(item.id)).toBe(false)
+    expect(await getItem(item.id)).toBeUndefined()
+
+    // その応答がいま届く
+    await mergeServerItems(inFlight, FRESH_FETCH)
+
+    expect(await getItem(item.id)).toBeUndefined()
+    expect(await allItems()).toEqual([])
+  })
+
   it('続けて行った操作の基準は、前の送信の結果に合わせて進む', async () => {
     const item = itemDto()
     const remote = server([item])

@@ -27,7 +27,7 @@ export const DB_NAME = 'life-record'
  * ただし未送信の操作（operations）だけは作り直せない。まだサーバーに
  * 届いていない変更そのものなので、移行では必ず持ち越す。
  */
-export const DB_VERSION = 5
+export const DB_VERSION = 6
 
 /** Item ごとの同期状態。 */
 export type SyncState =
@@ -140,6 +140,28 @@ interface MetaRecord {
 }
 
 /**
+ * 消した Item の覚え書き。
+ *
+ * 取得（GET）と削除（DELETE）は別々に飛ぶので、**削除より前に出した取得の
+ * 応答が削除の後で届く**ことがある。その応答にはまだ消したものが入っていて、
+ * 手元から消えているぶん `keepsLocal` の守り（手元の写しを見て決める）が
+ * 効かない。「知らないだけ」と見分けが付かず、消したものが一覧へ戻る。
+ *
+ * 消したことを別に覚えておき、その応答で書き戻さないようにする
+ * （docs/15-client-state.md 14.2 の 4）。
+ */
+export interface DeletedItemRecord {
+  id: string
+  /**
+   * 消した時刻（この端末の時計）。
+   *
+   * ここだけは手元の時計でよい。比べる相手は「いまから何分前か」だけで、
+   * サーバーの時刻と突き合わせるものではない。
+   */
+  deletedAt: string
+}
+
+/**
  * 一度見た画像の控え（docs/11-scrapbox-notation.md 11.7）。
  *
  * 画像は S3 にあり、表示のたびに「リダイレクトを引く → S3 から読む」の
@@ -194,6 +216,8 @@ interface LifeRecordDb extends DBSchema {
   diaries: { key: string; value: LocalDiary }
   /** 最終取得日時などの雑多な値。 */
   meta: { key: string; value: MetaRecord }
+  /** 消した Item の覚え書き。消したものが取得の応答で戻らないようにする。 */
+  tombstones: { key: string; value: DeletedItemRecord }
   /** 一度見た画像の中身。古く使ったものから捨てるので、その順で引けるようにする。 */
   images: {
     key: string
@@ -302,6 +326,11 @@ export function openLocalDatabase(): Promise<LocalDatabase> {
         if (oldVersion < 4) {
           const images = db.createObjectStore('images', { keyPath: 'path' })
           images.createIndex('by-used-at', 'usedAt')
+        }
+
+        // 消したものが、削除より前に出した取得の応答で戻らないようにする
+        if (oldVersion < 6) {
+          db.createObjectStore('tombstones', { keyPath: 'id' })
         }
 
         // 作り直しは非同期になるので最後に置く。オブジェクトストアの作成は

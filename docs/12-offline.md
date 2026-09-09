@@ -70,6 +70,7 @@ IndexedDB から一覧を読んで表示する
 | `operations` | まだ送れていない操作（積んだ順の通し番号が主キー） |
 | `conflicts` | 競合を検出した記録。人に知らせるまで残す |
 | `images` | 一度見た画像の中身（パスが主キー。[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.7） |
+| `tombstones` | 消した Item の覚え書き。消したものが取得の応答で戻らないようにする（[15-client-state.md](15-client-state.md) 14.2 の 4） |
 | `meta` | 最終取得日時など |
 
 Item の同期状態（`syncState`）は `synced` / `pending_create` / `pending_update` /

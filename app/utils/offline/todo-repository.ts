@@ -21,6 +21,16 @@ const LAST_FETCHED_AT = 'items.lastFetchedAt'
 const CONFLICT_RETENTION_DAYS = 7
 
 /**
+ * 消したことを覚えておく時間。
+ *
+ * 守りたいのは「削除より前に出した取得の応答が、削除の後で届く」ぶんだけ。
+ * 行き違いは長くても数秒（取得の上限が30秒。`sync-runner.ts`）なので、
+ * それを見込んで少し長めに取る。いつまでも覚えていると、他の端末で
+ * 同じ id が戻されたとき（取り消しは同じ id で作り直す）に出てこなくなる。
+ */
+const TOMBSTONE_RETENTION_MS = 10 * 60_000
+
+/**
  * ローカルへ書き込んだ回数。
  *
  * 画面が見ている配列は、**書き込みと前後して読み直される**ことがある
@@ -74,10 +84,30 @@ export async function putItem(item: LocalItem): Promise<void> {
   })
 }
 
-export async function deleteItem(id: string): Promise<void> {
+/**
+ * 手元から消す。**消したことも覚えておく**（`tombstones`）。
+ *
+ * 呼ばれるのは、サーバーでも消えたと分かったときだけ（削除が通った・
+ * 他の端末で消されていた）。取り消しで戻す前の `pending_delete` は
+ * 印を付けるだけで、ここは通らない。
+ */
+export async function deleteItem(id: string, now: Date = new Date()): Promise<void> {
   await write(async () => {
     const db = await openLocalDatabase()
-    await db.delete('items', id)
+    const tx = db.transaction(['items', 'tombstones'], 'readwrite')
+    await tx.objectStore('items').delete(id)
+    await tx
+      .objectStore('tombstones')
+      .put({ id, deletedAt: now.toISOString() })
+    await tx.done
+  })
+}
+
+/** 消したことを忘れる。取り消し（`u`）で同じ id を戻すときに呼ぶ。 */
+export async function forgetDeletedItem(id: string): Promise<void> {
+  await write(async () => {
+    const db = await openLocalDatabase()
+    await db.delete('tombstones', id)
   })
 }
 
@@ -120,6 +150,11 @@ export function toLocalItem(item: ItemDto, syncState: SyncState = 'synced'): Loc
  *
  * ローカルにあってサーバーに無いものは、他の端末で削除されたと見て消す
  * （未送信の操作が付いているものは残す）。
+ *
+ * **消したばかりのものは書き戻さない**（`tombstones`）。手元から消えたものは
+ * 「消した」と「まだ知らない」の区別が付かず、`keepsLocal` の守りが効かない。
+ * 削除より前に出した取得の応答が後から届くと、消したものが一覧へ戻ってしまう
+ * （リロードすると消えているのに、その場では戻って見える）。
  */
 export async function mergeServerItems(
   serverItems: ItemDto[],
@@ -130,18 +165,38 @@ export async function mergeServerItems(
 ): Promise<void> {
   await write(async () => {
     const db = await openLocalDatabase()
-    const tx = db.transaction(['items', 'meta'], 'readwrite')
+    const tx = db.transaction(['items', 'meta', 'tombstones'], 'readwrite')
     const items = tx.objectStore('items')
+    const tombstones = tx.objectStore('tombstones')
 
     const locals = new Map<string, LocalItem>()
     for (const local of await items.getAll()) locals.set(local.id, local)
 
+    // 古くなった覚え書きは捨てる。応答の行き違いは長くても数秒で、
+    // これ以上残すと、他の端末で同じ id が戻されたときに出てこなくなる
+    const expired = new Date(fetchedAt.getTime() - TOMBSTONE_RETENTION_MS).toISOString()
+    const deleted = new Set<string>()
+    for (const tombstone of await tombstones.getAll()) {
+      if (tombstone.deletedAt < expired) {
+        await tombstones.delete(tombstone.id)
+        continue
+      }
+      deleted.add(tombstone.id)
+    }
+
     const seen = new Set<string>()
     for (const server of serverItems) {
       seen.add(server.id)
+      // 消したものが入っている＝この応答は削除より前に作られたもの
+      if (deleted.has(server.id)) continue
       const local = locals.get(server.id)
       if (local && keepsLocal(local, serverFetchedAt)) continue
       await items.put(toLocalItem(server))
+    }
+
+    // サーバーの一覧から消えていれば、覚えておく必要はもう無い
+    for (const id of deleted) {
+      if (!seen.has(id)) await tombstones.delete(id)
     }
 
     for (const [id, local] of locals) {
