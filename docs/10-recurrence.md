@@ -60,13 +60,14 @@ series_id = A
 
 ## 10.3 データモデル
 
-`items` に3カラムを追加する。
+`items` に4カラムを追加する。
 
 | カラム | 型 | 必須 | 説明 |
 |---|---|---|---|
 | recurrence_rule | text | No | 繰り返し規則（RRULE 形式）。NULL なら繰り返しなし |
 | recurrence_basis | enum | No | `due`（every） / `completion`（after）。ルールがあるとき必須 |
 | series_id | UUID | No | 同じ繰り返しから生まれた Item 群の識別子 |
+| generated_from | UUID | No | この回を生んだ完了（元の Item の id）。二度作らないための鍵（10.9） |
 
 ### 規則の表現
 
@@ -316,7 +317,8 @@ CREATE TYPE recurrence_basis AS ENUM ('due', 'completion');
 ALTER TABLE items
   ADD COLUMN recurrence_rule  TEXT,
   ADD COLUMN recurrence_basis recurrence_basis,
-  ADD COLUMN series_id        UUID;
+  ADD COLUMN series_id        UUID,
+  ADD COLUMN generated_from   UUID;
 
 -- ルールがあるなら basis も必ずある
 ALTER TABLE items
@@ -329,6 +331,11 @@ ALTER TABLE items
 -- 系列の過去オカレンスを辿る経路
 CREATE INDEX items_series_id_idx
   ON items (series_id);
+
+-- 1つの完了から生まれる次回分は高々1つ（10.9）。
+-- 繰り返しから生まれていない Item は NULL で、NULL どうしは重複と見なされない
+CREATE UNIQUE INDEX items_generated_from_uniq
+  ON items (generated_from);
 ```
 
 `series_id` に外部キー制約は付けない。系列の起点となった Item が削除されても、
@@ -336,7 +343,48 @@ CREATE INDEX items_series_id_idx
 
 ---
 
-## 10.9 実装スコープ
+## 10.9 次回分を二度作らない
+
+**同じ完了が二度サーバーへ届くことは避けられない。** 応答が返らなかった送信は
+送り直されるためで（[12-offline.md](12-offline.md) 12.6）、これは仕様どおりの動き。
+
+問題は、次回分を作る条件が「未完了 → 完了への遷移」だけだったこと。この判定は
+更新前の行を読んでから書くまでの間に割り込まれる。届いた2つの処理が**重なる**と、
+どちらからも「まだ未完了」に見えて、次回分が2件できる。実際に次の経路で起きる。
+
+| 経路 | 重なり方 |
+|---|---|
+| 送信の打ち切り → 送り直し | 打ち切りはこちらの待ちを止めるだけで、サーバーの処理は走り続ける。1秒後の送り直しが、その処理と重なる |
+| 複数のタブ・端末 | 送信中の印を持たない列を同時に流し、同じ操作が並んで届く |
+| 完了 → 取り消し（`u`）→ 再度完了 | 1回目で生まれた回が残ったまま、2件目ができる |
+
+送り直しそのものは止められないので、**受け取る側を冪等にする**。追加
+（`id` で見分ける）や作業記録の保存（`PUT`）と同じ考え方。
+
+### 鍵は「どの完了から生まれたか」
+
+生まれた回に `generated_from`（元の Item の id）を入れ、そこへ一意制約を張る。
+**1つの完了から生まれる回は高々1つ**、を DB が保証する形にする。
+
+期限（`series_id` + `due_at`）を鍵にしない。手で期限を動かしたときに、
+過去の回とたまたま同じ日付になっただけで保存が弾かれてしまう。
+
+次回分を作る前に、系列の側からも次の3つを見る。一意制約に当たる前に済ませたい
+（当たった側は黙って作らずに終わるが、判定できるものは判定しておく）。
+
+1. **この完了から生まれた回がすでにある** → 作らない（送り直し・二重送信）
+2. **未完了の回がすでにある** → 作らない（10.2「未完了オカレンスは常に1つ」）。
+   取り消してからの再完了と、`generated_from` を持たない古い回に効く
+3. **同じ期限の回がすでにある** → 作らない。次回期限は前の回より必ず後になるので
+   （10.4）、一致するなら同じ回を作り直そうとしている
+
+判定してから入れるまでの間に、同じ完了がもう一度届くことは依然としてある。
+互いの未コミットの行は見えないため、両方が「まだ無い」と見える。最後は一意制約が
+締めて、競り負けた側は何も作らずに終わる。
+
+---
+
+## 10.10 実装スコープ
 
 [06-roadmap.md](06-roadmap.md) Milestone 5 として実装する。
 
@@ -349,6 +397,7 @@ CREATE INDEX items_series_id_idx
   - [x] basis = completion
   - [x] title / priority / url / tags の引き継ぎ
   - [x] 終了条件（COUNT / UNTIL）の判定
+  - [x] 同じ完了から二度作らない（10.9）
 - [x] Item 詳細での繰り返し設定UI
 - [x] 一覧での繰り返しアイコン表示
 - [x] 系列の過去オカレンスを辿るUI

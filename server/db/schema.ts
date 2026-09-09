@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
@@ -76,6 +77,18 @@ export const items = pgTable(
     /** 同じ繰り返しから生まれた Item 群の識別子。起点 Item の id を入れる。 */
     seriesId: uuid('series_id'),
     /**
+     * この Item を生んだ完了（元になった Item の id）。
+     *
+     * 繰り返しの次回分を**二度作らない**ための鍵（docs/10-recurrence.md 10.9）。
+     * 同じ完了が二度届くこと自体は避けられない（応答が返らなかった送信は
+     * 送り直す。docs/12-offline.md 12.6）ので、「1つの完了から生まれる回は
+     * 高々1つ」を一意制約で押さえる。
+     *
+     * 繰り返しから生まれた Item にだけ入る。手で作った Item は NULL で、
+     * Postgres の一意制約は NULL どうしを重複と見なさないため、いくつでも並ぶ。
+     */
+    generatedFrom: uuid('generated_from'),
+    /**
      * 完了にした日時。status が closed になった瞬間だけ入れ、
      * 再オープンで null に戻す。「今日」リストの完了タスクを
      * 「今日完了したもの」だけに絞るために使う。
@@ -100,6 +113,14 @@ export const items = pgTable(
     // series_id に外部キーは張らない。起点 Item が削除されても、
     // 残りのオカレンスは履歴として残したいため（docs/10-recurrence.md 10.8）。
     index('items_series_id_idx').on(t.seriesId),
+    /*
+     * 1つの完了から生まれる次回分は高々1つ（docs/10-recurrence.md 10.9）。
+     *
+     * アプリ側でも作る前に確かめるが、確かめてから入れるまでの間に
+     * 同じ完了がもう一度届くと（送り直し・複数のタブ）両方が「まだ無い」と
+     * 見えてしまう。取引の外からは防げないので、一意制約で締める。
+     */
+    uniqueIndex('items_generated_from_uniq').on(t.generatedFrom),
     // ルールがあるなら basis も必ずある
     check(
       'items_recurrence_complete',

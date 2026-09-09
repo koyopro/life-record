@@ -4,6 +4,7 @@ import {
   nextDueAt,
   parseRecurrence,
 } from '~~/shared/utils/recurrence'
+import { skipReasonOf } from '~~/server/utils/recurrence'
 
 /**
  * 月の中の並びで決まる繰り返し（docs/10-recurrence.md 10.7）。
@@ -186,5 +187,69 @@ describe('表示と解釈の往復', () => {
         basis: 'due',
       }),
     ).toBe('毎月の最後の平日')
+  })
+})
+
+/**
+ * 次回分を二度作らないための判定（docs/10-recurrence.md 10.9）。
+ *
+ * 完了の送信は、応答が返らなければ送り直される（docs/12-offline.md 12.6）。
+ * 送り直しが1回目の処理と重なると、どちらの取引からも「まだ未完了」に見え、
+ * 「完了への遷移」だけを見ていると次回分が2件できる。系列の側からも
+ * 重複を見て、作らない理由があれば作らない。
+ */
+describe('次回分の重複を防ぐ', () => {
+  const due = new Date('2026-09-16T23:59:00+09:00')
+  const closed = {
+    id: 'a',
+    status: 'closed',
+    dueAt: new Date('2026-09-09T23:59:00+09:00'),
+    generatedFrom: null,
+  } as const
+
+  it('系列に何も無ければ作る', () => {
+    expect(skipReasonOf([closed], 'a', due)).toBeNull()
+  })
+
+  it('この完了から生まれた回がすでにあれば作らない（送り直し・二重送信）', () => {
+    const generated = {
+      id: 'b',
+      status: 'backlog',
+      dueAt: due,
+      generatedFrom: 'a',
+    } as const
+
+    expect(skipReasonOf([closed, generated], 'a', due)).toBe('already_generated')
+  })
+
+  it('未完了の回が残っていれば作らない（完了を取り消して、もう一度完了した）', () => {
+    // この仕組みより前に生まれた回は generated_from を持たない
+    const open = {
+      id: 'b',
+      status: 'in_progress',
+      dueAt: new Date('2026-09-30T23:59:00+09:00'),
+      generatedFrom: null,
+    } as const
+
+    expect(skipReasonOf([closed, open], 'a', due)).toBe('open_occurrence')
+  })
+
+  it('同じ期限の回がすでにあれば作らない', () => {
+    // 次回期限は前の回より必ず後になる（10.4）。一致するなら同じ回
+    const same = {
+      id: 'b',
+      status: 'closed',
+      dueAt: new Date(due),
+      generatedFrom: null,
+    } as const
+
+    expect(skipReasonOf([closed, same], 'a', due)).toBe('same_due')
+  })
+
+  it('完了した本人が未完了に見えても、それは止める理由にならない', () => {
+    // 一括完了では更新後の行を渡すが、念のため自分自身は数えない
+    const self = { ...closed, status: 'backlog' } as const
+
+    expect(skipReasonOf([self], 'a', due)).toBeNull()
   })
 })

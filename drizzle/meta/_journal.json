@@ -113,6 +113,13 @@
       "when": 1787886132637,
       "tag": "0015_daily_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788914909830,
+      "tag": "0016_aspiring_edwin_jarvis",
+      "breakpoints": true
     }
   ]
 }

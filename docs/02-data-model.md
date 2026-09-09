@@ -71,11 +71,12 @@ TODO・タスクを表す。
 | recurrence_rule | text | No | 繰り返し規則（RRULE 形式）。NULL なら繰り返しなし |
 | recurrence_basis | enum | No | `due`（every） / `completion`（after） |
 | series_id | UUID | No | 同じ繰り返しから生まれた Item 群の識別子 |
+| generated_from | UUID | No | この回を生んだ完了（元の Item の id）。1つの完了から生まれる回は高々1つ |
 | completed_at | timestamptz | No | 完了にした日時。`status` が `closed` 以外なら NULL |
 | created_at | timestamptz | Yes | 作成日時 |
 | updated_at | timestamptz | Yes | 更新日時 |
 
-繰り返し関連の3カラムの詳細は [10-recurrence.md](10-recurrence.md) を参照。
+繰り返し関連の4カラムの詳細は [10-recurrence.md](10-recurrence.md) を参照。
 
 ### status
 
@@ -477,6 +478,7 @@ CREATE TABLE items (
   recurrence_rule  TEXT,
   recurrence_basis recurrence_basis,
   series_id        UUID,
+  generated_from   UUID,
   completed_at     TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -501,6 +503,10 @@ CREATE INDEX items_priority_due_idx
 -- 系列の過去オカレンスを辿る経路
 CREATE INDEX items_series_id_idx
   ON items (series_id);
+
+-- 1つの完了から生まれる次回分は高々1つ（10-recurrence.md 10.9）
+CREATE UNIQUE INDEX items_generated_from_uniq
+  ON items (generated_from);
 
 CREATE TABLE tags (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
