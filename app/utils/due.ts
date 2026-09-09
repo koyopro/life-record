@@ -78,6 +78,9 @@ export function formatDue(item: DueSource, now = new Date()): DueDisplay {
  *
  * 今日・昨日は時刻まで出す。完了側は完了の新しい順に並ぶので、その日の中の
  * 前後がここで読める。それより前は日付だけでよい。
+ *
+ * 今日のぶんは時刻だけにする（「今日」を付けない）。完了側の先頭に集まって
+ * いるのは今日終えたもので、時刻が並んでいれば今日のことだと分かる。
  */
 export function formatCompleted(
   completedAt: string | null,
@@ -89,7 +92,7 @@ export function formatCompleted(
   const diff = daysBetween(now, done)
   const time = `${String(done.getHours()).padStart(2, '0')}:${String(done.getMinutes()).padStart(2, '0')}`
 
-  if (diff === 0) return `今日 ${time}`
+  if (diff === 0) return time
   if (diff === -1) return `昨日 ${time}`
   // 先の日付になることは無いが、端末の時計がずれていれば起こりうる
   if (diff < 0 && diff >= -7) return `${-diff}日前`
