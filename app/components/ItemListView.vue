@@ -116,7 +116,10 @@ const list = useItemList({
  * `list.items` を、選んでいる軸で見出し付きの塊に分けるだけで、
  * 各グループの中の順序は並びのまま変えない。
  */
-const groupedItems = computed(() => groupItems(list.items.value, list.groupBy.value))
+const groupedItems = computed(() =>
+  // 効いているグループ順を見る（完了側は常に「なし」。useItemList）
+  groupItems(list.items.value, list.activeGroupBy.value),
+)
 
 // --- 分割表示（docs/03-functional-spec.md 3.1） ---------------------------
 //
@@ -456,7 +459,12 @@ defineExpose({
           </div>
 
           <div class="list__controls">
-            <label v-if="showSort" class="list__sort">
+            <!--
+              完了側は完了した順に一続きで出すので、並び・グループ順は
+              効かない（useItemList）。選べるままにしておくと、選んだのに
+              変わらないものが並ぶことになるので出さない。
+            -->
+            <label v-if="showSort && !completed" class="list__sort">
               <span class="list__sort-label">グループ</span>
               <select v-model="list.groupBy.value" class="list__sort-select">
                 <option v-for="key in GROUP_KEYS" :key="key" :value="key">
@@ -464,7 +472,7 @@ defineExpose({
                 </option>
               </select>
             </label>
-            <label v-if="showSort" class="list__sort">
+            <label v-if="showSort && !completed" class="list__sort">
               <span class="list__sort-label">並び</span>
               <select v-model="list.sort.value" class="list__sort-select">
                 <option v-for="key in SORT_KEYS" :key="key" :value="key">
@@ -472,6 +480,9 @@ defineExpose({
                 </option>
               </select>
             </label>
+            <span v-if="showSort && completed" class="list__sort-fixed">
+              完了した順
+            </span>
             <button
               type="button"
               class="list__help"
@@ -517,6 +528,7 @@ defineExpose({
                 :selected="list.selectedIds.value.has(item.id)"
                 :pending="item.syncState !== 'synced'"
                 :ignore-status="view === 'all'"
+                :show-completed-at="completed"
                 @focus="focusFromPointer(item.id)"
                 @select="selectItem(item)"
                 @complete="actions?.toggleComplete(item)"
@@ -686,6 +698,13 @@ defineExpose({
 .list__sort-label {
   color: var(--text-muted);
   font-size: 0.8125rem;
+}
+
+/* 完了側で、並びが決まっていることだけを示す（選ばせない） */
+.list__sort-fixed {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
 }
 
 .list__sort-select {

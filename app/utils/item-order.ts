@@ -94,6 +94,23 @@ const byCreatedDesc: Compare = (a, b) => compareText(b.createdAt, a.createdAt)
 const byUpdatedDesc: Compare = (a, b) => compareText(b.updatedAt, a.updatedAt)
 
 /**
+ * 完了した順（新しいものが上）に並べる。
+ *
+ * 「未完了 / 完了」を完了側へ切り替えたときは、その一覧の並び（重要度順・
+ * 期限順）を当てない。完了したものについて知りたいのは**いつ終えたか**で、
+ * 期限や重要度で並べても「さっき片付けたもの」がどこにあるか分からない。
+ *
+ * 完了日時を持たないもの（この記録より前に完了したもの）は末尾へ置き、
+ * 同着は作成の新しい順にする。
+ */
+export function sortByCompletedAt<T extends ItemDto>(items: T[]): T[] {
+  return [...items].sort(chain(byCompletedDesc, byCreatedDesc))
+}
+
+const byCompletedDesc: Compare = (a, b) =>
+  nullsLast(a.completedAt, b.completedAt, (x, y) => compareText(y, x))
+
+/**
  * 一覧から消えた Item の代わりに、カーソルを置く先の id。
  *
  * 編集した結果その一覧の条件から外れる（完了にする・タグを外す・期限を

@@ -128,6 +128,18 @@ export function useItemList(options: Options) {
     },
   })
 
+  /**
+   * いま実際に効いているグループ順。
+   *
+   * 完了側は常に「なし」。完了した順に一続きで見たいのに、重要度や期限で
+   * 見出しが挟まると、さっき片付けたものがどこにあるか分からなくなる。
+   * 表示側（ItemListView）もこれを見る。`items` の並びと食い違うと、
+   * カーソル（`j` `k`）が見た目と別の順に動く。
+   */
+  const activeGroupBy = computed<GroupKey>(() =>
+    view.value === 'completed' ? 'none' : groupBy.value,
+  )
+
   const store = useItemStore()
   const sync = useSync()
   const undoStack = useUndo()
@@ -219,7 +231,13 @@ export function useItemList(options: Options) {
       return found
     }
 
-    const sorted = sortItems(store.items.value.filter(belongsHere), sort.value)
+    const shown = store.items.value.filter(belongsHere)
+
+    // 完了側は完了した順に並べる。並び・グループ順の設定は当てない
+    // （`activeGroupBy`。docs/08-todo-management.md 8.2）
+    if (view.value === 'completed') return sortByCompletedAt(shown)
+
+    const sorted = sortItems(shown, sort.value)
     if (groupBy.value === 'none') return sorted
     return groupItems(sorted, groupBy.value).flatMap((group) =>
       group.items.map(({ item }) => item),
@@ -591,6 +609,7 @@ export function useItemList(options: Options) {
     errorMessage,
     sort,
     groupBy,
+    activeGroupBy,
     cursor,
     cursorItem,
     /** 行を並べている入れ物。カーソルを画面内へ送るのに使う（`ref="listEl"`）。 */

@@ -17,6 +17,14 @@ const props = defineProps<{
    * 別扱いにすると、その条件に当てはまるもの全部を眺める邪魔になる。
    */
   ignoreStatus?: boolean
+  /**
+   * 右側に、期限ではなく完了日時を出すか。
+   *
+   * 「未完了 / 完了」の完了側で使う。完了したものについて知りたいのは
+   * いつ終えたかで、期限はもう役目を終えている
+   * （docs/08-todo-management.md 8.2）。
+   */
+  showCompletedAt?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +37,11 @@ const emit = defineEmits<{
 }>()
 
 const due = computed(() => formatDue(props.item))
+
+/** 完了日時。出さない一覧と、まだ完了していないものでは空になる。 */
+const completedLabel = computed(() =>
+  props.showCompletedAt ? formatCompleted(props.item.completedAt) : '',
+)
 const closed = computed(() => props.item.status === 'closed')
 
 /** 完了したものとして**見せる**か。状態を見ない一覧では出さない。 */
@@ -211,8 +224,10 @@ function onTouchEnd() {
           {{ tag }}
         </button>
       </div>
+      <!-- 完了日時は色を付けない。期限の色は間に合っていないことの知らせ -->
+      <span v-if="completedLabel" class="card__due">{{ completedLabel }}</span>
       <span
-        v-if="due.state !== 'none'"
+        v-else-if="due.state !== 'none'"
         class="card__due"
         :class="`card__due--${due.state}`"
       >

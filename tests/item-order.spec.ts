@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { nextFocusAfterRemoval, sortItems } from '~/utils/item-order'
+import {
+  nextFocusAfterRemoval,
+  sortByCompletedAt,
+  sortItems,
+} from '~/utils/item-order'
 import { toSortKey } from '~~/shared/types/item'
 import { itemDto } from './helpers'
 
@@ -133,5 +137,53 @@ describe('nextFocusAfterRemoval', () => {
 
   it('消える前の一覧に無いものは、行き先を決められないので null', () => {
     expect(nextFocusAfterRemoval(list, 'z', new Set(['a', 'b', 'c']))).toBeNull()
+  })
+})
+
+/**
+ * 「未完了 / 完了」の完了側（docs/08-todo-management.md 8.2）。
+ *
+ * その一覧の並び（重要度順・期限順）は当てない。完了したものについて
+ * 知りたいのは**いつ終えたか**で、期限で並べても、さっき片付けたものが
+ * どこにあるか分からない。
+ */
+describe('sortByCompletedAt', () => {
+  function done(id: string, completedAt: string | null) {
+    return itemDto({
+      id,
+      status: 'closed',
+      completedAt,
+      // 期限と重要度は、並びに効かないことを見るために散らしておく
+      dueAt: '2026-01-01T00:00:00.000Z',
+      priority: 1,
+      createdAt: `2026-01-0${id}T00:00:00.000Z`,
+    })
+  }
+
+  it('完了した順（新しいものが上）に並べる', () => {
+    const list = [
+      done('1', '2026-09-08T10:00:00.000Z'),
+      done('2', '2026-09-09T09:00:00.000Z'),
+      done('3', '2026-09-09T12:00:00.000Z'),
+    ]
+
+    expect(sortByCompletedAt(list).map((item) => item.id)).toEqual(['3', '2', '1'])
+  })
+
+  it('完了日時を持たないものは末尾（この記録より前に完了したもの）', () => {
+    const list = [done('1', null), done('2', '2026-09-09T09:00:00.000Z')]
+
+    expect(sortByCompletedAt(list).map((item) => item.id)).toEqual(['2', '1'])
+  })
+
+  it('元の配列は変えない', () => {
+    const list = [
+      done('1', '2026-09-08T10:00:00.000Z'),
+      done('2', '2026-09-09T09:00:00.000Z'),
+    ]
+
+    sortByCompletedAt(list)
+
+    expect(list.map((item) => item.id)).toEqual(['1', '2'])
   })
 })
