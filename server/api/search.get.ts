@@ -2,7 +2,8 @@ import { and, desc, eq, exists, gte, lte, ne, or, sql, type SQL } from 'drizzle-
 import { useDb } from '~~/server/db'
 import { diaries, itemTags, items, sections, tags } from '~~/server/db/schema'
 import { assertAppDate } from '~~/server/utils/date'
-import { excerptAround, likePattern } from '~~/server/utils/search'
+import { likePattern } from '~~/server/utils/search'
+import { excerptAround, sortSearchHits } from '~~/shared/utils/search'
 import { tagsByItemId } from '~~/server/utils/tags'
 import { toAppDate } from '~~/shared/utils/date'
 import type { Priority } from '~~/shared/types/item'
@@ -11,8 +12,6 @@ import { normalizeTagName } from '~~/shared/types/tag'
 
 /** 種別ごとの取得上限。混ぜて並べ替えるので、それぞれ多めに取る。 */
 const PER_KIND_LIMIT = 100
-/** 返す件数の上限。 */
-const TOTAL_LIMIT = 100
 
 /**
  * Item.title・Item.note / Section.body / Diary.body の横断検索
@@ -209,9 +208,9 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
     }
   }
 
-  const sorted = hits
-    .sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1))
-    .slice(0, TOTAL_LIMIT)
+  // 並べ方と件数の上限は手元の検索と同じものを使う（shared/utils/search.ts）。
+  // ずれていると、応答が届いた瞬間に行の位置が変わる
+  const sorted = sortSearchHits(hits)
 
   // 返すぶんだけタグを引く。切り捨てた行のために引いても使い道がない
   const tagNames = await tagsByItemId(

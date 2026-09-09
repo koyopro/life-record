@@ -66,6 +66,12 @@ export async function deleteSection(id: string): Promise<void> {
   await db.delete('sections', id)
 }
 
+/** 手元にあるすべての作業記録。横断検索（`searchLocally`）で使う。 */
+export async function allSections(): Promise<LocalSection[]> {
+  const db = await openLocalDatabase()
+  return await db.getAll('sections')
+}
+
 /** まだ送れていない作業記録。起動時の積み直しに使う。 */
 export async function pendingSections(): Promise<LocalSection[]> {
   const db = await openLocalDatabase()

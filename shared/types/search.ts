@@ -86,6 +86,14 @@ export function isSearchView(value: unknown): value is SearchView {
 /** 抜粋の長さ。一致箇所の前後を合わせてこの程度に収める。 */
 export const SEARCH_EXCERPT_LENGTH = 120
 
+/**
+ * 返す件数の上限。
+ *
+ * サーバーと手元で同じ数にする。手元の分だけ多く出ていると、応答が届いた
+ * ときに行が減って見える（docs/03-functional-spec.md 3.6）。
+ */
+export const SEARCH_TOTAL_LIMIT = 100
+
 export function isSearchKind(value: unknown): value is SearchKind {
   return SEARCH_KINDS.includes(value as SearchKind)
 }

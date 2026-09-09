@@ -7,8 +7,13 @@ import {
   isSearchKind,
   type SearchHit,
   type SearchKind,
+  type SearchQuery,
   type SearchView,
 } from '~~/shared/types/search'
+import { mergeSearchHits } from '~~/shared/utils/search'
+import { searchLocally, stillMatches } from '~/utils/search-local'
+import { allDiaries, allSections } from '~/utils/offline/body-repository'
+import type { LocalDiary, LocalSection } from '~/utils/offline/local-database'
 import { normalizeTagName } from '~~/shared/types/tag'
 import { formatAppDate, isAppDate } from '~~/shared/utils/date'
 import type { Shortcut } from '~/composables/useShortcuts'
@@ -120,10 +125,81 @@ watch(
 // 条件は computed で渡す。useFetch はこれを見て投げ直す
 const term = computed(() => queryString('q'))
 
-const { data: hits, pending, refresh } = await useFetch<SearchHit[]>('/api/search', {
+/** いまの検索条件。手元の検索（`searchLocally`）にもそのまま渡す。 */
+const conditions = computed<SearchQuery>(() => ({
+  q: term.value,
+  kind: kind.value,
+  view: view.value,
+  tag: tag.value ?? '',
+  from: from.value,
+  to: to.value,
+}))
+
+/*
+ * サーバーへの問い合わせ。**待たない**（`lazy`）。
+ *
+ * 待つと、検索画面へ移るところで一拍止まる（Nuxt は setup の await が
+ * 終わるまで画面を切り替えない）。手元のぶんを先に出して、届いたら重ねる。
+ */
+const {
+  data: serverHits,
+  pending,
+  refresh,
+} = useFetch<SearchHit[]>('/api/search', {
   query: { q: term, kind, view, tag, from, to },
+  lazy: true,
   default: () => [],
 })
+
+const itemStore = useItemStore()
+
+/**
+ * 手元（IndexedDB）にある作業記録と日記。
+ *
+ * タスクは useItemStore が全件持っているのでそのまま使う。本文は量が
+ * 多いので、条件が変わったときに読み直す（打鍵のたびではない。`term` は
+ * URL に入ってから変わる＝入力が止まってから）。
+ */
+const localBodies = ref<{ sections: LocalSection[]; diaries: LocalDiary[] }>({
+  sections: [],
+  diaries: [],
+})
+
+async function loadLocalBodies() {
+  if (!import.meta.client) return
+  const [sections, diaries] = await Promise.all([allSections(), allDiaries()])
+  localBodies.value = { sections, diaries }
+}
+
+watch(conditions, () => void loadLocalBodies(), { immediate: true })
+// 送り終えたら手元の写しが増えている（開いた記録が増えた・他の端末の分が届いた）
+watch(useSync().lastSyncedAt, () => void loadLocalBodies())
+
+/** 手元だけで組み立てた結果。サーバーの応答を待たずに出す。 */
+const localHits = computed(() =>
+  searchLocally(
+    {
+      items: itemStore.items.value,
+      sections: localBodies.value.sections,
+      diaries: localBodies.value.diaries,
+    },
+    conditions.value,
+  ),
+)
+
+/**
+ * 画面に出す結果。
+ *
+ * 手元のぶんへサーバーの応答を重ね（`mergeSearchHits`）、そのうえで
+ * **いまの手元の状態に合わないものを落とす**（`stillMatches`）。応答は
+ * 聞きに行った時点の姿なので、そのあとに検索結果から完了にしたり消したり
+ * したものが、そのままでは未完了の結果に残る。
+ */
+const hits = computed(() =>
+  mergeSearchHits(serverHits.value ?? [], localHits.value).filter((hit) =>
+    stillMatches(hit, hit.item ? itemStore.byId(hit.item.id) : undefined, conditions.value),
+  ),
+)
 
 /** 同じタグをもう一度押したら解除する（一覧と同じ）。 */
 function selectTag(name: string) {
@@ -163,8 +239,6 @@ const KIND_LABELS: Record<Exclude<SearchKind, 'all'>, string> = {
   section: '作業記録',
   diary: '日記',
 }
-
-const itemStore = useItemStore()
 
 /**
  * 検索の当たりを、一覧に並んでいるのと同じ Item に置き換える。
@@ -232,7 +306,14 @@ const taskIds = computed(() => [
 // ようにするため、いちいち詳細画面へ移らずに済ませたい。
 
 const { cursor, cursorRow, moveCursor, moveCursorTo, focusRow, listEl } =
-  useListCursor(rows)
+  useListCursor(rows, {
+    /*
+     * 指していた行が消えたら、その下にあった行へ移す（一覧と同じ）。
+     * 検索結果からも完了・削除ができるので、そのたびに先頭へ飛ばされると
+     * 続けて片付けられない。
+     */
+    onMissing: nextFocusAfterRemoval,
+  })
 
 /** カーソルが指しているタスク。日記の行にいる間は null（操作の対象も空になる）。 */
 const focusedItemId = computed(() => cursorRow.value?.hit.item?.id ?? null)
