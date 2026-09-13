@@ -26,6 +26,15 @@ const errorMessage = ref<string | null>(null)
  */
 const added = ref<{ id: string; title: string }[]>([])
 
+/**
+ * 最後に追加したもの。「追加したタスクを開く」の行き先。
+ *
+ * 書いたあとに期限や本文を足したくなることがある。追加したものの一覧から
+ * 探して押させず、いちばん近い1つはボタン1つで開けるようにする。
+ * 続けて追加したときは、いま書いたばかりのほうへ移る。
+ */
+const latest = computed(() => added.value[0] ?? null)
+
 async function save(text: string) {
   const result = buildItemDraft(text)
 
@@ -76,6 +85,14 @@ async function save(text: string) {
     </section>
 
     <div class="page__actions">
+      <!-- 何も追加していないうちは行き先が無いので出さない -->
+      <NuxtLink
+        v-if="latest"
+        class="button button--primary"
+        :to="`/items/${latest.id}`"
+      >
+        追加したタスクを開く
+      </NuxtLink>
       <NuxtLink class="button" to="/today">今日を見る</NuxtLink>
       <NuxtLink class="button" to="/">タスクを見る</NuxtLink>
     </div>
@@ -149,5 +166,12 @@ async function save(text: string) {
   color: var(--text);
   font-weight: 600;
   text-decoration: none;
+}
+
+/* 追加したものを開く導線。ここだけは、この画面で書いた結果への行き先 */
+.button--primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: transparent;
 }
 </style>

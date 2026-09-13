@@ -839,8 +839,16 @@ useComposerRegistration(focus)
  * 書いていない間は場所を取らせない。:focus-within なので、送信ボタンへ
  * クリックが移る間もフォーム内である限り消えない（ボタンが消えて
  * 押せなくなることはない）。
+ *
+ * ただし入力欄をそのまま置く画面（inline。/add と /share）では畳まない。
+ * 畳むとフォーカスが外れた瞬間に高さが 1 行ぶん縮み、**下に並べた
+ * ボタンやリンクが指の下から上へ逃げる**。押したつもりの場所には
+ * もう何も無いので click が起きず、「押しても画面が変わらない」に
+ * 見える（docs/14-app-shortcuts.md 14.2）。これらの画面は書くための
+ * 画面で、入力欄は最初からフォーカスされているため、畳んで空けられる
+ * 場所より、押した先が動かないことを取る。
  */
-.composer:not(:focus-within) .composer__actions {
+.composer:not(.composer--inline):not(:focus-within) .composer__actions {
   display: none;
 }
 
