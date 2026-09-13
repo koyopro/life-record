@@ -190,6 +190,19 @@ const shortcuts = computed<Shortcut[]>(() => [
     run: () => list.value.postpone(),
   },
   {
+    /*
+     * 期限を外す。`d` を押してダイアログから「期限を外す」を選ぶ 2 手を、
+     * よく使う指定なので 1 打鍵にする。
+     *
+     * 文字は SmartAdd の `^x`・期限の入力欄の「x」に合わせる
+     * （docs/08-todo-management.md 8.5）。同じ意味に同じ文字を使う。
+     */
+    keys: ['x'],
+    label: '期限を外す',
+    group: '編集',
+    run: () => list.value.setDue(null),
+  },
+  {
     keys: ['1'],
     label: '優先度を1に設定',
     group: '編集',
