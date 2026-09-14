@@ -61,16 +61,61 @@ const recurrenceLabel = computed(() => {
 const SWIPE_THRESHOLD = 72
 const LONG_PRESS_MS = 500
 
+/**
+ * 送り出しの取り消し待ち。
+ *
+ * 完了にしたのに行が消えない見方（「すべて」）のための保険。ふつうは
+ * 状態が変わった時点で戻すので（下の watch）ここまで来ない。書き込みに
+ * しくじって状態が変わらなかったときに、画面の外へ出したままにしないため。
+ */
+const LEAVE_TIMEOUT_MS = 600
+
 const dragX = ref(0)
 const dragging = ref(false)
+/**
+ * スワイプで完了にして、右へ送り出している最中か
+ * （docs/08-todo-management.md 8.4）。
+ *
+ * 指を離した時点で 0 に戻すと、**行が消える前に一瞬だけ左端へ戻って見える**。
+ * 完了にした結果（行が一覧から外れる）が届くのは、ローカルへ書いて
+ * 読み直したあとなので、その間に戻りのアニメーションが走ってしまう。
+ * 離したらそのまま右へ送り出し、行が消えるまで戻さない。
+ */
+const leaving = ref(false)
 let startX = 0
 let startY = 0
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
+let leaveTimer: ReturnType<typeof setTimeout> | undefined
 
 function cancelLongPress() {
   if (longPressTimer) clearTimeout(longPressTimer)
   longPressTimer = undefined
 }
+
+/** 指を離したあとの状態に戻す。 */
+function settle() {
+  if (leaveTimer) clearTimeout(leaveTimer)
+  leaveTimer = undefined
+  leaving.value = false
+  dragging.value = false
+  dragX.value = 0
+}
+
+/*
+ * 完了にしても行が残る見方（「すべて」。ignoreStatus）では、送り出した先で
+ * 消えるものが無い。状態が変わった＝書き込みが届いた時点で元の位置へ戻す。
+ *
+ * 行が一覧から外れる見方では、状態が変わるのと同じ更新でこのカードごと
+ * 消えるため、ここは通らない（戻りは見えない）。
+ */
+watch(closed, (value) => {
+  if (value && leaving.value) settle()
+})
+
+onUnmounted(() => {
+  cancelLongPress()
+  if (leaveTimer) clearTimeout(leaveTimer)
+})
 
 function onTouchStart(event: TouchEvent) {
   const touch = event.touches[0]
@@ -112,12 +157,23 @@ function onTouchMove(event: TouchEvent) {
 
 function onTouchEnd() {
   cancelLongPress()
+  // 送り出している最中は何も受け付けない。別の指の touchend が届いても、
+  // 出て行きかけのカードを元の位置へ引き戻さないため
+  if (leaving.value) return
   // 見た目に出していなくても、済んでいるものをもう一度完了にはしない
   if (dragging.value && dragX.value >= SWIPE_THRESHOLD && !closed.value) {
+    /*
+     * 指を離した位置から、そのまま右へ送り出す（戻さない）。
+     * 完了にするのは待たせない。行が消えるのは送り出しの途中になる。
+     */
+    dragging.value = false
+    leaving.value = true
+    leaveTimer = setTimeout(settle, LEAVE_TIMEOUT_MS)
     emit('complete')
+    return
   }
-  dragging.value = false
-  dragX.value = 0
+
+  settle()
 }
 </script>
 
@@ -130,9 +186,10 @@ function onTouchEnd() {
         'card--focused': focused,
         'card--selected': selected,
         'card--done': done,
+        'card--leaving': leaving,
       },
     ]"
-    :style="{ transform: dragX ? `translateX(${dragX}px)` : undefined }"
+    :style="{ transform: dragX && !leaving ? `translateX(${dragX}px)` : undefined }"
     @click="emit('focus')"
     @touchstart.passive="onTouchStart"
     @touchmove.passive="onTouchMove"
@@ -253,6 +310,36 @@ function onTouchEnd() {
   align-items: flex-start;
   gap: 0.375rem;
   transition: transform 0.15s ease;
+}
+
+/*
+ * スワイプで完了にしたカード（docs/08-todo-management.md 8.4）。
+ *
+ * 指を離した位置から、そのまま画面の外まで送り出す。行が一覧から外れるのは
+ * この途中なので、**戻らずに出ていく**ように見える。薄くしながら出すことで、
+ * 送り出しの途中で行が消えても唐突に見えない。
+ *
+ * 幅は `%`（カード自身の幅）で指定する。端末の幅に関わらず外まで出る。
+ * 送り出している間は触っても何も起きないようにする（もう完了にしてある）。
+ */
+.card--leaving {
+  transform: translateX(100%);
+  opacity: 0;
+  transition:
+    transform 0.2s ease-out,
+    opacity 0.2s ease-out;
+  pointer-events: none;
+}
+
+/*
+ * 動きを抑える設定では、送り出しも戻しも動かさない（袖と同じ扱い）。
+ * 位置が変わるだけで、意味は同じように伝わる。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card--leaving {
+    transition: none;
+  }
 }
 
 /*
