@@ -3,7 +3,7 @@ import { useDb } from '~~/server/db'
 import { diaries, itemTags, items, sections, tags } from '~~/server/db/schema'
 import { assertAppDate } from '~~/server/utils/date'
 import { likePattern } from '~~/server/utils/search'
-import { excerptAround, sortSearchHits } from '~~/shared/utils/search'
+import { excerptAround, finalizeSearchHits } from '~~/shared/utils/search'
 import { tagsByItemId } from '~~/server/utils/tags'
 import { toAppDate } from '~~/shared/utils/date'
 import type { Priority } from '~~/shared/types/item'
@@ -208,9 +208,15 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
     }
   }
 
-  // 並べ方と件数の上限は手元の検索と同じものを使う（shared/utils/search.ts）。
-  // ずれていると、応答が届いた瞬間に行の位置が変わる
-  const sorted = sortSearchHits(hits)
+  /*
+   * まとめ方・並べ方・件数の上限は手元の検索と同じものを使う
+   * （shared/utils/search.ts）。ずれていると、応答が届いた瞬間に
+   * 行が増えたり位置が変わったりする。
+   *
+   * ここで同じタスクの行（タイトル・メモ・作業記録）が1つにまとまる
+   * （docs/03-functional-spec.md 3.6）。
+   */
+  const sorted = finalizeSearchHits(hits)
 
   // 返すぶんだけタグを引く。切り捨てた行のために引いても使い道がない
   const tagNames = await tagsByItemId(

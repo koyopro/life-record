@@ -1,6 +1,6 @@
 import type { LocalDiary, LocalItem, LocalSection } from '~/utils/offline/local-database'
 import type { SearchHit, SearchQuery } from '~~/shared/types/search'
-import { excerptAround, sortSearchHits } from '~~/shared/utils/search'
+import { excerptAround, finalizeSearchHits } from '~~/shared/utils/search'
 import { toAppDate } from '~~/shared/utils/date'
 
 /**
@@ -112,7 +112,7 @@ export function searchLocally(
     }
   }
 
-  return sortSearchHits(hits)
+  return finalizeSearchHits(hits)
 }
 
 /**

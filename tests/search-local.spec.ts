@@ -135,12 +135,67 @@ describe('searchLocally', () => {
 
   it('種別をまたいで、日付の新しい順に混ぜる', () => {
     const task = item({ title: '牛乳を買う', createdAt: '2026-09-02T00:00:00.000+09:00' })
-    const record = section({ itemId: task.id, date: '2026-09-04', body: '牛乳の話' })
+    // 別のタスクの記録にする。同じタスクなら1行にまとめられてしまう（下）
+    const other = item({ title: '買い物', createdAt: '2026-08-01T00:00:00.000+09:00' })
+    const record = section({ itemId: other.id, date: '2026-09-04', body: '牛乳の話' })
     const written = diary({ date: '2026-09-03', body: '牛乳を飲んだ' })
 
-    const hits = search({ items: [task], sections: [record], diaries: [written] })
+    const hits = search({ items: [task, other], sections: [record], diaries: [written] })
 
     expect(hits.map((hit) => hit.kind)).toEqual(['section', 'diary', 'item'])
+  })
+
+  /*
+   * タイトル・メモ・作業記録はどれも同じタスクの中身なので、当たった場所の
+   * 数だけ行が増えると同じタスクが何度も並ぶ（docs/03-functional-spec.md 3.6）。
+   */
+  it('同じタスクは、当たった場所がいくつあっても1行にまとめる', () => {
+    const task = item({
+      title: '牛乳を買う',
+      note: '牛乳は低脂肪のもの',
+      createdAt: '2026-09-02T00:00:00.000+09:00',
+    })
+    const first = section({ itemId: task.id, date: '2026-09-03', body: '牛乳を買い忘れた' })
+    const second = section({ itemId: task.id, date: '2026-09-05', body: '牛乳を買った' })
+
+    const hits = search({ items: [task], sections: [first, second] })
+
+    expect(hits).toHaveLength(1)
+    // 残るのはいちばん新しい当たり。日付と抜粋もそれに従う
+    expect(hits[0]?.id).toBe(`section:${second.id}`)
+    expect(hits[0]?.date).toBe('2026-09-05')
+    expect(hits[0]?.excerpt).toBe('牛乳を買った')
+  })
+
+  it('タスク名のほうが新しければ、そちらを残す', () => {
+    const task = item({ title: '牛乳を買う', createdAt: '2026-09-06T00:00:00.000+09:00' })
+    const record = section({ itemId: task.id, date: '2026-09-05', body: '牛乳の話' })
+
+    const hits = search({ items: [task], sections: [record] })
+
+    expect(hits.map((hit) => hit.id)).toEqual([`item:${task.id}`])
+    // タイトルで当たった行は、見出しにもう出ているので抜粋を出さない
+    expect(hits[0]?.excerpt).toBe('')
+  })
+
+  it('別のタスクの作業記録どうしはまとめない', () => {
+    const a = item({ title: '買い物', createdAt: '2026-09-01T00:00:00.000+09:00' })
+    const b = item({ title: '買い出し', createdAt: '2026-09-01T00:00:00.000+09:00' })
+    const forA = section({ itemId: a.id, date: '2026-09-03', body: '牛乳を買った' })
+    const forB = section({ itemId: b.id, date: '2026-09-04', body: '牛乳を頼まれた' })
+
+    const hits = search({ items: [a, b], sections: [forA, forB] })
+
+    expect(hits.map((hit) => hit.id)).toEqual([`section:${forB.id}`, `section:${forA.id}`])
+  })
+
+  it('日記はタスクに紐づかないので、まとめずにそのまま残す', () => {
+    const first = diary({ date: '2026-09-03', body: '牛乳を飲んだ' })
+    const second = diary({ date: '2026-09-04', body: '牛乳を切らした' })
+
+    const hits = search({ diaries: [first, second] })
+
+    expect(hits.map((hit) => hit.date)).toEqual(['2026-09-04', '2026-09-03'])
   })
 
   it('探す言葉が空なら何も返さない', () => {
@@ -155,6 +210,14 @@ describe('searchLocally', () => {
 describe('mergeSearchHits', () => {
   function hit(id: string, date: string, excerpt = ''): SearchHit {
     return { id, kind: 'item', date, path: '/', title: id, excerpt, item: null }
+  }
+
+  /** タスクに紐づく行。まとめる相手があるのはこちらだけ。 */
+  function forItem(id: string, date: string, itemId = 'a', excerpt = ''): SearchHit {
+    return {
+      ...hit(id, date, excerpt),
+      item: { id: itemId, status: 'backlog', priority: null, tags: [], dueAt: null, dueHasTime: false },
+    }
   }
 
   it('同じ行はサーバーのものを採る（抜粋やタグが揃っている）', () => {
@@ -174,6 +237,28 @@ describe('mergeSearchHits', () => {
     )
 
     expect(merged.map((row) => row.id)).toEqual(['item:b', 'item:a'])
+  })
+
+  /*
+   * サーバーはまだ手元に無い作業記録で当て、手元はタイトルで当てる、という
+   * ように別々の行が残ることがある。重ねたあとにもう一度まとめ直す。
+   */
+  it('重ねたあとも、同じタスクの行は1つにまとめる', () => {
+    const merged = mergeSearchHits(
+      [forItem('section:s1', '2026-09-05', 'a', 'サーバーだけが持つ記録')],
+      [forItem('item:a', '2026-09-01')],
+    )
+
+    expect(merged.map((row) => row.id)).toEqual(['section:s1'])
+  })
+
+  it('同着なら、サーバーの行を残す', () => {
+    const merged = mergeSearchHits(
+      [forItem('item:a', '2026-09-01', 'a', 'サーバー')],
+      [forItem('section:s1', '2026-09-01', 'a', '手元')],
+    )
+
+    expect(merged.map((row) => row.excerpt)).toEqual(['サーバー'])
   })
 })
 
