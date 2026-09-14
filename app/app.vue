@@ -209,6 +209,11 @@ useShortcuts(shortcuts)
       -->
       <ClientOnly>
         <SyncStatus class="shell__sync" />
+        <!--
+          新しい版があることの知らせ（docs/12-offline.md 12.2）。
+          更新は書きかけが片付いてから当てるので、待っている間だけ出る。
+        -->
+        <AppUpdateNotice class="shell__update" />
       </ClientOnly>
       <main class="shell__main">
         <NuxtPage />
@@ -422,6 +427,10 @@ useShortcuts(shortcuts)
 }
 
 .shell__sync {
+  padding-bottom: 0.5rem;
+}
+
+.shell__update {
   padding-bottom: 0.5rem;
 }
 

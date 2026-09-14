@@ -26,7 +26,16 @@ export default defineNuxtConfig({
    * IndexedDB に置き、Cache Storage には入れない。
    */
   pwa: {
-    registerType: 'autoUpdate',
+    /*
+     * 新しい版は、こちらから合図するまで当てない。
+     *
+     * 既定の `'autoUpdate'` は、新しい版が入った瞬間に読み込み直す。タスクを
+     * 書いている最中でも起きるので、打ちかけの入力が消え、キャレットも飛ぶ。
+     * `'prompt'` にすると新しい Service Worker は待つだけになり、いつ当てるかを
+     * アプリ側で決められる（app/composables/useAppUpdate.ts）。書きかけが
+     * 無くなってから当てるので、人の目に付く動きは変わらない。
+     */
+    registerType: 'prompt',
     /*
      * manifest の取得に Cookie を付ける（`crossorigin="use-credentials"`）。
      *
@@ -106,12 +115,17 @@ export default defineNuxtConfig({
       navigateFallback: '/offline-shell',
       navigateFallbackDenylist: [/^\/api\//, /^\/images\//],
       /*
-       * 新しい版を入れたら、古いキャッシュは残さず、待たずに入れ替える。
-       * 古い Service Worker が居座ると、消えた JS を読もうとして壊れる。
+       * 古い版のキャッシュは、入れ替えるときに消す。
+       * 居座らせると、消えた JS を読もうとして壊れる。
+       *
+       * ただし**待たずに入れ替えない**（`skipWaiting: false`）。新しい
+       * Service Worker が勝手に主導権を取ると、いま開いている画面は古い JS を
+       * 読みに行くのに、その控えはもう消えている、という食い違いが起きる。
+       * 入れ替えの合図は useAppUpdate が送り、そのまま読み込み直す。
        */
       cleanupOutdatedCaches: true,
       clientsClaim: true,
-      skipWaiting: true,
+      skipWaiting: false,
     },
     client: {
       // 個人用なのでインストールの誘導は出さない

@@ -8,6 +8,13 @@
  */
 const { request, answer } = useConfirm()
 
+/*
+ * 問い合わせが出ている間は、アプリの更新（読み込み直し）を待ってもらう
+ * （app/composables/useUnsaved.ts）。答えを待っている最中に画面が
+ * 入れ替わると、何を訊かれていたのか分からないまま消える。
+ */
+useUnsavedMark(() => Boolean(request.value))
+
 const okButton = ref<HTMLElement | null>(null)
 
 /*

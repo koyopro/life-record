@@ -28,6 +28,15 @@ export function useAutosave<T>(options: Options<T>) {
   const state = ref<SaveState>('idle')
   const errorMessage = ref<string | null>(null)
 
+  /*
+   * 打った内容がまだ手元にしか無い間は、アプリの更新（読み込み直し）を
+   * 待ってもらう（app/composables/useUnsaved.ts）。送り終える前に
+   * 読み込み直すと、待っている間に打った分の行き先が無くなる。
+   */
+  useUnsavedMark(
+    () => state.value === 'pending' || state.value === 'saving' || state.value === 'error',
+  )
+
   let timer: ReturnType<typeof setTimeout> | undefined
   /** 直近で保存に成功した値。同じ内容を送り直さないために持つ。 */
   let lastSaved: T = source.value

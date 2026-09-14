@@ -70,6 +70,15 @@ const opened = ref(false)
 /** 重ねて出しているか。閉じている狭い画面では何も描かない。 */
 const asSheet = computed(() => compact.value && opened.value)
 
+/*
+ * 書きかけのタスクがある間は、アプリの更新（読み込み直し）を待ってもらう
+ * （app/composables/useUnsaved.ts）。ここに打った内容はまだどこにも
+ * 保存されていないので、読み込み直すとそのまま消える。
+ *
+ * 開いただけの入力欄も同じに扱う。閉じられてしまえば、開く操作からやり直しになる。
+ */
+useUnsavedMark(() => text.value.trim().length > 0 || asSheet.value)
+
 /**
  * 複数行を受け付けるか。
  *
