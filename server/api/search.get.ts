@@ -117,6 +117,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
           tags: [],
           dueAt: row.dueAt?.toISOString() ?? null,
           dueHasTime: row.dueHasTime,
+          completedAt: row.completedAt?.toISOString() ?? null,
         },
       })
     }
@@ -134,6 +135,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
         priority: items.priority,
         dueAt: items.dueAt,
         dueHasTime: items.dueHasTime,
+        completedAt: items.completedAt,
       })
       .from(sections)
       .innerJoin(items, eq(sections.itemId, items.id))
@@ -166,6 +168,7 @@ export default defineEventHandler(async (event): Promise<SearchHit[]> => {
           tags: [],
           dueAt: row.dueAt?.toISOString() ?? null,
           dueHasTime: row.dueHasTime,
+          completedAt: row.completedAt?.toISOString() ?? null,
         },
       })
     }

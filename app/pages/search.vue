@@ -265,7 +265,6 @@ function itemOf(hit: SearchHit): ItemDto | null {
     recurrenceRule: null,
     recurrenceBasis: null,
     seriesId: null,
-    completedAt: null,
     createdAt: hit.date,
     updatedAt: hit.date,
   }
@@ -688,6 +687,7 @@ useShortcuts(shortcuts)
             :item="row.item"
             :focused="index === cursor"
             :selected="list.selectedIds.value.has(row.item.id)"
+            :show-completed-at="view === 'completed'"
             @focus="focusFromPointer(row)"
             @select="selectRow(row)"
             @complete="actions?.toggleComplete(row.item)"

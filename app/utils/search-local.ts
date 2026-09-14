@@ -156,5 +156,6 @@ function hitItem(item: LocalItem): SearchHit['item'] {
     tags: item.tags,
     dueAt: item.dueAt,
     dueHasTime: item.dueHasTime,
+    completedAt: item.completedAt,
   }
 }

@@ -216,7 +216,7 @@ describe('mergeSearchHits', () => {
   function forItem(id: string, date: string, itemId = 'a', excerpt = ''): SearchHit {
     return {
       ...hit(id, date, excerpt),
-      item: { id: itemId, status: 'backlog', priority: null, tags: [], dueAt: null, dueHasTime: false },
+      item: { id: itemId, status: 'backlog', priority: null, tags: [], dueAt: null, dueHasTime: false, completedAt: null },
     }
   }
 
@@ -274,7 +274,7 @@ describe('stillMatches', () => {
     path: '/items/a',
     title: '牛乳を買う',
     excerpt: '',
-    item: { id: 'a', status: 'backlog', priority: null, tags: [], dueAt: null, dueHasTime: false },
+    item: { id: 'a', status: 'backlog', priority: null, tags: [], dueAt: null, dueHasTime: false, completedAt: null },
   }
 
   it('完了にしたら、未完了の結果から落ちる', () => {

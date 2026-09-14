@@ -34,6 +34,13 @@ export interface SearchHitItem {
   tags: string[]
   dueAt: string | null
   dueHasTime: boolean
+  /**
+   * 完了日時。完了側（`view: 'completed'`）の行は、右端にこれを出す。
+   *
+   * 完了したものについて知りたいのはいつ終えたかで、期限はもう役目を
+   * 終えている（docs/08-todo-management.md 8.2）。
+   */
+  completedAt: string | null
 }
 
 export interface SearchHit {
