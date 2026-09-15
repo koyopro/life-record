@@ -382,9 +382,19 @@ export function continuationPrefix(line: Line | null): string {
  * 引用（`>`）・コードブロック・表の中は対象にしない。それらの空行はブロックの
  * 中身としてそのまま意味があり、抜けるための操作は別にある。
  *
+ * **画像が入る予定の行も対象にしない。**空に見えても、上げ終わった画像が
+ * そこへ入る（11.7「挿入する位置」）。字下げを外すと、待っているあいだに
+ * 改行しただけで画像が箇条書きの外へ出てしまう。
+ *
  * @param content 入力欄のいまの中身（行頭は含まない）。
+ * @param awaitsImage 上げている最中の画像が、この行へ入る予定か。
  */
-export function dropsIndentOnEnter(line: Line | null, content: string): boolean {
+export function dropsIndentOnEnter(
+  line: Line | null,
+  content: string,
+  awaitsImage = false,
+): boolean {
+  if (awaitsImage) return false
   return line?.type === 'text' && line.indent > 0 && content === ''
 }
 

@@ -1168,8 +1168,12 @@ function onEnter(event: KeyboardEvent) {
    * 箇条書きの深いところまで書いて、次の話に移るところ。引き継ぐと空の項目が
    * そのまま残り、`Backspace` で1段ずつ戻すことになる（parse.ts の
    * dropsIndentOnEnter）。
+   *
+   * ただし、上げ終わった画像がその行へ入る予定なら外さない。空に見えても
+   * 画像の置き場所なので、外すと画像が箇条書きの外へ出てしまう。字下げは
+   * その行に残し、改行した先にも引き継ぐ（awaitsImage）。
    */
-  if (dropsIndentOnEnter(activeLine.value, activeText.value)) {
+  if (dropsIndentOnEnter(activeLine.value, activeText.value, awaitsImage(index))) {
     lines.splice(index, 1, '', '')
     commit(lines)
     void activate(index + 1, 'start', lines)
@@ -2110,6 +2114,24 @@ function insertImageAt(path: string, at: CaretPosition | null): ImageInsert {
 }
 
 /**
+ * 上げている最中の画像が、どの行へ入る予定か（`uploadAll` の呼び出しごとに1つ）。
+ *
+ * アップロードには何秒かかかる。そのあいだ、差し込み先の行は**空に見えていても
+ * 画像の置き場所**で、書いている人の操作で行の意味が変わってはいけない
+ * （いまのところ `Enter` の字下げ外しだけが当たる。`onEnter`）。
+ */
+const pendingImageAt = new Map<number, CaretPosition>()
+let nextUploadId = 0
+
+/** その行に、上げ終わった画像が入る予定か。 */
+function awaitsImage(index: number): boolean {
+  for (const at of pendingImageAt.values()) {
+    if (at.index === index) return true
+  }
+  return false
+}
+
+/**
  * まとめてアップロードし、順に差し込む。
  *
  * **位置は呼ばれた時点で決める。**アップロードは何秒かかかるので、その間に
@@ -2132,48 +2154,57 @@ async function uploadAll(files: File[], at: CaretPosition | null = caretNow()) {
   /** 上げている間も書き続けていたか。書いていたなら、その手元へは触らない。 */
   let typedMeanwhile = false
 
-  for (const file of files) {
-    const path = await images.upload(file)
-    if (!path) continue
+  const upload = nextUploadId++
 
-    /*
-     * 上げ終わった時点で、書いている人がどこにいるか。
-     *
-     * 貼った位置から動いていれば、その間も書き続けているということ。
-     * そこでカーソルを画像の次へ移すと、打っている最中に行頭へ飛ばされる。
-     */
-    const typing = activeIndex.value === null ? null : caretNow()
-    const moved =
-      typing !== null &&
-      (position === null ||
-        typing.index !== position.index ||
-        typing.offset !== position.offset)
+  try {
+    for (const file of files) {
+      // 上げているあいだ、この画像が入る予定の行を控えておく（pendingImageAt）
+      if (position) pendingImageAt.set(upload, position)
 
-    const inserted = insertImageAt(path, position)
-    lines = inserted.lines
-    position = inserted.at
+      const path = await images.upload(file)
+      if (!path) continue
 
-    if (!moved || !typing) continue
-
-    typedMeanwhile = true
-    const next = inserted.split
-      ? caretAfterSplit(typing, inserted.split, inserted.added)
-      : typing
-
-    if (inserted.split && typing.index === inserted.split.index) {
       /*
-       * 書いている行そのものを割った。入力欄の中身が変わるので、
-       * 割れた先の同じ文字のところへ入り直す。
+       * 上げ終わった時点で、書いている人がどこにいるか。
+       *
+       * 貼った位置から動いていれば、その間も書き続けているということ。
+       * そこでカーソルを画像の次へ移すと、打っている最中に行頭へ飛ばされる。
        */
-      await activate(next.index, next.offset, lines)
-      continue
-    }
+      const typing = activeIndex.value === null ? null : caretNow()
+      const moved =
+        typing !== null &&
+        (position === null ||
+          typing.index !== position.index ||
+          typing.offset !== position.offset)
 
-    /*
-     * 別の行に入っただけ。増えた行数のぶん番号をずらすだけにして、
-     * 入力欄には触らない（触ると変換中の文字まで確定してしまう）。
-     */
-    activeIndex.value = next.index
+      const inserted = insertImageAt(path, position)
+      lines = inserted.lines
+      position = inserted.at
+
+      if (!moved || !typing) continue
+
+      typedMeanwhile = true
+      const next = inserted.split
+        ? caretAfterSplit(typing, inserted.split, inserted.added)
+        : typing
+
+      if (inserted.split && typing.index === inserted.split.index) {
+        /*
+         * 書いている行そのものを割った。入力欄の中身が変わるので、
+         * 割れた先の同じ文字のところへ入り直す。
+         */
+        await activate(next.index, next.offset, lines)
+        continue
+      }
+
+      /*
+       * 別の行に入っただけ。増えた行数のぶん番号をずらすだけにして、
+       * 入力欄には触らない（触ると変換中の文字まで確定してしまう）。
+       */
+      activeIndex.value = next.index
+    }
+  } finally {
+    pendingImageAt.delete(upload)
   }
 
   // 書き続けていた人の手元は、そのままにしておく

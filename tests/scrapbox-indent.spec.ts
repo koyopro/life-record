@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  continuationPrefix,
   dropsIndentOnEnter,
   indentOf,
   parseScrapbox,
@@ -71,5 +72,34 @@ describe('字下げだけの行での改行', () => {
     const table = parseScrapbox('table:図\n ')[1]!
     expect(table.type).toBe('tableRow')
     expect(dropsIndentOnEnter(table, '')).toBe(false)
+  })
+})
+
+/**
+ * 画像を上げている最中の行では、字下げを外さない
+ * （docs/11-scrapbox-notation.md 11.6・11.7）。
+ *
+ * 上げ終わった画像はその行へ入る。空に見えるからと字下げを外すと、待って
+ * いるあいだに改行しただけで、画像が箇条書きの外へ出てしまう。
+ */
+describe('画像を上げている最中の行での改行', () => {
+  const lineOf = (input: string) => parseScrapbox(input)[0]!
+
+  it('字下げの空白しか無くても、画像が入る予定なら外さない', () => {
+    expect(dropsIndentOnEnter(lineOf(' '), '', true)).toBe(false)
+    expect(dropsIndentOnEnter(lineOf('   '), '', true)).toBe(false)
+    expect(dropsIndentOnEnter(lineOf('　'), '', true)).toBe(false)
+  })
+
+  it('外さないので、字下げはその行に残り、改行した先にも引き継がれる', () => {
+    // `Enter` は「その行の行頭」と「続きの行の行頭」で行を割る（ScrapboxEditor）
+    const line = lineOf('   ')
+    expect(line.prefix).toBe('   ')
+    expect(continuationPrefix(line)).toBe('   ')
+  })
+
+  it('予定が無い行（別の行に入る・上げ終わった）は、これまでどおり外す', () => {
+    expect(dropsIndentOnEnter(lineOf(' '), '', false)).toBe(true)
+    expect(dropsIndentOnEnter(lineOf(' '), '')).toBe(true)
   })
 })
