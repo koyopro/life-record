@@ -148,6 +148,31 @@ html {
   /* iOS でフォーカス時に自動ズームされないよう 16px 以上を維持する */
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  /*
+   * スクロールバーのぶんは、出ていないあいだも空けておく
+   * （docs/16-macos-app.md 16.11）。
+   *
+   * macOS の「スクロールバーを常に表示」（および macOS アプリの WebView）で
+   * 出るバーは、重ねて出るバーと違って**画面の幅をその分だけ削る**。本文は
+   * 中央に寄せてある（app.vue の .shell）ので、バーが出たり消えたりする
+   * たびに画面全体の横位置がその半分だけ動く。一覧を `j` / `k` で辿ると、
+   * 作業記録が長くページが縦にはみ出すタスクに当たった時だけ、各要素が
+   * 横へずれる。
+   *
+   * 重ねて出るバー（iOS や macOS の既定）では幅を取らないので、そちらでは
+   * この指定は何もしない（余白も空かない）。
+   */
+  scrollbar-gutter: stable;
+}
+
+/*
+ * `scrollbar-gutter` を知らない WebKit（Safari 18.1 以前＝古い macOS の
+ * WebView）向け。常に出しておけば、同じく幅は動かない。
+ */
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
 }
 
 body {

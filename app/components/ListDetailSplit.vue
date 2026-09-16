@@ -56,7 +56,22 @@ defineProps<{
     top: 1rem;
     max-height: calc(100vh - 2rem);
     overflow-y: auto;
+    /*
+     * バーのぶんは、出ていないあいだも空けておく（main.css の html と同じ。
+     * docs/16-macos-app.md 16.11）。
+     * `j` / `k` で送るとタスクごとに本文の長さが変わり、作業記録の長い
+     * タスクでだけバーが出る。空けておかないと、そのタスクに当たるたびに
+     * 詳細の中身が横へずれる。
+     */
+    scrollbar-gutter: stable;
     padding-right: 0.25rem;
+  }
+
+  /* `scrollbar-gutter` を知らない WebKit 向け（main.css の html と同じ） */
+  @supports not (scrollbar-gutter: stable) {
+    .split--active .split__detail {
+      overflow-y: scroll;
+    }
   }
 }
 
