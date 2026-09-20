@@ -9,6 +9,10 @@ Chrome でページを見る → 共有 → datalake → 内容を確認 → 保
 「後で整理するために、とりあえず放り込む」ための導線なので、共有してから保存までの
 操作をできるだけ増やさない（確認して「保存」を押すだけ）。
 
+同じ受付画面（`/share`）は、PC のブラウザからブックマークレットでも開く
+（[17-bookmarklet.md](17-bookmarklet.md)）。こちらは共有の3つに加えて
+`note`（メモ）を渡してくる。
+
 ## 13.1 受け付け方
 
 Web App Manifest の `share_target` で受ける（nuxt.config.ts の `pwa.manifest`）。
@@ -63,6 +67,10 @@ Android 実機は `chrome://inspect` で PC から同じように見られる。
 
 入力欄には組み立てたテキストが入っているので、そのまま「保存」で終われる。
 書き直したいときはその場で直せる（SmartAdd の記法もそのまま効く）。
+
+`note` が渡ってきたときだけ、入力欄の上に**メモの欄**が増える（画像は
+その場で出す。[17-bookmarklet.md](17-bookmarklet.md) 17.2）。OS からの共有では
+渡ってこないので、出るものは上の4つのまま。
 
 ## 13.3 受け取った内容の組み立て（shared/utils/share.ts）
 
@@ -126,6 +134,8 @@ Vercel の認証がアプリより手前で挟まり、認証後に元の URL（
 - **Android Chrome** … 対応。主要な対象。
 - **iOS / iPadOS Safari** … Web Share Target に未対応（共有シートに出ない）。
   ショートカットアプリなどから `/share?url=...` を開く形なら同じ画面が使える。
+- **PC のブラウザ** … 共有シートが無い。代わりにブックマークレットから
+  同じ `/share` を開く（[17-bookmarklet.md](17-bookmarklet.md)）。
 
 ブラウザごとの差を埋めるための作り込みはしない。
 

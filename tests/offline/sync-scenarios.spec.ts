@@ -62,7 +62,13 @@ function server(seed: ItemDto[] = []): Server {
       // 同じ id で二度来ても作り直さない（server/api/items.post.ts と同じ）
       const existing = items.get(id)
       if (existing) return existing
-      const created = itemDto({ id, title: String(body!.text), updatedAt: stamp() })
+      const created = itemDto({
+        id,
+        title: String(body!.text),
+        // メモは入力テキストとは別に届く（docs/17-bookmarklet.md 17.2）
+        note: body!.note ? String(body!.note) : null,
+        updatedAt: stamp(),
+      })
       items.set(id, created)
       return created
     }
@@ -177,6 +183,18 @@ describe('オンラインでの操作', () => {
     expect(remote.items.has(draft.id)).toBe(true)
     expect((await getItem(draft.id))?.syncState).toBe('synced')
     expect(await listOperations()).toEqual([])
+  })
+
+  it('メモ付きで追加すると、メモも一緒に送られる', async () => {
+    const remote = server()
+    const note = '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]'
+    const draft = itemDto({ title: 'リーダブルコード', note })
+
+    // 入力テキストにはメモが現れないので、draft から送られる
+    await createTodo(draft, 'リーダブルコード')
+    await sync(remote)
+
+    expect(remote.items.get(draft.id)?.note).toBe(note)
   })
 
   it('ステータスの変更が送られる', async () => {

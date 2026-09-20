@@ -145,6 +145,28 @@ describe('composeShare', () => {
 
     expect(asItem(composed.text).body).toBe('一行目\n二行目')
   })
+
+  it('メモ（note）はそのまま渡し、入力欄のテキストには混ぜない', () => {
+    const composed = composeShare({
+      url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+      title: 'リーダブルコード',
+      note: '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]',
+    })
+
+    expect(composed.note).toBe(
+      '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]',
+    )
+    // メモを本文に混ぜると日付を持ち、日記に出てしまう（02-data-model.md 2.3）
+    expect(asItem(composed.text)).toEqual({
+      title: 'リーダブルコード',
+      url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+      body: null,
+    })
+  })
+
+  it('メモが無ければ null', () => {
+    expect(composeShare({ url: 'https://example.com/a' }).note).toBeNull()
+  })
 })
 
 describe('hasSharedContent', () => {
@@ -152,10 +174,14 @@ describe('hasSharedContent', () => {
     expect(hasSharedContent({ url: 'https://example.com/a' })).toBe(true)
     expect(hasSharedContent({ title: 'Example' })).toBe(true)
     expect(hasSharedContent({ text: 'メモ' })).toBe(true)
+    // ブックマークレットは note だけを渡してくることがある
+    expect(hasSharedContent({ note: '[https://example.com/a.jpg]' })).toBe(true)
   })
 
   it('何も無い・空白だけなら受け付けない', () => {
     expect(hasSharedContent({})).toBe(false)
-    expect(hasSharedContent({ url: '', title: ' ', text: '\n' })).toBe(false)
+    expect(hasSharedContent({ url: '', title: ' ', text: '\n', note: ' ' })).toBe(
+      false,
+    )
   })
 })

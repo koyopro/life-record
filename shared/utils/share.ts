@@ -3,7 +3,8 @@
  * （docs/13-share-target.md）。
  *
  * 共有元から来るのは `url` / `title` / `text` の3つで、どれが入るかは
- * アプリごとに違う。ここでは「1行目がタイトル、2行目以降が本文」という
+ * アプリごとに違う（ブックマークレットはこれに `note` を足す。
+ * docs/17-bookmarklet.md）。ここでは「1行目がタイトル、2行目以降が本文」という
  * 既存の入力の形（shared/utils/text.ts）に寄せるだけにする。組み立てた
  * テキストはそのまま SmartAdd に渡され、1行目の裸の URL は Item の
  * url 欄へ回る（shared/utils/smart-add.ts）。
@@ -13,6 +14,15 @@ export interface SharedContent {
   url?: string
   title?: string
   text?: string
+  /**
+   * メモ（`Item.note`）にそのまま入れる内容。
+   *
+   * OS の共有シートは渡してこない。ブックマークレットのように、
+   * 送る側が「これはメモ」と分かっている場合だけ付く
+   * （docs/17-bookmarklet.md）。本文（Section）と違い日付を持たないので、
+   * 日記には出ない（docs/02-data-model.md 2.3）。
+   */
+  note?: string
 }
 
 export interface ComposedShare {
@@ -20,6 +30,8 @@ export interface ComposedShare {
   text: string
   /** Item の url 欄に入る URL。見つからなければ null。 */
   url: string | null
+  /** Item の note 欄（メモ）に入る内容。渡されなければ null。 */
+  note: string | null
 }
 
 /** URL から作るタイトルの長さの上限。長い URL をそのまま並べても読めない。 */
@@ -58,6 +70,9 @@ export function composeShare(shared: SharedContent): ComposedShare {
   return {
     text: body ? `${titleLine}\n${body}` : titleLine,
     url,
+    // メモは入力欄のテキストに混ぜない。混ぜると2行目以降として
+    // 本文（Section）になり、日付を持って日記に出てしまう
+    note: normalize(shared.note ?? '') || null,
   }
 }
 
@@ -66,7 +81,8 @@ export function hasSharedContent(shared: SharedContent): boolean {
   return Boolean(
     (shared.url ?? '').trim() ||
       (shared.title ?? '').trim() ||
-      (shared.text ?? '').trim(),
+      (shared.text ?? '').trim() ||
+      (shared.note ?? '').trim(),
   )
 }
 

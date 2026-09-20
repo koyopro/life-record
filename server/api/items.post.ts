@@ -18,6 +18,15 @@ interface Body {
   /** 初期 status。省略時は未着手（backlog）。 */
   status?: ItemStatus
   /**
+   * メモ（`Item.note`）。入力テキストには現れないので別に受ける。
+   *
+   * 2行目以降（`text` の本文）は作業記録（Section）になり日付を持つが、
+   * メモは日付を持たず日記に出ない（docs/02-data-model.md 2.3）。
+   * ブックマークレットのように、送る側が「これはメモ」と分かっている
+   * 場合だけ付く（docs/17-bookmarklet.md）。
+   */
+  note?: string | null
+  /**
    * クライアントが決めた id。省略時は DB が採番する。
    *
    * 画面は応答を待たずに一覧へ出すため、その時点で id が要る。
@@ -61,6 +70,15 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
     })
   }
 
+  // 空文字は「メモなし」として NULL に寄せる（詳細画面での編集と同じ扱い）
+  const note = typeof payload?.note === 'string' ? payload.note.trim() || null : null
+  if (note && note.length > BODY_MAX_LENGTH) {
+    throw createError({
+      statusCode: 400,
+      message: `メモは ${BODY_MAX_LENGTH} 文字までです`,
+    })
+  }
+
   const status =
     payload?.status !== undefined && isItemStatus(payload.status)
       ? payload.status
@@ -92,6 +110,7 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
         title: parsed.title,
         status,
         priority: parsed.priority,
+        note,
         // 期限の指定がなければ今日にする。
         // 追加したタスクが「今日」リストに出ないまま埋もれるのを避ける。
         // ただし `^なし` / `^x` で明示的に外していれば、その指定に従う。

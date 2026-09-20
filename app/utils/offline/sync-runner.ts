@@ -123,7 +123,7 @@ export async function runOperation(
         // サーバーは既にあるものを返すだけ（server/api/items.post.ts）
         const item = (await request('/api/items', {
           method: 'POST',
-          body: { id: payload.id, text: payload.text },
+          body: { id: payload.id, text: payload.text, note: payload.note },
         })) as ItemDto
         return { type: 'done', item }
       }

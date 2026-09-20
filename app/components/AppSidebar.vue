@@ -304,8 +304,9 @@ watch(open, async (value) => {
       </section>
 
       <!--
-        下の段。毎日押すものではない持ち物（アイコンの管理・表示テーマ）を
-        置く。タグが増えても押せるよう、袖の下端に貼り付ける。
+        下の段。毎日押すものではない持ち物（アイコンの管理・ブックマーク
+        レットの配布・表示テーマ）を置く。タグが増えても押せるよう、
+        袖の下端に貼り付ける。
       -->
       <footer class="foot">
         <NuxtLink
@@ -316,6 +317,18 @@ watch(open, async (value) => {
           アイコン
         </NuxtLink>
         <ThemeToggle />
+        <!--
+          ブックマークレットの配布（docs/17-bookmarklet.md）。登録するのは
+          一度きりだが、他に置き場が無い。名前が長く、アイコンと並べると
+          どちらも読めなくなるので、行を分けて下に置く。
+        -->
+        <NuxtLink
+          class="item foot__link foot__link--wide"
+          :class="{ 'item--active': route.path === '/bookmarklet' }"
+          to="/bookmarklet"
+        >
+          ブックマークレット
+        </NuxtLink>
       </footer>
     </nav>
   </aside>
@@ -491,8 +504,9 @@ watch(open, async (value) => {
   margin-top: auto;
   padding: 0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom));
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem 0.5rem;
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -500,6 +514,11 @@ watch(open, async (value) => {
 .foot__link {
   flex: 1;
   min-width: 0;
+}
+
+/* 横に並べると狭すぎるものは、行を丸ごと使う */
+.foot__link--wide {
+  flex-basis: 100%;
 }
 
 .group__head {

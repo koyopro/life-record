@@ -124,6 +124,16 @@ Offline にする。
 本番で使うには AWS 側の設定が要る。手順は
 [docs/06-roadmap.md](docs/06-roadmap.md) Milestone 8 を参照。
 
+## ブックマークレット
+
+PC で見ている Amazon の商品ページを、そのままタスクにする。
+`/bookmarklet`（袖の下段）を開き、リンクをブックマークバーへ引いて登録する。
+
+商品ページで押すと、タイトル・`https://www.amazon.co.jp/dp/<ASIN>`・
+ページの画像を持ったまま取り込み画面（`/share`）が開く。画像はメモに
+Scrapbox の記法（`[画像URL]`）で入る。仕組みは
+[docs/17-bookmarklet.md](docs/17-bookmarklet.md)。
+
 ## 本番へのデプロイ
 
 コードは Vercel が `main` への push で自動デプロイする。

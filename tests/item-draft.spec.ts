@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildItemDraft } from '~/utils/item-draft'
 import { composeShare } from '~~/shared/utils/share'
-import { TITLE_MAX_LENGTH } from '~~/shared/utils/text'
+import { BODY_MAX_LENGTH, TITLE_MAX_LENGTH } from '~~/shared/utils/text'
 
 /**
  * 追加する Item の組み立て。
@@ -56,6 +56,39 @@ describe('buildItemDraft', () => {
     expect(withX).toMatchObject({
       draft: { title: '観葉植物を見に行く', dueAt: null },
     })
+  })
+
+  it('メモを渡されたら、本文ではなくメモに入れる', () => {
+    const composed = composeShare({
+      url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+      title: 'リーダブルコード',
+      note: '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]',
+    })
+    const result = buildItemDraft(composed.text, { note: composed.note })
+
+    expect(result).toMatchObject({
+      draft: {
+        title: 'リーダブルコード',
+        url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+        note: '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]',
+        // メモは日付を持たない。作業記録（body）には回さない
+        body: null,
+      },
+    })
+  })
+
+  it('メモが空白だけなら持たせない', () => {
+    const result = buildItemDraft('本を買う', { note: '  \n ' })
+
+    expect(result).toMatchObject({ draft: { note: null } })
+  })
+
+  it('長すぎるメモは断る', () => {
+    const result = buildItemDraft('本を買う', {
+      note: 'あ'.repeat(BODY_MAX_LENGTH + 1),
+    })
+
+    expect(result).toEqual({ error: `メモは ${BODY_MAX_LENGTH} 文字までです` })
   })
 
   it('中身が無ければ組み立てない', () => {

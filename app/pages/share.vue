@@ -5,6 +5,7 @@ import {
   hasSharedContent,
   type SharedContent,
 } from '~~/shared/utils/share'
+import { imagesIn, parseScrapbox } from '~~/shared/utils/scrapbox/parse'
 import { buildItemDraft } from '~/utils/item-draft'
 
 /**
@@ -13,6 +14,9 @@ import { buildItemDraft } from '~/utils/item-draft'
  * manifest の share_target が、共有された内容をクエリ（url / title / text）
  * にしてここへ渡す。やることは「内容を見せる」「保存する」だけで、
  * 保存そのものは一覧の入力欄と同じ経路（buildItemDraft → useItemStore）を通る。
+ *
+ * ブックマークレット（docs/17-bookmarklet.md）も同じ受け口へ来る。
+ * こちらは `note`（メモ）を足して渡してくるので、その欄も出す。
  */
 
 useHead({ title: '共有を受け取る' })
@@ -30,6 +34,24 @@ const saved = ref<{ id: string; title: string } | null>(null)
 
 const composed = computed(() => (shared.value ? composeShare(shared.value) : null))
 
+/**
+ * メモ（`Item.note`）。渡されたものを入れておき、その場で直せる。
+ *
+ * 入力欄のテキストに混ぜない。混ぜると2行目以降＝作業記録（Section）に
+ * なり、日付を持って日記に出てしまう（docs/02-data-model.md 2.3）。
+ */
+const note = ref('')
+
+/**
+ * メモに入っている画像。記法（`[URL]`）のままでは何が入るか分からないので、
+ * 保存する前に見せる。読み方は本文の表示と同じパーサに任せる。
+ */
+const noteImages = computed(() =>
+  parseScrapbox(note.value)
+    .flatMap((line) => imagesIn(line))
+    .map((image) => image.src),
+)
+
 onMounted(() => {
   const received = readQuery()
 
@@ -41,6 +63,7 @@ onMounted(() => {
     shared.value = held()
   }
 
+  note.value = composed.value?.note ?? ''
   ready.value = true
 })
 
@@ -50,6 +73,7 @@ function readQuery(): SharedContent {
     url: queryValue(route.query.url),
     title: queryValue(route.query.title),
     text: queryValue(route.query.text),
+    note: queryValue(route.query.note),
   }
 }
 
@@ -59,7 +83,7 @@ function queryValue(value: unknown): string | undefined {
 }
 
 async function save(text: string) {
-  const result = buildItemDraft(text)
+  const result = buildItemDraft(text, { note: note.value })
 
   if ('error' in result) {
     errorMessage.value = result.error
@@ -169,6 +193,29 @@ function release() {
       </dl>
 
       <!--
+        メモ（Item.note）。ブックマークレットからの取り込みで使う
+        （docs/17-bookmarklet.md）。渡ってこなければ出さない。
+
+        画像は記法のままだと何が入るか分からないので、その場で出す。
+        要らなければ、保存する前にここで消せる。
+      -->
+      <section v-if="composed.note" class="note">
+        <label class="note__label" for="share-note">メモ</label>
+        <ul v-if="noteImages.length" class="note__images">
+          <li v-for="src in noteImages" :key="src" class="note__image">
+            <img :src="src" alt="" loading="lazy">
+          </li>
+        </ul>
+        <textarea
+          id="share-note"
+          v-model="note"
+          class="note__input"
+          rows="3"
+          spellcheck="false"
+        />
+      </section>
+
+      <!--
         一覧と同じ入力欄。1行目がタイトル、2行目以降が本文になる。
         書き直してからでも保存できる（SmartAdd の記法もそのまま効く）。
       -->
@@ -259,6 +306,48 @@ function release() {
   /* 長文が来ても画面を埋め尽くさない */
   max-height: 8rem;
   overflow-y: auto;
+}
+
+/* メモ。共有では出ず、ブックマークレットから来たときだけ出る */
+.note {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.note__label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.note__images {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* 中身が分かればよいので小さく出す。並べても1行に収まる大きさ */
+.note__image img {
+  max-height: 7rem;
+  max-width: 100%;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.note__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  /* 記法をそのまま見せる欄なので、長い URL は折り返す */
+  overflow-wrap: anywhere;
+  resize: vertical;
 }
 
 .page__actions {

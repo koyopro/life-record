@@ -26,6 +26,11 @@ export interface CreatePayload {
   id: string
   /** 追加時の入力そのまま。サーバーが SmartAdd として解釈する。 */
   text: string
+  /**
+   * メモ（`Item.note`）。入力テキストからは取れないので別に持つ
+   * （ブックマークレットからの追加。docs/17-bookmarklet.md）。
+   */
+  note?: string | null
 }
 
 export interface PatchPayload {

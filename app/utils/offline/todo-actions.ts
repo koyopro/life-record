@@ -18,7 +18,9 @@ export async function createTodo(draft: ItemDto, text: string): Promise<void> {
   await enqueueOperation({
     kind: 'create',
     itemIds: [draft.id],
-    payload: { id: draft.id, text },
+    // メモは入力テキストに現れない（1行目＝タイトル、2行目以降＝本文）ので、
+    // 組み立てた draft から持っていく（docs/17-bookmarklet.md）
+    payload: { id: draft.id, text, note: draft.note },
   })
 }
 
