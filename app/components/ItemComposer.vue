@@ -6,11 +6,10 @@ import {
   composeSmartAddInput,
   isTagStart,
   mergeSmartAddOverrides,
-  parseSmartAdd,
+  parseSmartAddInput,
   type SmartAddDue,
   type SmartAddOverrides,
 } from '~~/shared/utils/smart-add'
-import { splitInput } from '~~/shared/utils/text'
 
 const props = withDefaults(
   defineProps<{
@@ -132,11 +131,7 @@ const composed = computed(() =>
  * サーバーと同じパーサを使うため、表示と保存結果が食い違わない。
  * 書き戻したあとのテキストを読むので、ボタンで選んだ内容もここに出る。
  */
-const parsed = computed(() => {
-  const split = splitInput(composed.value)
-  if (!split) return null
-  return { ...parseSmartAdd(split.titleLine), body: split.body }
-})
+const parsed = computed(() => parseSmartAddInput(composed.value))
 
 /**
  * いまの指定内容。テキストの記法とボタンで選んだ内容を重ねたもの。

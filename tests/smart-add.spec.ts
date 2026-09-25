@@ -4,6 +4,7 @@ import {
   composeSmartAddInput,
   mergeSmartAddOverrides,
   parseSmartAdd,
+  parseSmartAddInput,
 } from '~~/shared/utils/smart-add'
 
 /**
@@ -232,5 +233,81 @@ describe('#（タグ）の切り出し', () => {
     expect(parsed.tags).toEqual([])
     expect(parsed.title).toBe('C#の勉強')
     expect(parsed.warnings).toEqual([])
+  })
+})
+
+/**
+ * URL が指すものの ID（docs/09-tags.md 9.4）と、2行目以降の URL
+ * （docs/08-todo-management.md 8.5）。
+ *
+ * ClickUp などから「タイトル | #ID」と URL を行を分けて貼る使い方で、
+ * ID がタグにならず、URL が URL 欄に入ること。
+ */
+describe('チケット ID と、2行目の URL', () => {
+  const now = new Date(2026, 7, 18)
+  const clickUp = 'https://app.clickup.com/t/3619157/86ev78kht'
+
+  it('2行目の URL が指す ID はタグにせず、URL は URL 欄へ回す', () => {
+    const parsed = parseSmartAddInput(`本番設定 | #86ev78kht\n${clickUp}`, now)
+
+    expect(parsed?.title).toBe('本番設定 | #86ev78kht')
+    expect(parsed?.tags).toEqual([])
+    expect(parsed?.url).toBe(clickUp)
+    expect(parsed?.body).toBeUndefined()
+  })
+
+  it('同じ行の URL が指す ID もタグにしない', () => {
+    const parsed = parseSmartAdd(`本番設定 #86ev78kht ${clickUp}`, now)
+
+    expect(parsed.title).toBe('本番設定 #86ev78kht')
+    expect(parsed.tags).toEqual([])
+    expect(parsed.url).toBe(clickUp)
+  })
+
+  it('フラグメントと一致する ID もタグにしない', () => {
+    const parsed = parseSmartAdd('見る #abc https://example.com/#abc', now)
+    expect(parsed.tags).toEqual([])
+  })
+
+  it('ID と並べて書いたタグは、これまでどおり拾う', () => {
+    const parsed = parseSmartAddInput(`本番設定 | #86ev78kht #仕事\n${clickUp}`, now)
+
+    expect(parsed?.title).toBe('本番設定 | #86ev78kht')
+    expect(parsed?.tags).toEqual(['仕事'])
+  })
+
+  it('URL の一部にしか一致しないものはタグのまま', () => {
+    const parsed = parseSmartAdd('作る #web https://example.com/web-app', now)
+    expect(parsed.tags).toEqual(['web'])
+  })
+
+  it('本文に URL 以外もあれば、本文はそのまま残す', () => {
+    const body = `${clickUp}\n確認すること`
+    const parsed = parseSmartAddInput(`本番設定\n${body}`, now)
+
+    expect(parsed?.url).toBe(clickUp)
+    expect(parsed?.body).toBe(body)
+  })
+
+  it('1行目に URL があれば、本文の URL は動かさない', () => {
+    const parsed = parseSmartAddInput(
+      `資料を読む https://example.com/doc\n${clickUp}`,
+      now,
+    )
+
+    expect(parsed?.url).toBe('https://example.com/doc')
+    expect(parsed?.body).toBe(clickUp)
+  })
+
+  it('ボタンで選んだ内容を書き戻しても、ID はタグにならない', () => {
+    const composed = composeSmartAddInput(`本番設定 | #86ev78kht\n${clickUp}`, {
+      priority: 1,
+    })
+    const parsed = parseSmartAddInput(composed, now)
+
+    expect(parsed?.title).toBe('本番設定 | #86ev78kht')
+    expect(parsed?.tags).toEqual([])
+    expect(parsed?.priority).toBe(1)
+    expect(parsed?.url).toBe(clickUp)
   })
 })

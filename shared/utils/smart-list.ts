@@ -88,7 +88,7 @@ export function withListDefaults(
 
   const split = splitInput(text)
   if (!split) return text
-  const parsed = parseSmartAdd(split.titleLine)
+  const parsed = parseSmartAdd(split.titleLine, now, { body: split.body })
 
   const overrides: SmartAddOverrides = {}
   if (list.tag) overrides.tags = [...new Set([...parsed.tags, list.tag])]

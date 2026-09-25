@@ -52,19 +52,30 @@ const RESERVED_SYMBOLS = ['@', '=']
 /** 日付表現の終わりを示す記号。ここまでを chrono に渡す。 */
 const TOKEN_BOUNDARY = /[!#*@=]/
 
+export interface SmartAddOptions {
+  /**
+   * 入力の2行目以降。記法としては解釈しないが、そこにある URL を
+   * `#` がチケット ID かどうかの判定に使う（docs/09-tags.md 9.4）。
+   */
+  body?: string
+}
+
 export function parseSmartAdd(
   input: string,
   referenceDate: Date = new Date(),
+  options: SmartAddOptions = {},
 ): SmartAddResult {
   const warnings: string[] = []
   let rest = input.replace(/\r\n?/g, ' ').trim()
+  // 記法を取り除く前の入力から拾う。タイトルの URL も判定に使うため
+  const urlIds = collectUrlIds(`${rest}\n${options.body ?? ''}`)
 
   const priorityResult = extractPriority(rest, warnings)
   rest = priorityResult.rest
 
   // 日付の解釈より先に取り除く。`^明日 #買い物` のように
   // 期限の後ろに続くタグを日付表現に混ぜないため。
-  const tagResult = extractTags(rest, warnings)
+  const tagResult = extractTags(rest, warnings, urlIds)
   rest = tagResult.rest
 
   const recurrenceResult = extractRecurrence(rest, warnings)
@@ -89,6 +100,47 @@ export function parseSmartAdd(
     url: urlResult.url,
     warnings,
   }
+}
+
+/** {@link parseSmartAddInput} の結果。 */
+export interface SmartAddInputResult extends SmartAddResult {
+  /** 2行目以降。URL 欄へ移した URL だけだった場合は undefined。 */
+  body?: string
+}
+
+/**
+ * 複数行の入力（1行目がタイトル、2行目以降が本文）をまとめて解釈する。
+ *
+ * 記法を読むのは1行目だけ（{@link parseSmartAdd}）。加えて、1行目に URL が
+ * 無く2行目以降に裸の URL があれば、最初の1つを URL 欄へ回す
+ * （docs/08-todo-management.md 8.5「裸の URL は URL 欄へ」）。
+ *
+ * ```text
+ * 本番設定 | #86ev78kht
+ * https://app.clickup.com/t/3619157/86ev78kht
+ * ```
+ *
+ * のように、タイトルと URL を行を分けて貼ることが多いため。本文がその URL
+ * だけなら本文は空にする。url 欄と本文に同じ URL を二度持たないように。
+ *
+ * サーバー（作成時）とクライアント（下書き・プレビュー）で同じ結果に
+ * なるよう、入力全体の解釈はここを通す。
+ */
+export function parseSmartAddInput(
+  input: string,
+  referenceDate: Date = new Date(),
+): SmartAddInputResult | null {
+  const split = splitInput(input)
+  if (!split) return null
+
+  const parsed = parseSmartAdd(split.titleLine, referenceDate, { body: split.body })
+  if (parsed.url || !split.body) return { ...parsed, body: split.body }
+
+  const found = findBareUrl(split.body)
+  if (!found) return { ...parsed, body: split.body }
+
+  const body = split.body === found.url ? undefined : split.body
+  return { ...parsed, url: found.url, body }
 }
 
 /** 期限の指定。日付と、時刻まで指定されているか。 */
@@ -183,7 +235,9 @@ export function composeSmartAddInput(
   const split = splitInput(input)
   if (!split) return input
 
-  const parsed = parseSmartAdd(split.titleLine, referenceDate)
+  // URL は1行目のものだけを書き戻す。本文の URL は本文に残したままにして、
+  // 保存時の解釈（parseSmartAddInput）に任せる
+  const parsed = parseSmartAdd(split.titleLine, referenceDate, { body: split.body })
   const { due, dueCleared, priority, tags, recurrence } = mergeSmartAddOverrides(
     parsed,
     overrides,
@@ -223,14 +277,53 @@ function formatDueExpression(due: SmartAddDue): string {
  * 一覧から開く導線もない。最初の1つだけを取り込む。
  */
 function extractUrl(input: string): { rest: string; url: string | null } {
-  const match = /(^|\s)(https?:\/\/\S+)/.exec(input)
-  if (!match) return { rest: input, url: null }
+  const found = findBareUrl(input)
+  if (!found) return { rest: input, url: null }
 
-  const url = match[2]!
-  const start = match.index + match[1]!.length
+  const { url, start } = found
   return {
     rest: `${input.slice(0, start)} ${input.slice(start + url.length)}`,
     url,
+  }
+}
+
+/** 行頭か空白の直後から始まる、最初の裸の URL。 */
+function findBareUrl(input: string): { url: string; start: number } | null {
+  const match = /(^|\s)(https?:\/\/\S+)/.exec(input)
+  if (!match) return null
+  return { url: match[2]!, start: match.index + match[1]!.length }
+}
+
+/**
+ * 入力にある URL の、パスの各区切りとフラグメント。
+ *
+ * `#86ev78kht` の `86ev78kht` がここに含まれていれば、タグではなく
+ * URL が指すもの（チケット）の ID とみなす（docs/09-tags.md 9.4）。
+ * 部分一致は見ない。`#web` と `https://example.com/web-app` のような
+ * 偶然の重なりでタグが消えないように。
+ */
+function collectUrlIds(input: string): Set<string> {
+  const ids = new Set<string>()
+  for (const [raw] of input.matchAll(/https?:\/\/\S+/g)) {
+    let url: URL
+    try {
+      url = new URL(raw)
+    } catch {
+      continue
+    }
+    const hash = url.hash.slice(1)
+    for (const part of [...url.pathname.split('/'), hash, ...hash.split('/')]) {
+      if (part) ids.add(safeDecode(part))
+    }
+  }
+  return ids
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
   }
 }
 
@@ -286,13 +379,18 @@ export function isTagStart(text: string, at: number): boolean {
  *
  * RTM では `#` がリストとタグの両方に使われるが、このサービスに
  * リストの概念はないため常にタグとして解釈する。
+ *
+ * ただし、同じ入力にある URL のパスの区切りやフラグメントと一致するものは
+ * チケット ID とみなし、書いた文字のまま残す（`collectUrlIds`）。
  */
-function extractTags(input: string, warnings: string[]) {
+function extractTags(input: string, warnings: string[], urlIds: Set<string>) {
   const tags: string[] = []
 
   const rest = input.replace(/#([^\s,#]+)/g, (token, raw: string, offset: number) => {
     // 語の途中の `#`（URL のフラグメントなど）はタグにしない
     if (!isTagStart(input, offset)) return token
+    // 同じ入力の URL が指すものの ID（`#86ev78kht` と `…/t/3619157/86ev78kht`）
+    if (urlIds.has(raw)) return token
 
     const name = normalizeTagName(raw)
     if (!name) {
@@ -676,7 +774,7 @@ export function withTagDefaults(text: string, tag: string | null | undefined): s
 
   const split = splitInput(text)
   if (!split) return text
-  const parsed = parseSmartAdd(split.titleLine)
+  const parsed = parseSmartAdd(split.titleLine, new Date(), { body: split.body })
 
   const overrides: SmartAddOverrides = {
     tags: [...new Set([...parsed.tags, tag])],

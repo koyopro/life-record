@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { composeShare, hasSharedContent } from '~~/shared/utils/share'
-import { parseSmartAdd } from '~~/shared/utils/smart-add'
-import { splitInput } from '~~/shared/utils/text'
+import { parseSmartAddInput } from '~~/shared/utils/smart-add'
 
 /**
  * 共有シートから受け取った内容の組み立て（docs/13-share-target.md）。
@@ -12,12 +11,11 @@ import { splitInput } from '~~/shared/utils/text'
 
 /** 組み立てたテキストを、実際に保存されるときと同じ手順で解釈する。 */
 function asItem(text: string) {
-  const split = splitInput(text)
-  const parsed = split ? parseSmartAdd(split.titleLine) : null
+  const parsed = parseSmartAddInput(text)
   return {
     title: parsed?.title ?? '',
     url: parsed?.url ?? null,
-    body: split?.body ?? null,
+    body: parsed?.body ?? null,
   }
 }
 

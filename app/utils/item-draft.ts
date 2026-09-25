@@ -1,7 +1,7 @@
 import type { ItemDto } from '~~/shared/types/item'
 import { todayDueAt } from '~~/shared/utils/date'
-import { parseSmartAdd } from '~~/shared/utils/smart-add'
-import { BODY_MAX_LENGTH, TITLE_MAX_LENGTH, splitInput } from '~~/shared/utils/text'
+import { parseSmartAddInput } from '~~/shared/utils/smart-add'
+import { BODY_MAX_LENGTH, TITLE_MAX_LENGTH } from '~~/shared/utils/text'
 
 /**
  * 入力テキストから、追加する Item を組み立てる。
@@ -35,10 +35,9 @@ export function buildItemDraft(
 ): DraftResult {
   const now = options.now ?? new Date()
   const note = options.note?.trim() || null
-  const split = splitInput(text)
-  const parsed = split ? parseSmartAdd(split.titleLine, now) : null
+  const parsed = parseSmartAddInput(text, now)
 
-  if (!split || !parsed?.title) {
+  if (!parsed?.title) {
     return { error: 'タイトルが空です' }
   }
   if (parsed.title.length > TITLE_MAX_LENGTH) {
@@ -63,7 +62,7 @@ export function buildItemDraft(
       // `^なし` / `^x` で明示的に外していれば、その指定に従う。
       dueAt: parsed.dueCleared ? null : (parsed.dueAt ?? todayDueAt(now)).toISOString(),
       dueHasTime: parsed.dueAt ? parsed.dueHasTime : false,
-      body: split.body ?? null,
+      body: parsed.body ?? null,
       tags: [...parsed.tags].sort(),
       recurrenceRule: parsed.recurrence?.rule ?? null,
       recurrenceBasis: parsed.recurrence?.basis ?? null,

@@ -5,12 +5,8 @@ import { toAppDate, todayDueAt } from '~~/shared/utils/date'
 import { assertUuid, toItemDto, toItemDtos } from '~~/server/utils/items'
 import { ensureTags } from '~~/server/utils/tags'
 import { isItemStatus, type ItemDto, type ItemStatus } from '~~/shared/types/item'
-import { parseSmartAdd } from '~~/shared/utils/smart-add'
-import {
-  BODY_MAX_LENGTH,
-  TITLE_MAX_LENGTH,
-  splitInput,
-} from '~~/shared/utils/text'
+import { parseSmartAddInput } from '~~/shared/utils/smart-add'
+import { BODY_MAX_LENGTH, TITLE_MAX_LENGTH } from '~~/shared/utils/text'
 
 interface Body {
   /** 生の入力テキスト。1行目に SmartAdd の記法を書ける。 */
@@ -45,12 +41,11 @@ interface Body {
 export default defineEventHandler(async (event): Promise<ItemDto> => {
   const payload = await readBody<Body>(event)
 
-  const split = payload?.text ? splitInput(payload.text) : null
-  if (!split) {
+  const parsed = payload?.text ? parseSmartAddInput(payload.text) : null
+  if (!parsed) {
     throw createError({ statusCode: 400, message: '内容が空です' })
   }
 
-  const parsed = parseSmartAdd(split.titleLine)
   if (!parsed.title) {
     throw createError({
       statusCode: 400,
@@ -63,7 +58,7 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
       message: `タイトルは ${TITLE_MAX_LENGTH} 文字までです`,
     })
   }
-  if (split.body && split.body.length > BODY_MAX_LENGTH) {
+  if (parsed.body && parsed.body.length > BODY_MAX_LENGTH) {
     throw createError({
       statusCode: 400,
       message: `本文は ${BODY_MAX_LENGTH} 文字までです`,
@@ -129,11 +124,11 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
       })
     }
 
-    if (split.body) {
+    if (parsed.body) {
       await tx.insert(sections).values({
         itemId: item.id,
         date: toAppDate(item.createdAt),
-        body: split.body,
+        body: parsed.body,
         position: 0,
       })
     }
@@ -145,6 +140,6 @@ export default defineEventHandler(async (event): Promise<ItemDto> => {
       )
     }
 
-    return toItemDto(item, split.body ?? null, [...parsed.tags].sort())
+    return toItemDto(item, parsed.body ?? null, [...parsed.tags].sort())
   })
 })
