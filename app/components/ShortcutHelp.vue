@@ -13,6 +13,10 @@ onMounted(() => dialog.value?.focus())
 </script>
 
 <template>
+  <!--
+    `Esc` は自分で受けて閉じる（他のダイアログと同じ）。画面側の `Esc`
+    （詳細画面の「一覧へ戻る」など）まで進ませないため。
+  -->
   <div class="overlay" @click.self="emit('close')">
     <div
       ref="dialog"
@@ -21,6 +25,7 @@ onMounted(() => dialog.value?.focus())
       aria-modal="true"
       aria-label="キーボードショートカット"
       tabindex="-1"
+      @keydown.esc.prevent="emit('close')"
     >
       <header class="sheet__header">
         <h2 class="sheet__title">キーボードショートカット</h2>

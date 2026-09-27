@@ -28,11 +28,21 @@ const props = defineProps<{
   open: (item: ItemDto) => void
   /** 詳細の欄へ移る（`r` / `u` / `y` / `m`）。 */
   focusDetail: (field: 'Title' | 'Url' | 'Body' | 'Note') => void | Promise<void>
+  /**
+   * 1件だけを扱う（単体の詳細画面。docs/08-todo-management.md 8.4）。
+   *
+   * 一覧にしか意味のない割り当て（切り替え・選択・単体のページで開く）は
+   * 持たない。`Esc`（一覧へ戻る）と `⌘ + C` は詳細画面が自分で持つので、
+   * 二重に登録しない。
+   */
+  single?: boolean
 }>()
 
 const emit = defineEmits<{
   /** `h` で切り替えた。URL に残すのは呼ぶ側（残し方が画面ごとに違う）。 */
   'update:completed': [value: boolean]
+  /** 削除した。単体の詳細画面は、消えたタスクに留まらず一覧へ戻る。 */
+  removed: []
 }>()
 
 const list = computed(() => props.list)
@@ -95,7 +105,14 @@ function showCompleted(value: boolean) {
   emit('update:completed', value)
 }
 
-const shortcuts = computed<Shortcut[]>(() => [
+/** 削除する（`Delete`・操作シート）。 */
+async function remove() {
+  if (list.value.targets.value.length === 0) return
+  await list.value.remove()
+  emit('removed')
+}
+
+const allShortcuts = computed<Shortcut[]>(() => [
   ...(props.switchable
     ? [
         {
@@ -281,7 +298,7 @@ const shortcuts = computed<Shortcut[]>(() => [
     display: 'Delete',
     label: '削除',
     group: '編集',
-    run: () => list.value.remove(),
+    run: () => remove(),
   },
   {
     /*
@@ -340,6 +357,20 @@ const shortcuts = computed<Shortcut[]>(() => [
     },
   },
 ])
+
+/** 一覧にしか意味のない割り当て。1件だけを扱うときは外す（`single`）。 */
+const LIST_ONLY_GROUPS = new Set(['移動', '選択'])
+
+const shortcuts = computed<Shortcut[]>(() =>
+  props.single
+    ? allShortcuts.value.filter(
+        (shortcut) =>
+          !LIST_ONLY_GROUPS.has(shortcut.group) &&
+          shortcut.keys[0] !== 'Escape' &&
+          !shortcut.meta,
+      )
+    : allShortcuts.value,
+)
 
 const { groups } = useShortcuts(shortcuts)
 
@@ -495,7 +526,7 @@ defineExpose({ toggleComplete, openSheet, showHelp })
     @tags="fromSheet(() => openTags(false))"
     @recurrence="fromSheet(() => (recurrenceOpen = true))"
     @open="openFromSheet"
-    @remove="fromSheet(() => list.remove())"
+    @remove="fromSheet(() => remove())"
   />
 
   <!--
