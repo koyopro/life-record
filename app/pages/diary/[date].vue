@@ -58,6 +58,9 @@ const body = computed({
 
 const save = computed(() => store.statusOf(date.value))
 
+/** 本文の欄（`y` で入る）。 */
+const bodyEditor = ref<{ focus: () => void } | null>(null)
+
 // --- 日付の移動 ---------------------------------------------------------
 
 /**
@@ -93,6 +96,16 @@ useShortcuts(
       label: '次の日へ',
       group: '移動',
       run: () => goTo(shiftAppDate(date.value, 1)),
+    },
+    {
+      /*
+       * 本文を書き始める（末尾の行へ入る）。タスクの `y`（今日の作業記録を
+       * 書く）と同じ文字にする。どちらも「その日のことを書く」操作なので。
+       */
+      keys: ['y'],
+      label: '本文を書く',
+      group: '編集',
+      run: () => bodyEditor.value?.focus(),
     },
     {
       /*
@@ -236,6 +249,7 @@ function onWorkedOnDragStart(item: ItemDto, event: DragEvent) {
       </header>
 
       <ScrapboxEditor
+        ref="bodyEditor"
         v-model="body"
         placeholder="今日のことを書く"
         aria-label="日記の本文"
