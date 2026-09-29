@@ -360,17 +360,6 @@ const shortcuts = computed<Shortcut[]>(() => [
       if (target) open(target)
     },
   },
-  {
-    /*
-     * 検索へ移る。app.vue には置かない。ページは非同期に読み込まれるので
-     * app.vue の登録のほうが先になり、検索画面自身の `/`（検索語を打ち直す）
-     * を追い越してしまう。
-     */
-    keys: ['/'],
-    label: '検索',
-    group: 'その他',
-    run: () => void navigateTo('/search'),
-  },
 ])
 
 useShortcuts(shortcuts)

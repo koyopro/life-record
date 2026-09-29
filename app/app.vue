@@ -142,6 +142,19 @@ const shortcuts: Shortcut[] = [
     run: () => toggleSidebar(),
   },
   {
+    /*
+     * 検索へ移る。どの画面からでも効かせる（日記・タスクの詳細からも）。
+     *
+     * 画面が自分で `/` を持っていればそちらに譲る（`fallback`）。検索画面は
+     * 検索語を打ち直し、日記は書きかけを送ってから離れる。
+     */
+    keys: ['/'],
+    label: '検索',
+    group: 'その他',
+    fallback: true,
+    run: () => void navigateTo('/search'),
+  },
+  {
     prefix: 'g',
     keys: ['t'],
     label: '今日へ移動',

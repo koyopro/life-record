@@ -33,6 +33,15 @@ export interface Shortcut {
    * 場面で持ち主が変わる。判断は割り当てた側に持たせる。
    */
   yieldToBrowser?: () => boolean
+  /**
+   * 画面側に同じ打鍵の割り当てがあれば、そちらに譲るか。
+   *
+   * どの画面でも効かせたい割り当て（`/` で検索へ）は app.vue に置くが、
+   * app.vue の登録はページより先になるので、そのままでは画面自身の
+   * 割り当て（検索画面の `/` ＝ 検索語を打ち直す）を追い越してしまう。
+   * これを付けたものは、ほかに当てはまる割り当てが無いときだけ使う。
+   */
+  fallback?: boolean
 }
 
 export interface ShortcutGroup {
@@ -136,14 +145,15 @@ function onKeydown(event: KeyboardEvent) {
     return
   }
 
-  for (const shortcut of list) {
-    if (shortcut.prefix) continue
-    if (!matches(shortcut, event, typing)) continue
+  const candidates = list.filter(
+    (shortcut) => !shortcut.prefix && matches(shortcut, event, typing),
+  )
+  const shortcut =
+    candidates.find((item) => !item.fallback) ?? candidates[0]
+  if (!shortcut) return
 
-    event.preventDefault()
-    void shortcut.run(event)
-    return
-  }
+  event.preventDefault()
+  void shortcut.run(event)
 }
 
 /**
@@ -172,6 +182,8 @@ export function useShortcuts(shortcuts: MaybeRefOrGetter<Shortcut[]>) {
   const groups = computed<ShortcutGroup[]>(() => {
     const byGroup = new Map<string, Shortcut[]>()
     for (const shortcut of active.value) {
+      // 画面側に譲っているもの（`fallback`）は、実際には使われないので出さない
+      if (isShadowed(shortcut, active.value)) continue
       const existing = byGroup.get(shortcut.group)
       if (existing) existing.push(shortcut)
       else byGroup.set(shortcut.group, [shortcut])
@@ -180,6 +192,19 @@ export function useShortcuts(shortcuts: MaybeRefOrGetter<Shortcut[]>) {
   })
 
   return { groups }
+}
+
+/** 画面側の同じ打鍵の割り当てに譲っていて、使われることがないか。 */
+function isShadowed(shortcut: Shortcut, all: Shortcut[]): boolean {
+  if (!shortcut.fallback) return false
+  return all.some(
+    (other) =>
+      !other.fallback &&
+      other.prefix === shortcut.prefix &&
+      Boolean(other.shift) === Boolean(shortcut.shift) &&
+      Boolean(other.meta) === Boolean(shortcut.meta) &&
+      other.keys.some((key) => shortcut.keys.includes(key)),
+  )
 }
 
 /** ヘルプでのキー表示。 */
