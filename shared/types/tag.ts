@@ -179,3 +179,20 @@ export function parseTagNames(input: string): string[] {
 
   return [...new Set(names)]
 }
+
+/**
+ * タグ入力欄の内容を「確定済みのタグ」と「いま打っている語」に分ける。
+ *
+ * 候補は打っている語だけで引き、候補を選んだらその語を置き換える
+ * （「添削」まで打って「添削中」を選んだら「添削中」だけにする）。
+ * 末尾が区切りなら、打っている語は空。
+ */
+export function splitTagInput(input: string): {
+  committed: string[]
+  fragment: string
+} {
+  const match = /(?:^|[\s,]+)([^\s,]*)$/.exec(input)
+  const fragment = match?.[1] ?? ''
+  const rest = input.slice(0, input.length - fragment.length)
+  return { committed: parseTagNames(rest), fragment }
+}

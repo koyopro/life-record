@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { normalizeTagName, parseTagNames } from '~~/shared/types/tag'
+import { parseTagNames, splitTagInput } from '~~/shared/types/tag'
 
 const props = defineProps<{
   /** いま付いているタグ（複数選択時は和集合）。 */
@@ -26,8 +26,12 @@ const removing = ref<Set<string>>(new Set())
 
 const adding = computed(() => parseTagNames(input.value))
 
+// 候補は打っている語だけで引く。確定済みの語まで含めると、2つめ以降の
+// タグで何も当たらなくなる
+const typing = computed(() => splitTagInput(input.value))
+
 const suggestions = computed(() =>
-  suggest(input.value, [...currentTags.value, ...adding.value]),
+  suggest(typing.value.fragment, [...currentTags.value, ...typing.value.committed]),
 )
 
 const invalid = computed(() => {
@@ -48,8 +52,9 @@ function toggleRemoval(name: string) {
   removing.value = next
 }
 
+/** 候補を選んだら、打っている語をそのタグで置き換える。 */
 function pick(name: string) {
-  const names = new Set(adding.value)
+  const names = new Set(typing.value.committed)
   names.add(name)
   input.value = `${[...names].join(' ')} `
   inputEl.value?.focus()
