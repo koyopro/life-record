@@ -157,6 +157,10 @@ const createFailed = ref<string | null>(null)
  * 題とリンクを毎回打つのを省くためだけの近道で、専用の構造は持たない。
  * できるのは「メモの1行目にこの月へのリンクが入った、ただのタスク」で、
  * 手で作ったものと区別はない。
+ *
+ * 「振り返り」のタグを付けておく。月をまたいで振り返りだけを並べて
+ * 見返せるように。タグは SmartAdd の `#` で書き、手元の組み立てと
+ * サーバーの解釈を同じ入力からそろえる。
  */
 async function createRetrospective() {
   if (creating.value) return
@@ -165,14 +169,15 @@ async function createRetrospective() {
 
   try {
     const title = `${formatAppMonth(month.value)}の振り返り`
-    const built = buildItemDraft(title)
+    const input = `${title} #振り返り`
+    const built = buildItemDraft(input)
     if ('error' in built) {
       createFailed.value = built.error
       return
     }
 
     const { draft } = built
-    await itemStore.create(draft, title)
+    await itemStore.create(draft, input)
     // リンクはメモに置く。日付を持たない「このタスクが何の話か」であって、
     // その日にやったことではないため（docs/02-data-model.md 2.3）
     await itemStore.patch([draft.id], { note: `[${path.value}]` })
