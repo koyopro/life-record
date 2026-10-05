@@ -20,6 +20,43 @@ function operation(overrides: Partial<PendingOperation>): PendingOperation {
 }
 
 describe('sync-runner', () => {
+  it('`[題]` の書き換えは題とリンク先を送る（TODO の宛先には並べない）', async () => {
+    const server = fakeServer(() => ({ diaries: 2, sections: 0, items: 0 }))
+
+    const outcome = await runOperation(
+      operation({
+        kind: 'todo_link',
+        itemIds: [],
+        payload: { itemId: 'item-1', title: 'インフルエンザ' },
+      }),
+      server.request,
+    )
+
+    expect(server.calls[0]).toMatchObject({
+      path: '/api/todo-links',
+      method: 'POST',
+      body: { itemId: 'item-1', title: 'インフルエンザ' },
+    })
+    expect(outcome).toEqual({ type: 'done' })
+  })
+
+  it('`[題]` の書き換えの宛先が無くても、TODO が消えたとは見なさない', async () => {
+    const server = fakeServer(() => {
+      throw httpError(404, { message: '見つかりません' })
+    })
+
+    const outcome = await runOperation(
+      operation({
+        kind: 'todo_link',
+        itemIds: [],
+        payload: { itemId: 'item-1', title: 'インフルエンザ' },
+      }),
+      server.request,
+    )
+
+    expect(outcome.type).toBe('failed')
+  })
+
   it('作成は id と入力をそのまま送る', async () => {
     const item = itemDto()
     const server = fakeServer(() => item)

@@ -3,6 +3,7 @@ import { itemDto } from './helpers'
 import { replaceNthOccurrence, resolveTodoLink } from '~/utils/todo-link'
 import { itemLinkText } from '~/utils/item-link'
 import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import { linkTodoTitle } from '~~/shared/utils/todo-link'
 import { renderLine } from '~~/shared/utils/scrapbox/render'
 
 /**
@@ -107,5 +108,57 @@ describe('リンク先が決まったときの書き換え', () => {
   it('見つからなければ何も変えない（書いている途中で本文が変わった場合）', () => {
     expect(replaceNthOccurrence('本文', '[メダリスト]', 0, '[X]')).toBe('本文')
     expect(replaceNthOccurrence('[メダリスト]', '[メダリスト]', 3, '[X]')).toBe('[メダリスト]')
+  })
+})
+
+describe('同じ題のリンクをまとめて決める（linkTodoTitle）', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+  const link = (title: string) => `[/items/${id} ${title}]`
+
+  it('本文の中の同じ題の `[題]` をすべて書き換える', () => {
+    const body = ['[インフルエンザ]', ' 熱が出た', '病院へ [インフルエンザ] の検査'].join('\n')
+    expect(linkTodoTitle(body, 'インフルエンザ', id)).toBe(
+      [link('インフルエンザ'), ' 熱が出た', `病院へ ${link('インフルエンザ')} の検査`].join('\n'),
+    )
+  })
+
+  it('同じ行に並んでいても、すべて書き換える', () => {
+    expect(linkTodoTitle('[a]と[a]と[b]', 'a', id)).toBe(`${link('a')}と${link('a')}と[b]`)
+  })
+
+  it('題は前後の空白と英字の大小を無視して比べ、書かれた見出しは残す', () => {
+    expect(linkTodoTitle('[Flu] [ flu ]', 'flu', id)).toBe(`${link('Flu')} ${link('flu')}`)
+  })
+
+  it('別の題・決まっているリンクは変えない', () => {
+    const body = `[インフル] ${link('インフルエンザ')}`
+    expect(linkTodoTitle(body, 'インフルエンザ', id)).toBe(body)
+  })
+
+  it('コード・強調・コードブロックの中の同じ文字は変えない', () => {
+    const body = [
+      '`[インフルエンザ]` [[インフルエンザ]] [インフルエンザ]',
+      'code:memo.txt',
+      ' [インフルエンザ]',
+    ].join('\n')
+    expect(linkTodoTitle(body, 'インフルエンザ', id)).toBe(
+      [
+        `\`[インフルエンザ]\` [[インフルエンザ]] ${link('インフルエンザ')}`,
+        'code:memo.txt',
+        ' [インフルエンザ]',
+      ].join('\n'),
+    )
+  })
+
+  it('装飾・表の中のリンクも書き換える', () => {
+    const body = ['[* [インフルエンザ]]', 'table:t', ' 病名\t[インフルエンザ]'].join('\n')
+    expect(linkTodoTitle(body, 'インフルエンザ', id)).toBe(
+      [`[* ${link('インフルエンザ')}]`, 'table:t', ` 病名\t${link('インフルエンザ')}`].join('\n'),
+    )
+  })
+
+  it('当たらなければ同じ本文を返す', () => {
+    expect(linkTodoTitle('なにもない', 'インフルエンザ', id)).toBe('なにもない')
+    expect(linkTodoTitle('[インフルエンザ]', '  ', id)).toBe('[インフルエンザ]')
   })
 })

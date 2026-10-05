@@ -60,6 +60,7 @@ const KIND_LABELS: Record<OperationKind, string> = {
   section_delete: '作業記録の削除',
   section_reorder: '作業記録の並べ替え',
   diary_save: '日記の保存',
+  todo_link: 'リンク先の書き換え',
 }
 
 const open = ref(false)

@@ -11,6 +11,7 @@ import type {
   SectionReorderPayload,
   SectionSavePayload,
   TagsPayload,
+  TodoLinkPayload,
 } from './sync-queue'
 
 /**
@@ -205,6 +206,16 @@ export async function runOperation(
         })) as DiaryDto
         return { type: 'done', diary }
       }
+
+      case 'todo_link': {
+        const payload = operation.payload as TodoLinkPayload
+        // 宛先の TODO はまだ届いていなくてもよい（書き換えるのは本文の文字だけ）
+        await request('/api/todo-links', {
+          method: 'POST',
+          body: { itemId: payload.itemId, title: payload.title },
+        })
+        return { type: 'done' }
+      }
     }
   } catch (error) {
     return classify(error, operation)
@@ -244,6 +255,13 @@ function classify(error: unknown, operation: PendingOperation): SyncOutcome {
      * （手元の記録は、次にサーバーから取り直したときに整理される）。
      */
     if (isBodyKind(operation.kind)) return { type: 'done' }
+    /*
+     * 書き換えの宛先（エンドポイント）が無い。サーバーがまだ古い版のとき。
+     * Item が消えたわけではないので、競合（＝手元から消す）にはしない。
+     */
+    if (operation.kind === 'todo_link') {
+      return { type: 'failed', message: message ?? 'リンク先を書き換えられませんでした' }
+    }
     return { type: 'conflict', reason: 'server_deleted', server: null }
   }
 

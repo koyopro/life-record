@@ -322,6 +322,7 @@ Item のメタデータで競合が起きたときも、本文の未送信の操
 | 記録の削除（`DELETE /api/sections/:id`） | すでに無ければ `404`。クライアントは成功と同じに扱う |
 | 並べ替え（`POST /api/sections/reorder`） | 渡された順に 0 から振り直すだけ |
 | 日記（`PUT /api/diaries/:date`） | 日付が主キーの upsert。空なら消す |
+| `[題]` の書き換え（`POST /api/todo-links`） | 2回目には書き換える `[題]` が残っていない（[11-scrapbox-notation.md](11-scrapbox-notation.md) 11.13） |
 
 操作には ID（`opId`）も振ってあり、どの送信がどの操作に対応するかを
 クライアント側で追えるようにしている。

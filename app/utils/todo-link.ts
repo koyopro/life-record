@@ -1,4 +1,5 @@
 import type { ItemDto } from '~~/shared/types/item'
+import { sameTodoTitle } from '~~/shared/utils/todo-link'
 
 /**
  * 本文の `[題]` から TODO を引き当てる（docs/11-scrapbox-notation.md 11.13）。
@@ -23,11 +24,6 @@ export type TodoLinkMatch<T extends Candidate> =
   /** 同じ題が無い。新しく作るかどうかを尋ねる。 */
   | { kind: 'none' }
 
-/** 題として同じものと見なすか。前後の空白と英字の大小は無視する。 */
-function sameTitle(title: string, text: string): boolean {
-  return title.trim().toLowerCase() === text.trim().toLowerCase()
-}
-
 /**
  * 題の同じ TODO を探す。
  *
@@ -40,7 +36,7 @@ export function resolveTodoLink<T extends Candidate & { syncState?: string }>(
   text: string,
 ): TodoLinkMatch<T> {
   const found = items
-    .filter((item) => item.syncState !== 'pending_delete' && sameTitle(item.title, text))
+    .filter((item) => item.syncState !== 'pending_delete' && sameTodoTitle(item.title, text))
     .sort(byOpenThenRecent)
 
   if (found.length === 0) return { kind: 'none' }

@@ -3,6 +3,8 @@ import { PRIORITY_LABELS, STATUS_LABELS } from '~~/shared/types/item'
 import { formatAppDate, toAppDate } from '~~/shared/utils/date'
 import { buildItemDraft } from '~/utils/item-draft'
 import { resolveTodoLink } from '~/utils/todo-link'
+import { linkTodoTitleEverywhere } from '~/utils/offline/todo-link-actions'
+import { requestFlush } from '~/utils/offline/flush-signal'
 
 /**
  * 本文の TODO リンクを押したときに出るポップオーバー
@@ -74,8 +76,41 @@ const view = computed<View>(() => {
  * TODO が増えても、このリンクの行き先は動かない。
  */
 watch([match, () => itemStore.hydrated.value], () => {
-  if (match.value?.kind === 'one') confirm(match.value.item.id)
+  if (match.value?.kind === 'one') decide(match.value.item.id)
 })
+
+/**
+ * リンク先を決め、**同じ題の `[題]` をすべて**そこへ向ける
+ * （docs/11-scrapbox-notation.md 11.13「同じ題のリンクをまとめて決める」）。
+ *
+ * 押した本文だけでなく、他の日の日記・作業記録・メモに書いた同じ `[題]` も
+ * 書き換える。とりあえず `[インフルエンザ]` と書いておき、詳しく書きたく
+ * なったときに TODO を作れば、それまでの分もまとめてリンク先が決まる。
+ *
+ * 使うのは作ったとき・同じ題が1件だけだったとき。同じ題が複数あって選んで
+ * もらったときは使わない（他の `[題]` は別の TODO のつもりかもしれない）。
+ */
+function decide(itemId: string) {
+  const text = request.value?.text
+  confirm(itemId, { everywhere: true })
+  if (text) void linkEverywhere(itemId, text)
+}
+
+async function linkEverywhere(itemId: string, text: string) {
+  try {
+    const changed = await linkTodoTitleEverywhere(itemId, text)
+    // 書き換えた写しを、開いている画面へ読み直させる
+    if (changed > 0) {
+      await itemStore.reload()
+      await detailStore.reloadLoaded()
+      await diaryStore.reloadLoaded()
+    }
+    requestFlush()
+  } catch {
+    // 手元の書き換えに失敗しても、押したリンクはもう決まっている。
+    // 他の `[題]` は、押せばその時点で同じように決まる
+  }
+}
 
 // --- 今日の作業記録 -------------------------------------------------------
 
@@ -170,7 +205,7 @@ async function create(andRecord: boolean) {
   saving.value = true
   try {
     await itemStore.create(built.draft, text)
-    confirm(built.draft.id)
+    decide(built.draft.id)
   } catch {
     errorMessage.value = '作成できませんでした'
     return

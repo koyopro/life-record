@@ -90,6 +90,7 @@ export type OperationKind =
   | 'section_delete'
   | 'section_reorder'
   | 'diary_save'
+  | 'todo_link'
 
 export interface PendingOperation {
   /**

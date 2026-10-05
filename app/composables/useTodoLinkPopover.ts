@@ -36,7 +36,19 @@ export interface TodoLinkRequest {
  * 読むだけの本文（`view`）から開いたときは渡ってこない。書き換える先が
  * 無いので、そのときは行き先を覚えず、その場の操作だけを受け持つ。
  */
-let confirmWith: ((itemId: string) => void) | null = null
+let confirmWith: ((itemId: string, options: ConfirmOptions) => void) | null = null
+
+export interface ConfirmOptions {
+  /**
+   * 同じ本文の中の同じ `[題]` も、まとめてこのリンク先にするか。
+   *
+   * 作った・1件に決まったときは、同じ題の `[題]` はすべて同じ TODO を指す
+   * ものとして扱う（docs/11-scrapbox-notation.md 11.13）。同じ題が複数あって
+   * **選んでもらった**ときは、押したものだけ（ほかの `[題]` が別の TODO の
+   * つもりで書かれているかもしれない）。
+   */
+  everywhere?: boolean
+}
 
 export function useTodoLinkPopover() {
   const request = useState<TodoLinkRequest | null>('todo-link:request', () => null)
@@ -47,7 +59,10 @@ export function useTodoLinkPopover() {
    * @param onConfirm リンク先が決まったときに呼ぶ（本文の `[題]` を
    *   `[/items/<id> 題]` へ書き換えるのは呼び出し側の仕事）。
    */
-  function open(next: TodoLinkRequest, onConfirm?: (itemId: string) => void): void {
+  function open(
+    next: TodoLinkRequest,
+    onConfirm?: (itemId: string, options: ConfirmOptions) => void,
+  ): void {
     confirmWith = onConfirm ?? null
     request.value = next
   }
@@ -64,14 +79,14 @@ export function useTodoLinkPopover() {
    * 増えても行き先を変えない）。書き換えたら、このポップオーバーは
    * そのタスクを見ている状態へ移る。
    */
-  function confirm(itemId: string): void {
+  function confirm(itemId: string, options: ConfirmOptions = {}): void {
     const current = request.value
     if (!current) return
 
     const notify = confirmWith
     confirmWith = null
     request.value = { ...current, itemId }
-    notify?.(itemId)
+    notify?.(itemId, options)
   }
 
   return { request, open, close, confirm }

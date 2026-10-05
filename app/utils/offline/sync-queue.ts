@@ -92,6 +92,18 @@ export interface DiarySavePayload {
   body: string
 }
 
+/**
+ * 本文の `[題]` を、まとめて `[/items/<id> 題]` へ書き換える
+ * （docs/11-scrapbox-notation.md 11.13）。
+ *
+ * 手元にある分は積む前に書き換えてある。サーバーにしか無い分（開いたことの
+ * ない日の日記など）を書き換えるために送る。何度送っても結果は変わらない。
+ */
+export interface TodoLinkPayload {
+  itemId: string
+  title: string
+}
+
 export interface NewOperation {
   kind: OperationKind
   itemIds: string[]
@@ -105,6 +117,7 @@ export interface NewOperation {
     | SectionDeletePayload
     | SectionReorderPayload
     | DiarySavePayload
+    | TodoLinkPayload
 }
 
 /** 列の末尾へ積む。積んだ操作を返す。 */

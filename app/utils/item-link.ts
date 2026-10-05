@@ -15,22 +15,9 @@ type Linkable = Pick<ItemDto, 'id' | 'title'>
 /** 候補を並べるのに、それに加えて見るもの。 */
 type Candidate = Linkable & Pick<ItemDto, 'status' | 'updatedAt'>
 
-/** そのタスクのページ（アプリ内のパス）。 */
-export function itemPath(id: string): string {
-  return `/items/${id}`
-}
-
-/**
- * 本文へ差し込むリンクの文字列。
- *
- * 題に角括弧が入っていると**そこでリンクが切れる**（`[/items/x [重要] 出す]` は
- * 途中で閉じてしまう）ので、全角へ寄せる。題が空なら題を付けない
- * （パスだけのリンクとして出る）。
- */
-export function itemLinkText(item: Linkable): string {
-  const title = item.title.replace(/\[/g, '［').replace(/\]/g, '］').trim()
-  return title ? `[${itemPath(item.id)} ${title}]` : `[${itemPath(item.id)}]`
-}
+// 書き込む形はサーバー（`[題]` の書き換え。docs/11-scrapbox-notation.md 11.13）と
+// 共有する。食い違うと、手元とサーバーで本文が分かれる
+export { itemLinkText, itemPath } from '~~/shared/utils/todo-link'
 
 /**
  * `[` に続けて打った文字を、タスクの検索語として扱うか

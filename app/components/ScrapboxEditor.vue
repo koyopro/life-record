@@ -29,6 +29,7 @@ import { toAppDate } from '~~/shared/utils/date'
 import { insertDate, type DateInsertState } from '~/utils/date-insert'
 import { lineKeysOf } from '~/utils/line-keys'
 import { replaceNthOccurrence } from '~/utils/todo-link'
+import { linkTodoTitle } from '~~/shared/utils/todo-link'
 import { buildItemDraft } from '~/utils/item-draft'
 import { caretAfterSplit } from '~/utils/caret-shift'
 import { insertImageLines, type ImageInsert } from '~/utils/image-insert'
@@ -1645,18 +1646,33 @@ function openPageLink(el: HTMLElement, index: number) {
     { text, itemId: null, anchor: anchorRect(el) },
     locked.value || occurrence < 0
       ? undefined
-      : (itemId) => resolvePageLink(index, raw, occurrence, text, itemId),
+      : (itemId, options) =>
+          resolvePageLink(index, raw, occurrence, text, itemId, options.everywhere === true),
   )
 }
 
-/** `[題]` を `[/items/<id> 題]` に置き換える。見出しは書かれたままを残す。 */
+/**
+ * `[題]` を `[/items/<id> 題]` に置き換える。見出しは書かれたままを残す。
+ *
+ * `everywhere` なら、この本文の中の同じ題の `[題]` をすべて置き換える
+ * （ほかの日記・作業記録の分は、ポップオーバーが手元とサーバーで書き換える。
+ * 同じ書き換え（`linkTodoTitle`）を通すので、どちらが先に当たっても同じ本文になる）。
+ */
 function resolvePageLink(
   index: number,
   raw: string,
   occurrence: number,
   text: string,
   itemId: string,
+  everywhere: boolean,
 ) {
+  if (everywhere) {
+    const body = rawLines.value.join('\n')
+    const next = linkTodoTitle(body, text, itemId)
+    if (next !== body) commit(next.split('\n'))
+    return
+  }
+
   const lines = [...rawLines.value]
   const line = lines[index]
   if (line === undefined) return
