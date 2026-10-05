@@ -1319,7 +1319,18 @@ function moveLine(event: KeyboardEvent, delta: -1 | 1) {
   const [moved] = lines.splice(index, 1)
   lines.splice(target, 0, moved!)
   commit(lines)
-  void activate(target, caret, lines)
+  void activate(target, caret, lines).then(revealActive)
+}
+
+/**
+ * 編集中の行が画面に入るようにスクロールする。
+ *
+ * 行を動かすと入力欄ごと上下へ移るが、すでにフォーカスを持っているため
+ * `focus()` ではスクロールされず、画面の外へ出ていってしまう。
+ * 見えていればそのまま（`nearest`）にして、押すたびに画面が揺れないようにする。
+ */
+function revealActive() {
+  input.value?.scrollIntoView({ block: 'nearest' })
 }
 
 /**
@@ -1365,7 +1376,7 @@ function moveBlock(event: KeyboardEvent, delta: -1 | 1) {
   const block = lines.splice(index, length)
   lines.splice(target, 0, ...block)
   commit(lines)
-  void activate(target, caret, lines)
+  void activate(target, caret, lines).then(revealActive)
 }
 
 /**
@@ -2959,6 +2970,9 @@ defineExpose({
   display: block;
   resize: none;
   overflow: hidden;
+  /* 行を動かして画面へ入れるとき（revealActive）、端にぴったり付けず
+     前後の行が少し見えるようにする */
+  scroll-margin-block: 3rem;
   /* 編集中の行だけ、記法がそのまま見えていると分かるようにする。
      色を付けるのは入力欄そのもの。行頭の余白まで塗ると、
      どこから書き換えられるのかが分からなくなる */
