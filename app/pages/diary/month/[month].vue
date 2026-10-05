@@ -159,8 +159,9 @@ const createFailed = ref<string | null>(null)
  * 手で作ったものと区別はない。
  *
  * 「振り返り」のタグを付けておく。月をまたいで振り返りだけを並べて
- * 見返せるように。タグは SmartAdd の `#` で書き、手元の組み立てと
- * サーバーの解釈を同じ入力からそろえる。
+ * 見返せるように。期限は付けない（`^なし`）。いつまでにやる用事ではなく、
+ * 今日の一覧に積まれても困るため。どちらも SmartAdd の記法で書き、
+ * 手元の組み立てとサーバーの解釈を同じ入力からそろえる。
  */
 async function createRetrospective() {
   if (creating.value) return
@@ -169,7 +170,7 @@ async function createRetrospective() {
 
   try {
     const title = `${formatAppMonth(month.value)}の振り返り`
-    const input = `${title} #振り返り`
+    const input = `${title} #振り返り ^なし`
     const built = buildItemDraft(input)
     if ('error' in built) {
       createFailed.value = built.error
