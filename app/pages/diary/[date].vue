@@ -97,6 +97,7 @@ useShortcuts(
       group: '移動',
       run: () => goTo(shiftAppDate(date.value, 1)),
     },
+    ...pageScrollShortcuts(),
     {
       /*
        * 本文を書き始める（末尾の行へ入る）。タスクの `y`（今日の作業記録を

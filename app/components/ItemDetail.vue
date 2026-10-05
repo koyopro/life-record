@@ -530,6 +530,7 @@ watch(id, () => {
  *
  * - `Esc` … 一覧へ戻る（分割表示では一覧がそのまま見えているので不要）
  * - `⌘ + C` … このタスクを写す（一覧では `list.copy`）
+ * - `j` / `k` … 画面を送る（分割表示では一覧のカーソル移動）
  *
  * タイトルや本文など、入力欄にフォーカスがある間は対象にしない
  * （`useShortcuts` の既定どおり）。編集中の `Esc` を横取りすると、
@@ -565,6 +566,7 @@ useShortcuts(
             yieldToBrowser: hasTextSelection,
             run: () => copy(),
           },
+          ...pageScrollShortcuts(),
         ],
   ),
 )
