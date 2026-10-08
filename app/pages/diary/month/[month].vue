@@ -497,12 +497,18 @@ onActivated(() => backlinkList.value?.refresh())
   display: flex;
   /* 画像は 4:3 の高さで足りるので、下に余っても伸ばして引き延ばさない */
   align-items: flex-start;
+  /* 画像の高さの上限を枠の幅から決めるため（cqw） */
+  container-type: inline-size;
 }
 
 .day__image {
+  /*
+   * 横幅いっぱいに出す。4:3 より横長の画像は全体を見せて下側を余白にし、
+   * それより縦が長い画像は 4:3 の高さで下側を切り取る（上端は常に見せる）
+   */
   width: 100%;
-  /* 横長 4:3 の枠に収め、縦が長い画像は下側を切り取る（上端は常に見せる） */
-  aspect-ratio: 4 / 3;
+  height: auto;
+  max-height: 75cqw;
   border-radius: 6px;
   object-fit: cover;
   object-position: top;
