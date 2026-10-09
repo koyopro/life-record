@@ -966,10 +966,19 @@ function onTab(event: KeyboardEvent) {
   replaceActivePrefix(` ${prefix}`)
 }
 
-/** 表示側のリンクを押したときは編集に切り替えない。 */
+/**
+ * 表示側の行を押したら、その行の編集に切り替える。
+ *
+ * ただし、表示側の行に選択が付いている間は切り替えない。スマートフォンでは
+ * 長押しで選んだ範囲をつまみで広げたり、選択の上をタップしてコピーの
+ * メニューを出したりするたびに click が届く。ここで編集に切り替えると、
+ * 入力欄にフォーカスが移って選択が消え、複数行を選べなくなる。
+ * （マウスでは押した時点で選択が外れるので、通常のクリックは妨げない。）
+ */
 function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
   if (target?.closest('a')) return
+  if (displaySelection()) return
   void activate(index)
 }
 
@@ -980,6 +989,44 @@ function closestLine(node: Node | null): { el: Element; index: number } | null {
   const index = Number(el.getAttribute('data-line-index'))
   return Number.isNaN(index) ? null : { el, index }
 }
+
+/**
+ * この本文の表示側の行に、範囲のある選択が付いているか。
+ *
+ * 入力欄（textarea）の中の選択は含めない。そちらは表示側の DOM の選択
+ * としては、入力欄の外枠（`.editor__editing`）を指して見えるため除く。
+ */
+function displaySelection(): boolean {
+  const root = editorRoot.value
+  const selection = window.getSelection()
+  if (!root || !selection || selection.isCollapsed || selection.rangeCount === 0) return false
+
+  const inDisplay = (node: Node | null) => {
+    if (!node || !root.contains(node)) return false
+    const line = closestLine(node)
+    return !!line && !line.el.classList.contains('editor__editing')
+  }
+  return inDisplay(selection.anchorNode) || inDisplay(selection.focusNode)
+}
+
+/**
+ * 1行を編集している間に、表示側の行で選択が始まったら編集を抜ける。
+ *
+ * スマートフォンでは、入力欄にフォーカスがあるまま別の行を長押しすると、
+ * 表示側に選択は付くものの入力欄はフォーカスを持ったままになる
+ * （長押しでは mousedown が起きず、blur しない）。入力欄は DOM の先頭に
+ * 置いて order で位置だけ動かしているので、残したままだと選択の範囲が
+ * 見た目と食い違い、つまみで次の行へ広げられない。キーボードも出たままになる。
+ */
+function onSelectionChange() {
+  if (activeIndex.value === null) return
+  if (!displaySelection()) return
+  input.value?.blur()
+  if (activeIndex.value !== null) deactivate()
+}
+
+onMounted(() => document.addEventListener('selectionchange', onSelectionChange))
+onBeforeUnmount(() => document.removeEventListener('selectionchange', onSelectionChange))
 
 /**
  * 複数行にまたがる選択をコピーしたときは、Scrapbox と同じく記法込みの
