@@ -185,6 +185,75 @@ describe('amazonIntakeUrl', () => {
 
     expect(intake?.title).toBe('リーダブルコード : 著者: 本')
   })
+
+  describe('本文（1枚目の画像と商品紹介文）', () => {
+    const HREF = 'https://www.amazon.co.jp/dp/B06XC33Q6S'
+    const IMAGE =
+      '<img id="landingImage" data-old-hires="https://m.media-amazon.com/images/I/71ct-MqaFBL._SL1442_.jpg">'
+
+    /** 受け口に渡した本文（`text`）。 */
+    function bodyOf(html: string): string | null {
+      const url = amazonIntakeUrl(ORIGIN, productPage(html), HREF)
+      return url ? new URL(url).searchParams.get('text') : null
+    }
+
+    it('1枚目の画像をリンク記法で入れ、その下に商品紹介文を続ける', () => {
+      const body = bodyOf(`
+        <span id="productTitle">本</span>
+        ${IMAGE}
+        <div id="altImages"><img src="https://m.media-amazon.com/images/I/Other._SS40_.jpg"></div>
+        <div id="bookDescription_feature_div">
+          <div class="a-expander-content"><span>読みやすいコードを書くための<br>実践的な指針。</span></div>
+          <a>続きを読む</a>
+        </div>
+      `)
+
+      expect(body).toBe(
+        [
+          // 大きさの指定（._SL1442_）は、メモの画像と同じく外して原寸にする
+          '[https://m.media-amazon.com/images/I/71ct-MqaFBL.jpg]',
+          '読みやすいコードを書くための',
+          '実践的な指針。',
+        ].join('\n'),
+      )
+    })
+
+    it('本でなければ「商品の説明」を使い、段落の切れ目は空行1つにする', () => {
+      const body = bodyOf(`
+        <div id="productDescription">
+          <p>  1段落目   です。 </p>
+
+
+          <p>2段落目です。</p>
+        </div>
+      `)
+
+      expect(body).toBe('1段落目 です。\n\n2段落目です。')
+    })
+
+    it('説明が無ければ、箇条書きの特徴を1行ずつ入れる', () => {
+      const body = bodyOf(`
+        <div id="feature-bullets"><ul>
+          <li><span>軽い</span></li>
+          <li><span>丈夫</span></li>
+        </ul></div>
+      `)
+
+      expect(body).toBe('軽い\n丈夫')
+    })
+
+    it('長い紹介文は途中で切る（URL に載せられる長さにする）', () => {
+      const body = bodyOf(
+        `<div id="productDescription"><p>${'あ'.repeat(1500)}</p></div>`,
+      )
+
+      expect(body).toBe(`${'あ'.repeat(1000)}…`)
+    })
+
+    it('画像も紹介文も無ければ、本文は渡さない', () => {
+      expect(bodyOf('<span id="productTitle">本</span>')).toBeNull()
+    })
+  })
 })
 
 describe('buildAmazonBookmarklet', () => {

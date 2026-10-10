@@ -36,10 +36,16 @@ export function amazonIntakeUrl(
 
   // メモには画像だけを入れる。Scrapbox の画像記法（角括弧の URL）で、
   // 1行に1枚（docs/11-scrapbox-notation.md 11.7）
-  const note = findImages()
-    .map((src) => `[${src}]`)
-    .join('\n')
+  const images = findImages()
+  const note = images.map((src) => `[${src}]`).join('\n')
   if (note) params.set('note', note)
+
+  // 本文（2行目以降。作業記録になる）には、1枚目の画像と商品紹介文を入れる。
+  // 一覧のカードに出る抜粋は本文なので、何の商品か一目で分かるようにする
+  const body = [images[0] ? `[${images[0]}]` : '', findDescription()]
+    .filter(Boolean)
+    .join('\n')
+  if (body) params.set('text', body)
 
   return `${origin}/share?${params.toString()}`
 
@@ -109,6 +115,69 @@ export function amazonIntakeUrl(
     return value
       .replace(/^Amazon(?:\.co\.jp|\.com)?\s*[:：|｜-]\s*/i, '')
       .replace(/\s*[:：|｜-]\s*Amazon(?:\.co\.jp|\.com)?\s*$/i, '')
+  }
+
+  /**
+   * 商品紹介文。段落や改行は行として残し、行ごとの空白は詰める。
+   *
+   * 本なら「内容紹介」（`#bookDescription_feature_div`）、それ以外の
+   * 商品は「商品の説明」（`#productDescription`）、どちらも無ければ
+   * 箇条書きの特徴（`#feature-bullets`）を使う。
+   *
+   * 長いものは途中で切る。中身はすべて受け口の URL のクエリに載るため、
+   * 長すぎると開けない（置き場の Vercel は URL の長さに上限がある）。
+   */
+  function findDescription(): string {
+    const MAX = 1000
+    // 上から順に探す（`querySelector` に並べると、文書の中で先に出る方が
+    // 選ばれてしまう。外枠が中身より先に当たり「続きを読む」まで拾う）
+    const selectors = [
+      '#bookDescription_feature_div .a-expander-content',
+      '#bookDescription_feature_div',
+      '#productDescription',
+      '#feature-bullets ul',
+    ]
+    let element: Element | null = null
+    for (const selector of selectors) {
+      element = doc.querySelector(selector)
+      if (element && clean(element.textContent || '')) break
+      element = null
+    }
+    if (!element) return ''
+
+    // 区切りの印（行・段落）を改行に直す。続いた区切りは1つにまとめる
+    // （隣り合う箇条書きの間に空行ができないように）
+    const lines = linesOf(element)
+      .replace(/[ \u2028\u2029]*\u2029[ \u2028\u2029]*/g, '\n\n')
+      .replace(/[ \u2028]*\u2028[ \u2028]*/g, '\n')
+      .split('\n')
+      .map(clean)
+      .join('\n')
+      // 空行は段落の切れ目として1つだけ残す
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    return lines.length > MAX ? `${lines.slice(0, MAX).trim()}…` : lines
+  }
+
+  /**
+   * 要素の文字を、改行（`<br>`）と段落・箇条書きの区切りを保って読む。
+   *
+   * 文字の中の改行や続きの空白は、ブラウザの表示と同じく空白1つにする
+   * （HTML の書き方による改行を拾わない）。行の区切りは `\u2028`、
+   * 段落の区切りは `\u2029` の印にしておき、あとで改行に直す。
+   */
+  function linesOf(node: Node): string {
+    if (node.nodeType === 3) return (node.textContent || '').replace(/\s+/g, ' ')
+    if (node.nodeType !== 1) return ''
+
+    const tag = (node as Element).tagName.toLowerCase()
+    if (tag === 'br') return '\n'
+    if (tag === 'script' || tag === 'style') return ''
+
+    let text = ''
+    for (const child of Array.from(node.childNodes)) text += linesOf(child)
+    if (tag === 'p') return `\u2029${text}\u2029`
+    return /^(div|li|ul|ol|h[1-6])$/.test(tag) ? `\u2028${text}\u2028` : text
   }
 
   function clean(value: string): string {
