@@ -1,18 +1,17 @@
-/**
- * 空の行に URL を貼ったとき、角括弧で囲んで記法にするホスト
- * （docs/11-scrapbox-notation.md 11.11「URL の貼り付け」）。
- *
- * 棋譜のページは `[URL]` と囲むと埋め込みになる（11.12）。貼るたびに
- * 手で囲むのは手間なので、貼った時点で囲む。増やすときはこの1か所に足す。
- */
-const BRACKET_ON_PASTE_HOSTS = ['kifu.tsumego.jp']
+import { isIframeUrl } from '~~/shared/utils/scrapbox/parse'
 
 /**
- * 貼り付けた文字列を `[URL]` に変えるなら、その文字列を返す。変えないなら null。
+ * 貼り付けた文字列を `[URL]` に変えるなら、その文字列を返す。変えないなら null
+ * （docs/11-scrapbox-notation.md 11.11「URL の貼り付け」）。
+ *
+ * 埋め込みにするホスト（棋譜のページなど）の URL は、`[URL]` と囲むと
+ * 埋め込みになる（11.12）。貼るたびに手で囲むのは手間なので、貼った時点で
+ * 囲む。対象は埋め込みと同じ一覧（`isIframeUrl`）で、別には持たない。
+ * 一覧が分かれると、囲んでも埋め込みにならない URL まで囲んでしまう。
  *
  * 変えるのは次のときだけ。
  * - 貼る先の行に、行頭（字下げ）以外の文字が無い
- * - 貼ったものが URL 1つだけで、ホストが `BRACKET_ON_PASTE_HOSTS` にある
+ * - 貼ったものが URL 1つだけで、埋め込みにするホストのもの
  *
  * 文章の途中に貼ったときや、文章に混じった URL は変えない。貼った内容が
  * 変わってしまうため。
@@ -24,12 +23,5 @@ export function bracketPastedUrl(pasted: string, lineContent: string): string | 
   if (lineContent.trim() !== '') return null
 
   const value = pasted.trim()
-  if (!/^https?:\/\/\S+$/i.test(value)) return null
-
-  try {
-    const host = new URL(value).hostname.toLowerCase()
-    return BRACKET_ON_PASTE_HOSTS.includes(host) ? `[${value}]` : null
-  } catch {
-    return null
-  }
+  return isIframeUrl(value) ? `[${value}]` : null
 }

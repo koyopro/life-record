@@ -1091,9 +1091,9 @@ Diary と Section を日付だけで結ぶ（[02-data-model.md](02-data-model.md
 （記法として書かれていないため）。変えるのは貼り付けたものがその URL だけの
 ときに限る。文章に混じった URL まで書き換えると、貼った内容が変わってしまう。
 
-棋譜のページ（`kifu.tsumego.jp`）の URL を**空の行**（行頭の字下げ以外に
-文字が無い行）に貼ると、`[URL]` で囲んで入れる。囲むと埋め込みになる
-（11.12）ので、貼るたびに手で囲む手間を省く。
+埋め込みにするホスト（11.12。`kifu.tsumego.jp`・`kifu-lab.vercel.app`）の URL を
+**空の行**（行頭の字下げ以外に文字が無い行）に貼ると、`[URL]` で囲んで入れる。
+囲むと埋め込みになるので、貼るたびに手で囲む手間を省く。
 
 ```text
 https://kifu.tsumego.jp/e/uDnN5ihZv7x57KK4?move=11&region=tl16
@@ -1103,7 +1103,8 @@ https://kifu.tsumego.jp/e/uDnN5ihZv7x57KK4?move=11&region=tl16
 
 - 文字のある行に貼ったとき・URL 以外の文字が混じっているときは変えない
 - コードブロックの中は記法として読まないので、囲まずにそのまま入れる
-- 囲むホストは `app/utils/paste-link.ts` の `BRACKET_ON_PASTE_HOSTS` に並べる
+- 囲むホストは埋め込みの一覧（`IFRAME_HOSTS`）と同じものを使い、別には持たない。
+  埋め込みのホストを増やせば、貼り付けでも囲むようになる
 
 `Ctrl`+`T` は、カーソルを動かさず1.5秒以内に押し続けると、入れたものが
 次の形へ変わっていく（`app/utils/date-insert.ts`）。

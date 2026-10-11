@@ -13,6 +13,11 @@ describe('bracketPastedUrl', () => {
     expect(bracketPastedUrl(KIFU, '')).toBe(`[${KIFU}]`)
   })
 
+  it('埋め込みにする他のホスト（kifu-lab.vercel.app）も囲む', () => {
+    const url = 'https://kifu-lab.vercel.app/e/abc?move=3'
+    expect(bracketPastedUrl(url, '')).toBe(`[${url}]`)
+  })
+
   it('前後の空白・改行は落としてから囲む', () => {
     expect(bracketPastedUrl(` ${KIFU}\n`, '')).toBe(`[${KIFU}]`)
   })
