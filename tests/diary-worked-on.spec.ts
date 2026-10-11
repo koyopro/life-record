@@ -45,12 +45,14 @@ describe('groupWorkedOn', () => {
     ])
   })
 
-  it('タグが複数付いた Item は、そのすべてのグループに出す', () => {
-    const both = record({ id: 'item-1', tags: ['仕事', '学び'] })
+  it('タグが複数付いた Item は、タグ名順で最初のタグのグループにだけ出す', () => {
+    // 渡されるタグの順に関わらず、グループの並びと同じ順で最初のものを選ぶ
+    const both = record({ id: 'item-1', tags: ['学び', '仕事'] })
+    const learning = record({ id: 'item-2', tags: ['学び'] })
 
-    expect(groupWorkedOn([both])).toEqual([
+    expect(groupWorkedOn([both, learning])).toEqual([
       { tag: '仕事', records: [both] },
-      { tag: '学び', records: [both] },
+      { tag: '学び', records: [learning] },
     ])
   })
 

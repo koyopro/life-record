@@ -39,8 +39,11 @@ export const PINNED_TITLE = 'ピン留め'
  * **作業メモの無い Item は出さない。**日記に並べたいのは「何をしたか」で、
  * 記録の枠だけがあって中身の無いものは読み返す手がかりにならないため。
  *
- * **複数のタグが付いた Item は、そのすべてのグループに出す。**「このタグで
- * 何をしたか」を見るのが目的なので、片方のタグからだけ見えないと取りこぼす。
+ * **複数のタグが付いた Item は、1つのグループにだけ出す。**すべてのグループに
+ * 出すと同じ記録が何度も並び、1日に何をしたかを読み返すときに数え直すことに
+ * なる。出す先は**タグ名順で最初のタグ**のグループ（グループの並びと同じ順で
+ * 決めるので、いちばん上に来るグループに出る）。他のタグは行に添えて見せる
+ * （見出しに出ていない方のタグを添える。app/pages/diary/[date].vue）。
  *
  * **ピン留めしたものはいちばん上**に、1つのグループとしてまとめる
  * （docs/03-functional-spec.md 3.3）。留めたものはタグのグループには出さない。
@@ -67,11 +70,10 @@ export function groupWorkedOn(records: WorkedOnRecord[]): WorkedOnGroup[] {
       untagged.push(record)
       continue
     }
-    for (const tag of record.item.tags) {
-      const group = byTag.get(tag) ?? []
-      group.push(record)
-      byTag.set(tag, group)
-    }
+    const tag = record.item.tags.reduce((first, t) => (t < first ? t : first))
+    const group = byTag.get(tag) ?? []
+    group.push(record)
+    byTag.set(tag, group)
   }
 
   const tagged: WorkedOnGroup[] = [...byTag.entries()]
