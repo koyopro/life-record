@@ -42,6 +42,7 @@ import {
   searchItemsForLink,
 } from '~/utils/item-link'
 import { writeToClipboard } from '~/utils/clipboard'
+import { bracketPastedUrl } from '~/utils/paste-link'
 import {
   clampColumn,
   closestLineIn,
@@ -2470,6 +2471,24 @@ function onPaste(event: ClipboardEvent) {
     event.preventDefault()
     const item = itemStore.byId(pastedItemId)
     insertAtCaret(itemLinkText({ id: pastedItemId, title: item?.title ?? '' }))
+    return
+  }
+
+  /*
+   * 空の行に棋譜の URL を貼ったら、`[URL]` で囲んで埋め込みにする
+   * （docs/11-scrapbox-notation.md 11.11「URL の貼り付け」）。
+   *
+   * コードブロックの中は記法として読まないので、囲んでも埋め込みに
+   * ならない。そこでは貼ったまま入れる。
+   */
+  const lineType = activeLine.value?.type
+  const bracketed =
+    text && activeIndex.value !== null && lineType !== 'codeHeader' && lineType !== 'codeBody'
+      ? bracketPastedUrl(text, activeText.value)
+      : null
+  if (bracketed) {
+    event.preventDefault()
+    insertAtCaret(bracketed)
     return
   }
 
