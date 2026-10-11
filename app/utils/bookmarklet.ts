@@ -18,6 +18,8 @@
  * 商品ページから受け口（`/share`）の URL を組み立てる。
  * Amazon の商品ページでなければ null。
  *
+ * 作るのは「タグ `本`・期限なし」の未着手タスク。
+ *
  * @param origin このアプリの置き場（`https://example.vercel.app`）
  * @param doc 商品ページ
  * @param href 商品ページの URL
@@ -34,6 +36,16 @@ export function amazonIntakeUrl(
   params.set('title', findTitle() || asin)
   params.set('url', productUrl(asin))
 
+  /*
+   * ここから入るのは本だけなので、タグと期限は決め打ちにする
+   * （`#本` を付け、既定の「今日」は `^なし` で打ち消す）。
+   *
+   * 記法は1行目の**末尾**（URL より後ろ）に置かれる。`^` は後ろに続く語を
+   * まとめて日付として読もうとするため、URL より前に置くと期限が外れない
+   * （shared/utils/share.ts の `smart`）。
+   */
+  params.set('smart', '#本 ^なし')
+
   // メモには画像だけを入れる。Scrapbox の画像記法（角括弧の URL）で、
   // 1行に1枚（docs/11-scrapbox-notation.md 11.7）
   const images = findImages()
@@ -47,7 +59,16 @@ export function amazonIntakeUrl(
     .join('\n')
   if (body) params.set('text', body)
 
-  return `${origin}/share?${params.toString()}`
+  /*
+   * 空白は `+` ではなく `%20` にする。
+   *
+   * `URLSearchParams` は空白を `+` と書くが、受け取る側（vue-router の
+   * クエリの読み取り）は `decodeURIComponent` するだけで `+` を空白に
+   * 戻さない。そのままだと `#本+^なし` や `Clean+Code` のように、空白の
+   * つもりの `+` がタグ・タイトル・紹介文に残る。値の中の本物の `+` は
+   * `%2B` になっているので、ここで残っている `+` は区切りの空白だけ。
+   */
+  return `${origin}/share?${params.toString().replace(/\+/g, '%20')}`
 
   /**
    * ASIN（商品の番号）。URL から取れなければページの中を見る。

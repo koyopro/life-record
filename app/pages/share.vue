@@ -16,7 +16,8 @@ import { buildItemDraft } from '~/utils/item-draft'
  * 保存そのものは一覧の入力欄と同じ経路（buildItemDraft → useItemStore）を通る。
  *
  * ブックマークレット（docs/17-bookmarklet.md）も同じ受け口へ来る。
- * こちらは `note`（メモ）を足して渡してくるので、その欄も出す。
+ * こちらは `smart`（1行目に足す SmartAdd の記法）と `note`（メモ）を
+ * 足して渡してくるので、メモの欄も出す。
  */
 
 useHead({ title: '共有を受け取る' })
@@ -73,6 +74,7 @@ function readQuery(): SharedContent {
     url: queryValue(route.query.url),
     title: queryValue(route.query.title),
     text: queryValue(route.query.text),
+    smart: queryValue(route.query.smart),
     note: queryValue(route.query.note),
   }
 }

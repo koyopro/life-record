@@ -131,8 +131,8 @@ PC で見ている Amazon の商品ページを、そのままタスクにする
 
 商品ページで押すと、タイトル・`https://www.amazon.co.jp/dp/<ASIN>`・
 ページの画像を持ったまま取り込み画面（`/share`）が開く。画像はメモに
-Scrapbox の記法（`[画像URL]`）で入る。仕組みは
-[docs/17-bookmarklet.md](docs/17-bookmarklet.md)。
+Scrapbox の記法（`[画像URL]`）で入り、タグ `本`・期限なしで追加される。
+仕組みは [docs/17-bookmarklet.md](docs/17-bookmarklet.md)。
 
 ## 本番へのデプロイ
 

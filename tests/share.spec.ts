@@ -144,6 +144,30 @@ describe('composeShare', () => {
     expect(asItem(composed.text).body).toBe('一行目\n二行目')
   })
 
+  it('SmartAdd の記法（smart）は、URL より後ろ（行の末尾）に置く', () => {
+    const composed = composeShare({
+      url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+      title: 'リーダブルコード',
+      smart: '#本 ^なし',
+    })
+
+    expect(composed.text).toBe(
+      'リーダブルコード https://www.amazon.co.jp/dp/B06XC33Q6S #本 ^なし',
+    )
+    // URL より前に置くと、`^` が「なし https://…」までを日付として読み、
+    // 期限が外れないまま URL もタイトルに残る
+    expect(asItem(composed.text)).toEqual({
+      title: 'リーダブルコード',
+      url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+      body: null,
+    })
+    expect(parseSmartAddInput(composed.text)).toMatchObject({
+      tags: ['本'],
+      dueCleared: true,
+      warnings: [],
+    })
+  })
+
   it('メモ（note）はそのまま渡し、入力欄のテキストには混ぜない', () => {
     const composed = composeShare({
       url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
@@ -174,6 +198,10 @@ describe('hasSharedContent', () => {
     expect(hasSharedContent({ text: 'メモ' })).toBe(true)
     // ブックマークレットは note だけを渡してくることがある
     expect(hasSharedContent({ note: '[https://example.com/a.jpg]' })).toBe(true)
+  })
+
+  it('記法（smart）だけでは受け付けない（タイトルにならない）', () => {
+    expect(hasSharedContent({ smart: '#本 ^なし' })).toBe(false)
   })
 
   it('何も無い・空白だけなら受け付けない', () => {

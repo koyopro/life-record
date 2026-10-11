@@ -3,6 +3,8 @@ import {
   amazonIntakeUrl,
   buildAmazonBookmarklet,
 } from '~/utils/bookmarklet'
+import { buildItemDraft } from '~/utils/item-draft'
+import { composeShare } from '~~/shared/utils/share'
 
 /**
  * Amazon の商品ページからタスクを作るブックマークレット
@@ -25,15 +27,33 @@ function productPage(
   return doc
 }
 
-/** 受け口（/share）の URL から、渡されたクエリを読み直す。 */
+/**
+ * 受け口（/share）の URL から、渡されたクエリを読み直す。
+ *
+ * 読み方は**受け取る側に合わせる**。vue-router は `decodeURIComponent`
+ * するだけで `+` を空白に戻さないので、`URLSearchParams` で読むと
+ * 気付けない食い違いが出る。
+ */
 function intakeQuery(url: string | null) {
   if (!url) return null
-  const parsed = new URL(url)
+
+  const [base, search = ''] = url.split('?')
+  const query = new Map(
+    search
+      .split('&')
+      .filter(Boolean)
+      .map((pair) => {
+        const [key = '', value = ''] = pair.split('=')
+        return [decodeURIComponent(key), decodeURIComponent(value)] as const
+      }),
+  )
+
   return {
-    path: `${parsed.origin}${parsed.pathname}`,
-    title: parsed.searchParams.get('title'),
-    url: parsed.searchParams.get('url'),
-    note: parsed.searchParams.get('note'),
+    path: base!,
+    title: query.get('title') ?? null,
+    url: query.get('url') ?? null,
+    smart: query.get('smart') ?? null,
+    note: query.get('note') ?? null,
   }
 }
 
@@ -59,8 +79,59 @@ describe('amazonIntakeUrl', () => {
       title: 'リーダブルコード',
       // 商品名も ref= もクエリも落とし、/dp/<ASIN> だけにする
       url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+      // 入るのは本だけなので、タグと期限は決め打ち
+      smart: '#本 ^なし',
       // 画像は Scrapbox の画像記法で、大きさの指定（._SY291_）を外して入れる
       note: '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]',
+    })
+  })
+
+  it('受け口を通すと、タグ「本」が付いた期限なしのタスクになる', () => {
+    const doc = productPage(`
+      <span id="productTitle">リーダブルコード</span>
+      <img id="landingImage"
+           src="https://m.media-amazon.com/images/I/51AbCdEf.jpg">
+    `)
+    const intake = intakeQuery(
+      amazonIntakeUrl(ORIGIN, doc, 'https://www.amazon.co.jp/dp/B06XC33Q6S'),
+    )!
+
+    // /share が受け取ってから保存するまでと同じ手順を通す
+    const composed = composeShare({
+      title: intake.title ?? undefined,
+      url: intake.url ?? undefined,
+      smart: intake.smart ?? undefined,
+      note: intake.note ?? undefined,
+    })
+    const result = buildItemDraft(composed.text, { note: composed.note })
+
+    expect(result).toMatchObject({
+      draft: {
+        title: 'リーダブルコード',
+        url: 'https://www.amazon.co.jp/dp/B06XC33Q6S',
+        tags: ['本'],
+        // 追加の既定（今日）は ^なし で打ち消す
+        dueAt: null,
+        note: '[https://m.media-amazon.com/images/I/51AbCdEf.jpg]',
+      },
+    })
+  })
+
+  it('空白は + ではなく %20 で渡す', () => {
+    const doc = productPage(
+      '<span id="productTitle">Clean Code アジャイルソフトウェア達人の技</span>',
+    )
+    const url = amazonIntakeUrl(
+      ORIGIN,
+      doc,
+      'https://www.amazon.co.jp/dp/B06XC33Q6S',
+    )
+
+    // 受け取る側は `+` を空白に戻さない（上の intakeQuery）
+    expect(url).not.toContain('+')
+    expect(intakeQuery(url)).toMatchObject({
+      title: 'Clean Code アジャイルソフトウェア達人の技',
+      smart: '#本 ^なし',
     })
   })
 

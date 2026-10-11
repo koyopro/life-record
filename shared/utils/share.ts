@@ -15,6 +15,17 @@ export interface SharedContent {
   title?: string
   text?: string
   /**
+   * 1行目の末尾に足す SmartAdd の記法（`#タグ` `^期限` `!重要度`）。
+   *
+   * ブックマークレットのように、送る側が「必ずこうしたい」ものを
+   * 分かっている場合だけ付く（docs/17-bookmarklet.md）。
+   *
+   * **URL より後ろに置く**ため、タイトルに混ぜずに別で受ける。`^` は
+   * 後ろに続く語をまとめて日付として読もうとするので、`^なし` の後ろに
+   * URL が来ると「なし https://…」を日付として解釈できず、期限が外れない。
+   */
+  smart?: string
+  /**
    * メモ（`Item.note`）にそのまま入れる内容。
    *
    * OS の共有シートは渡してこない。ブックマークレットのように、
@@ -65,7 +76,11 @@ export function composeShare(shared: SharedContent): ComposedShare {
       : rest
     : afterFirstLine(rest)
 
-  const titleLine = [title, url].filter(Boolean).join(' ')
+  // SmartAdd の記法は行の最後。URL より前に置くと `^` が URL まで
+  // 日付として読もうとする（上の `smart` を参照）
+  const titleLine = [title, url, normalize(shared.smart ?? '')]
+    .filter(Boolean)
+    .join(' ')
 
   return {
     text: body ? `${titleLine}\n${body}` : titleLine,
@@ -76,7 +91,11 @@ export function composeShare(shared: SharedContent): ComposedShare {
   }
 }
 
-/** 共有として受け取れる内容が何かあるか。何も無ければ受付画面を出さない。 */
+/**
+ * 共有として受け取れる内容が何かあるか。何も無ければ受付画面を出さない。
+ *
+ * `smart` は数に入れない。記法だけが来てもタイトルにはならないため。
+ */
 export function hasSharedContent(shared: SharedContent): boolean {
   return Boolean(
     (shared.url ?? '').trim() ||
