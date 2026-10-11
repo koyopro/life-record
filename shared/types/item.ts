@@ -39,6 +39,8 @@ export const SORT_KEYS = [
   'due',
   'created',
   'updated',
+  'title',
+  'titleDesc',
 ] as const
 export type SortKey = (typeof SORT_KEYS)[number]
 
@@ -50,13 +52,16 @@ export const SORT_LABELS: Record<SortKey, string> = {
   created: '追加日降順',
   // 直近さわったものが上。書きかけ・直したばかりのものを拾い直すため
   updated: '更新日降順',
+  // `title` は以前の「タイトル順」（昇順）と同じ名前。覚えてある値をそのまま読む
+  title: 'タイトル昇順',
+  titleDesc: 'タイトル降順',
 }
 
 /**
  * 無くした軸の読み替え。覚えてある値が古い名前のこともあるため。
  *
  * 「重要度順（期限が近い順）」は、いまの「重要度順」へ寄せる。
- * ここに無いもの（タイトル順）は、その画面の既定に戻す。
+ * ここに無いものは、その画面の既定に戻す。
  */
 const REPLACED_SORT_KEYS: Record<string, SortKey> = {
   priority: 'priorityDueDesc',

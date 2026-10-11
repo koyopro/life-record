@@ -32,6 +32,10 @@ export function orderByFor(sort: SortKey): SQL[] {
       return [desc(items.createdAt)]
     case 'updated':
       return [desc(items.updatedAt)]
+    case 'title':
+      return [asc(items.title), asc(items.createdAt)]
+    case 'titleDesc':
+      return [desc(items.title), desc(items.createdAt)]
   }
 }
 

@@ -47,8 +47,7 @@ describe('toSmartListInput', () => {
   it('表示方法・グループ順・並びは、知らない値なら読まない', () => {
     expect(toSmartListInput({ ...base, view: 'archived' })).toBeNull()
     expect(toSmartListInput({ ...base, groupBy: 'tag' })).toBeNull()
-    // 無くしたソート軸（タイトル順）も、いまは使えない
-    expect(toSmartListInput({ ...base, sort: 'title' })).toBeNull()
+    expect(toSmartListInput({ ...base, sort: 'priorityDueAsc' })).toBeNull()
   })
 })
 

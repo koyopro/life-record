@@ -33,6 +33,10 @@ function comparatorFor(sort: SortKey): Compare {
       return byCreatedDesc
     case 'updated':
       return byUpdatedDesc
+    case 'title':
+      return chain(byTitleAsc, byCreatedAsc)
+    case 'titleDesc':
+      return chain(byTitleDesc, byCreatedDesc)
   }
 }
 
@@ -92,6 +96,19 @@ const byCreatedDesc: Compare = (a, b) => compareText(b.createdAt, a.createdAt)
  * どちらも「さわった順」なので並びは変わらない。
  */
 const byUpdatedDesc: Compare = (a, b) => compareText(b.updatedAt, a.updatedAt)
+
+/**
+ * タイトルの順。日本語の読みの並び（かな・漢字）に合わせ、数字は数として
+ * 比べる（「第9局」が「第10局」より前）。大文字・小文字は区別しない。
+ *
+ * サーバーの `ORDER BY title` とは細かいところ（数字や大文字の扱い）で
+ * ずれうるが、一覧の表示はこちらで並べ直したものなので、見える順はこれで決まる。
+ */
+const titleCollator = new Intl.Collator('ja', { numeric: true, sensitivity: 'base' })
+
+const byTitleAsc: Compare = (a, b) => titleCollator.compare(a.title, b.title)
+
+const byTitleDesc: Compare = (a, b) => titleCollator.compare(b.title, a.title)
 
 /**
  * 完了した順（新しいものが上）に並べる。

@@ -69,6 +69,32 @@ describe('sortItems', () => {
     expect(sorted.map((i) => i.id)).toEqual(['新しい', '古い'])
   })
 
+  it('タイトル昇順は、日本語の並びで、数字は数として比べる', () => {
+    const sorted = sortItems(
+      [
+        itemDto({ id: 'c', title: '第10局' }),
+        itemDto({ id: 'a', title: 'あさがお' }),
+        itemDto({ id: 'b', title: '第9局' }),
+      ],
+      'title',
+    )
+
+    expect(sorted.map((i) => i.title)).toEqual(['あさがお', '第9局', '第10局'])
+  })
+
+  it('タイトル降順は昇順の逆。同じタイトルは後から追加したものが上', () => {
+    const sorted = sortItems(
+      [
+        itemDto({ id: '古い', title: '棋譜', createdAt: '2026-08-01T00:00:00.000Z' }),
+        itemDto({ id: 'A', title: 'Apple' }),
+        itemDto({ id: '新しい', title: '棋譜', createdAt: '2026-08-20T00:00:00.000Z' }),
+      ],
+      'titleDesc',
+    )
+
+    expect(sorted.map((i) => i.id)).toEqual(['新しい', '古い', 'A'])
+  })
+
   it('更新日降順は、直近さわったものが上（追加した順ではない）', () => {
     const sorted = sortItems(
       [
@@ -99,8 +125,12 @@ describe('toSortKey', () => {
     expect(toSortKey('priority')).toBe('priorityDueDesc')
   })
 
+  it('以前の「タイトル順」（title）は、そのままタイトル昇順として読む', () => {
+    expect(toSortKey('title')).toBe('title')
+  })
+
   it('読み替え先の無いものは null（画面の既定に戻す）', () => {
-    expect(toSortKey('title')).toBeNull()
+    expect(toSortKey('priorityDueAsc')).toBeNull()
     expect(toSortKey(null)).toBeNull()
   })
 })
