@@ -1519,7 +1519,7 @@ function onContainerMousedown() {
 function onLineClick(event: MouseEvent, index: number) {
   const target = event.target as HTMLElement | null
 
-  // 本文から TODO を指すリンクは、画面を移さずその場で開く（11.13）
+  // 本文から TODO を指すリンクは、ポップオーバーを通して開く（11.13）
   if (openTodoLink(event, target, index)) return
 
   if (target?.closest('a')) return
@@ -1582,12 +1582,12 @@ function clickedColumn(event: MouseEvent, line: Line | undefined): number | null
 /**
  * 本文の TODO リンクを押した（docs/11-scrapbox-notation.md 11.13）。
  *
- * 扱うのは2つ。どちらも同じポップオーバーを出す。
+ * 扱うのは2つ。どちらも同じポップオーバー（`TodoLinkPopover`）に渡す。
+ * リンク先が既存の TODO に決まれば、ポップオーバーは何も出さずにその TODO を
+ * 開く。出すのは、候補を選ぶ・作るか尋ねる・見つからないときだけ。
  *
  * - `[題]` … リンク先がまだ決まっていない。押した時点で手元の TODO から探す
- * - `[/items/<id> 題]` … リンク先が決まっている。**画面を移さない**（日記を
- *   書いている流れを切らないため。移りたいときはポップオーバーの
- *   「TODO を開く」から）
+ * - `[/items/<id> 題]` … リンク先が決まっている。そのまま開く
  *
  * 扱ったなら true を返す（その行の編集には入らない）。修飾キー付き・
  * 中クリックはブラウザに譲る（別タブで開きたいときのため）。

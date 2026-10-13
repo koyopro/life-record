@@ -10,20 +10,19 @@ import { requestFlush } from '~/utils/offline/flush-signal'
  * 本文の TODO リンクを押したときに出るポップオーバー
  * （docs/11-scrapbox-notation.md 11.13）。
  *
- * 出すのは「そのタスクが何か」と「今日の作業記録の入力欄」だけ。日記を
- * 書いている流れを切らずに、その場で記録を足せるようにするためのもので、
- * タスクの詳細をここで作り直さない（読み書きするものが増えたら「TODO を
- * 開く」で詳細へ移る）。
+ * **リンク先が既存の TODO に決まったら、ここには何も出さずにその TODO を開く。**
+ * 出すのは、リンク先がまだ決まらないとき（同じ題が複数あって選んでもらう・
+ * 同じ題が無くて作るか尋ねる）と、決まっている TODO が見つからないときだけ。
  *
- * 作業記録は詳細画面とまったく同じ経路（`useItemDetailStore` の当日の枠）で
- * 書く。専用のモデルも API も作らない（docs/02-data-model.md 2.4）。
+ * 以前はここで「今日の作業記録」を書けるようにしていたが、リンクを押すのは
+ * その TODO を見に行きたいときで、記録をその場で足したいことは無かった。
+ * 押すたびに間に1枚挟まると、開くまでに一手余計にかかる。
  */
 const { request, close, confirm } = useTodoLinkPopover()
 
 const itemStore = useItemStore()
 const detailStore = useItemDetailStore()
 const diaryStore = useDiaryStore()
-const today = useToday()
 const compact = useCompactLayout()
 
 /** リンク先の TODO。決まっていない・消されていれば null。 */
@@ -53,16 +52,16 @@ const candidates = computed(() =>
  * いま何を出しているか。
  *
  * - `loading` … 手元の一覧をまだ読めていない（「ありません」と言えない）
- * - `record` … リンク先が決まっている。今日の作業記録を書く
+ * - `found` … リンク先が決まり、TODO もある。何も出さずにその TODO を開く
  * - `choose` … 同じ題が複数ある。どれを指すのか選んでもらう
  * - `missing` … 同じ題が無い。作るかどうかを尋ねる
  * - `gone` … 決まっている id の TODO が見つからない（消された可能性）
  */
-type View = 'loading' | 'record' | 'choose' | 'missing' | 'gone'
+type View = 'loading' | 'found' | 'choose' | 'missing' | 'gone'
 
 const view = computed<View>(() => {
   if (!request.value) return 'loading'
-  if (item.value) return 'record'
+  if (item.value) return 'found'
   // 読み込みが済むまでは「無い」と決めない（消された、と誤って見せないため）
   if (!itemStore.hydrated.value) return 'loading'
   if (request.value.itemId) return 'gone'
@@ -112,78 +111,34 @@ async function linkEverywhere(itemId: string, text: string) {
   }
 }
 
-// --- 今日の作業記録 -------------------------------------------------------
+// --- 状態 ---------------------------------------------------------------
 
-const draft = ref('')
+/** 作っている途中か（続けて押して二重に作らないため）。 */
 const saving = ref(false)
-const saved = ref(false)
 const errorMessage = ref<string | null>(null)
-const input = ref<HTMLTextAreaElement | null>(null)
 
-/** その日の枠に入っている、保存済みの内容。 */
-const stored = computed(() =>
-  item.value ? (detailStore.todayBodyOf(item.value.id, today.value) ?? '') : '',
+/** 別のリンクを開き直したら、前の知らせは消す。 */
+watch(
+  () => request.value,
+  () => {
+    errorMessage.value = null
+  },
 )
-
-const saveState = computed(() =>
-  item.value ? detailStore.todayStatus(item.value.id, today.value) : null,
-)
-
-/** 書くものが無ければ押させない（空の記録は作らない。docs 3.2）。 */
-const canSave = computed(() => Boolean(draft.value.trim()) || Boolean(stored.value))
 
 /**
- * リンク先が決まったら、その日の記録を手元から読み直して入力欄に入れる。
+ * リンク先の TODO が決まったら、そのまま開く。
  *
- * 読み直さないと、詳細画面を開いたことのないタスクでは「記録がまだ無い」
- * と見なして**別の記録を作ってしまう**（`editTodayBody` は手元にある記録
- * から当日の枠を決めるため）。
+ * 描く前（`flush: 'pre'`）に閉じるので、決まっているリンクを押したときに
+ * ポップオーバーが一瞬だけ見える、ということも無い。読み込み中・候補選び・
+ * 作成のあとで決まった場合も、同じくここで開く。
  */
 watch(
-  () => request.value?.itemId ?? null,
-  async (id) => {
-    saved.value = false
-    errorMessage.value = null
-    draft.value = ''
-    if (!id) return
-
-    await detailStore.reload(id)
-    draft.value = detailStore.todayBodyOf(id, today.value) ?? ''
+  view,
+  (value) => {
+    if (value === 'found') openItem()
   },
   { immediate: true },
 )
-
-/** 開いたら入力欄へ。狭い画面ではキーボードで隠れるので当てない。 */
-watch([view, compact], async ([value, narrow]) => {
-  if (value !== 'record' || narrow) return
-  await nextTick()
-  input.value?.focus()
-})
-
-/**
- * 今日の作業記録を書き込む。
- *
- * 詳細画面の当日の枠と同じ `editTodayBody` を通すので、その日の記録が
- * すでにあれば書き足し、無ければ作る。日記の「この日にやったこと」は
- * 手元の作業記録から作られるので（docs/02-data-model.md 2.8）、書いたぶんを
- * すぐ出せるように作り直す。
- */
-async function record() {
-  const target = item.value
-  if (!target || saving.value || !canSave.value) return
-
-  saving.value = true
-  errorMessage.value = null
-  try {
-    await detailStore.editTodayBody(target.id, today.value, draft.value)
-    await diaryStore.loadWorkedOn(today.value)
-    saved.value = true
-  } catch {
-    errorMessage.value = '記録できませんでした'
-  } finally {
-    saving.value = false
-  }
-}
 
 /**
  * 題からタスクを作り、そのままリンク先にする。
@@ -191,8 +146,10 @@ async function record() {
  * 一覧の入力欄・共有の受付と同じ組み立て（`buildItemDraft`）を通す。
  * id は手元で決まるので、オフラインでもそのままリンク先にできる
  * （docs/12-offline.md 12.6）。
+ *
+ * @param andOpen 作ったあとその TODO を開くか。開かないなら閉じて本文に戻る。
  */
-async function create(andRecord: boolean) {
+async function create(andOpen: boolean) {
   const text = request.value?.text
   if (!text || saving.value) return
 
@@ -213,7 +170,8 @@ async function create(andRecord: boolean) {
     saving.value = false
   }
 
-  if (!andRecord) close()
+  // 開くときは、リンク先が決まった時点で `found` になり、そこで開く
+  if (!andOpen) close()
 }
 
 function openItem() {
@@ -321,7 +279,7 @@ const position = computed(() => {
           </button>
         </template>
 
-        <!-- 同じ題が無い。作ってから記録するところまで一続きにする -->
+        <!-- 同じ題が無い。作ってそのまま開くか、作るだけにするか -->
         <template v-else-if="view === 'missing'">
           <p class="pop__note">TODOがありません</p>
           <div class="pop__stack">
@@ -331,7 +289,7 @@ const position = computed(() => {
               :disabled="saving"
               @click="create(true)"
             >
-              TODOを作成して記録する
+              TODOを作成して開く
             </button>
             <button
               type="button"
@@ -344,52 +302,7 @@ const position = computed(() => {
           </div>
         </template>
 
-        <template v-else>
-          <p class="pop__meta">
-            {{ STATUS_LABELS[item!.status] }}
-            <template v-if="item!.priority">
-              · 重要度{{ PRIORITY_LABELS[item!.priority] }}
-            </template>
-          </p>
-
-          <!--
-            当日の枠（docs/03-functional-spec.md 3.2）。すでにその日の記録が
-            あれば、その内容を出したうえで書き足せるようにする。1つのタスクの
-            記録は同じ日に1件なので、別の記録を作らない。
-          -->
-          <label class="pop__label" for="todo-link-record">今日の作業記録</label>
-          <textarea
-            id="todo-link-record"
-            ref="input"
-            v-model="draft"
-            class="pop__input"
-            rows="4"
-            placeholder="今日やったこと"
-            @input="saved = false"
-          />
-
-          <p v-if="errorMessage" class="pop__error" role="alert">{{ errorMessage }}</p>
-          <p v-else-if="saveState?.error" class="pop__error" role="alert">
-            {{ saveState.error }}
-          </p>
-          <p v-else-if="saved" class="pop__saved" role="status">
-            {{ saveState?.state === 'pending' ? '記録しました（送信待ち）' : '記録しました' }}
-          </p>
-
-          <div class="pop__actions">
-            <button
-              type="button"
-              class="pop__button pop__button--primary"
-              :disabled="saving || !canSave"
-              @click="record"
-            >
-              記録する
-            </button>
-            <button type="button" class="pop__button" @click="openItem">
-              TODOを開く →
-            </button>
-          </div>
-        </template>
+        <p v-if="errorMessage" class="pop__error" role="alert">{{ errorMessage }}</p>
       </div>
     </div>
   </Teleport>
@@ -461,31 +374,11 @@ const position = computed(() => {
   padding: 0 0.25rem;
 }
 
-.pop__meta,
 .pop__note {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
-}
-
-.pop__label {
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-}
-
-.pop__input {
-  width: 100%;
-  box-sizing: border-box;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  padding: 0.5rem;
-  /* iOS でフォーカス時に自動ズームされないよう 16px を保つ */
-  font-size: 1rem;
-  line-height: 1.6;
-  resize: vertical;
 }
 
 .pop__actions {
@@ -527,12 +420,6 @@ const position = computed(() => {
 .pop__error {
   margin: 0;
   color: var(--danger);
-  font-size: 0.8125rem;
-}
-
-.pop__saved {
-  margin: 0;
-  color: var(--accent);
   font-size: 0.8125rem;
 }
 
