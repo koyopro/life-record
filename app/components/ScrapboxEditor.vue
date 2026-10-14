@@ -43,6 +43,7 @@ import {
 } from '~/utils/item-link'
 import { writeToClipboard } from '~/utils/clipboard'
 import { bracketPastedUrl } from '~/utils/paste-link'
+import { emojiTriggerAt } from '~/utils/emoji-trigger'
 import {
   clampColumn,
   closestLineIn,
@@ -645,21 +646,14 @@ function updateEmojiTrigger() {
   }
 
   const caret = el.selectionStart ?? activeText.value.length
-  const before = activeText.value.slice(0, caret)
-  const at = before.lastIndexOf(':')
-  if (at === -1) {
+  const trigger = emojiTriggerAt(activeText.value.slice(0, caret))
+  if (!trigger) {
     closeEmojiPicker()
     return
   }
 
-  const query = before.slice(at + 1)
-  if (/\s/.test(query) || /(https?|ftp):?$/i.test(before.slice(0, at + 1))) {
-    closeEmojiPicker()
-    return
-  }
-
-  emojiStart.value = at
-  emojiQuery.value = query
+  emojiStart.value = trigger.start
+  emojiQuery.value = trigger.query
   emojiIndex.value = 0
 }
 
