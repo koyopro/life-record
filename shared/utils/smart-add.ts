@@ -707,7 +707,35 @@ function skipSameWeekday(parsed: ParsedDate, referenceDate: Date): ParsedDate {
  * 2. chrono（日本語 → 英語）
  * 3. chrono が知らない「月末」「週末」
  */
+/**
+ * 英語の略記。期限ダイアログ（`d`）では `tod` `tom` の前方一致で「今日」
+ * 「明日」を選べる（app/utils/due.ts の DUE_PRESETS）ので、SmartAdd の `^` でも
+ * 同じ書き方を通す。chrono は略記を読まないため、読み替えてから渡す。
+ *
+ * 読み替え先は英語（`tomorrow`）ではなく日本語（`明日`）にする。chrono は
+ * 日本語 → 英語の順に試すので、`tomorrow 15:00` だと日本語の側が `15:00`
+ * だけを拾い、今日の 15:00 になってしまう。`明日 15:00` なら日本語の側で
+ * まとめて読めるので、`^tom 15:00` のように時刻を続けても効く。
+ *
+ * 語の続き（`tomato` など）は読み替えない。
+ */
+const ABBREVIATIONS: { pattern: RegExp; full: string }[] = [
+  { pattern: /^tod(?![a-z])/i, full: '今日' },
+  { pattern: /^tom(?![a-z])/i, full: '明日' },
+]
+
 function parseDate(text: string, referenceDate: Date): ParsedDate | null {
+  for (const { pattern, full } of ABBREVIATIONS) {
+    const match = pattern.exec(text)
+    if (!match) continue
+
+    const parsed = parseDate(full + text.slice(match[0].length), referenceDate)
+    if (!parsed) return null
+    // 読み替えで変わった長さを戻す（取り除く範囲は、書かれた文字で数える）
+    const grown = full.length - match[0].length
+    return { ...parsed, consumed: Math.max(parsed.consumed - grown, match[0].length) }
+  }
+
   for (const { pattern, resolve } of RELATIVE_EXPRESSIONS) {
     const match = pattern.exec(text)
     if (match) {

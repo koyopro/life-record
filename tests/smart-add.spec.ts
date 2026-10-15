@@ -311,3 +311,43 @@ describe('チケット ID と、2行目の URL', () => {
     expect(parsed?.url).toBe(clickUp)
   })
 })
+
+describe('^tom / ^tod（英語の略記）', () => {
+  // 2026-08-18（火）10:00
+  const now = new Date(2026, 7, 18, 10, 0)
+
+  it('^tom は明日と同じに解釈する', () => {
+    const parsed = parseSmartAdd('牛乳を買う ^tom', now)
+    const tomorrow = parseSmartAdd('牛乳を買う ^明日', now)
+
+    expect(parsed.title).toBe('牛乳を買う')
+    expect(parsed.dueAt).toEqual(tomorrow.dueAt)
+    expect(parsed.dueAt?.getDate()).toBe(19)
+    expect(parsed.warnings).toEqual([])
+  })
+
+  it('^tod は今日と同じに解釈する', () => {
+    const parsed = parseSmartAdd('牛乳を買う ^tod', now)
+    expect(parsed.dueAt).toEqual(parseSmartAdd('牛乳を買う ^今日', now).dueAt)
+  })
+
+  it('大文字でも、時刻を続けても効く', () => {
+    const parsed = parseSmartAdd('会議 ^Tom 15:00', now)
+
+    expect(parsed.title).toBe('会議')
+    expect(parsed.dueAt?.getDate()).toBe(19)
+    expect(parsed.dueAt?.getHours()).toBe(15)
+    expect(parsed.dueHasTime).toBe(true)
+  })
+
+  it('後ろに続く語はタイトルに残す', () => {
+    const parsed = parseSmartAdd('^tom 牛乳を買う', now)
+
+    expect(parsed.title).toBe('牛乳を買う')
+    expect(parsed.dueAt?.getDate()).toBe(19)
+  })
+
+  it('語の続き（tomato など）は略記として読まない', () => {
+    expect(parseSmartAdd('牛乳を買う ^tomato', now).dueAt).toBeNull()
+  })
+})
