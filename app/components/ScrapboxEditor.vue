@@ -2275,6 +2275,46 @@ async function uploadAll(files: File[], at: CaretPosition | null = caretNow()) {
   }
 
   await resumeEditing(position, lines)
+  await revealAfterImages()
+}
+
+/**
+ * 差し込んだ画像と、その次の行（続きを書く場所）が見えるところまでスクロールする。
+ *
+ * 画像は読み込み終わるまで大きさが無く、入った直後は文字1行分しか場所を
+ * 取らない。読み込まれると下の行がまとめて押し下げられ、**画像の下や次の行に
+ * 書いている文字が画面の外へ出てしまう**。そこで、画像の読み込みを待ってから
+ * 入力欄（画像の次の行）を画面へ入れる。画像は入力欄の上にあるので、入力欄が
+ * 見えれば画像も下端まで見える。
+ *
+ * 読み込みが終わらない画像を待ち続けないよう、待つのは一定時間まで。
+ */
+async function revealAfterImages(timeout = 5000) {
+  await nextTick()
+  const pending = [
+    ...(editorRoot.value?.querySelectorAll<HTMLImageElement>('img.sb-image') ?? []),
+  ].filter((image) => !image.complete)
+
+  if (pending.length > 0) {
+    await Promise.race([
+      Promise.all(
+        pending.map(
+          (image) =>
+            new Promise<void>((resolve) => {
+              image.addEventListener('load', () => resolve(), { once: true })
+              image.addEventListener('error', () => resolve(), { once: true })
+            }),
+        ),
+      ),
+      new Promise<void>((resolve) => setTimeout(resolve, timeout)),
+    ])
+    // 大きさが入ってから、行の高さが組み直されるのを待つ
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  // 待っている間に編集を降りていたら、動かさない
+  if (activeIndex.value === null) return
+  revealActive()
 }
 
 /**
