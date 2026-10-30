@@ -3386,10 +3386,15 @@ defineExpose({
   font-size: 0.75rem;
 }
 
+/*
+ * 中身は空白をそのまま残しつつ、**端で折り返す**（`pre-wrap`）。
+ * 折り返さないと長い行が枠の外へはみ出し、続きが読めない。編集中の入力欄も
+ * 折り返すので、表示と編集で行の形がそろう。
+ */
 .editor :deep(.sb-code__text) {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.875rem;
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 /*
