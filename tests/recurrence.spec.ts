@@ -253,3 +253,36 @@ describe('次回分の重複を防ぐ', () => {
     expect(skipReasonOf([self], 'a', due)).toBeNull()
   })
 })
+
+describe('期限を過ぎてから完了した毎週の繰り返し', () => {
+  const recurrence = { rule: 'FREQ=WEEKLY;BYDAY=MO,WE', basis: 'due' as const }
+  // 2026-11-09 は月曜。日付だけの期限は 23:59 として持つ
+  const due = new Date('2026-11-09T23:59:00+09:00')
+
+  it('完了した日が発生日（水曜）でも、その日ではなく次の発生日になる', () => {
+    const completed = new Date('2026-11-11T10:00:00+09:00')
+
+    const next = nextDueAt(recurrence, due, completed)
+
+    expect(next?.getMonth()).toBe(10)
+    expect(next?.getDate()).toBe(16)
+    expect(next?.getHours()).toBe(23)
+    expect(next?.getMinutes()).toBe(59)
+  })
+
+  it('発生日でない日（火曜）に完了したら、次の発生日（水曜）になる', () => {
+    const completed = new Date('2026-11-10T10:00:00+09:00')
+
+    const next = nextDueAt(recurrence, due, completed)
+
+    expect(next?.getDate()).toBe(11)
+  })
+
+  it('期限の日に完了したら、元の期限から次の発生日へ進む', () => {
+    const completed = new Date('2026-11-09T10:00:00+09:00')
+
+    const next = nextDueAt(recurrence, due, completed)
+
+    expect(next?.getDate()).toBe(11)
+  })
+})

@@ -301,7 +301,14 @@ export function nextDueAt(
 
   // basis = due。元の期限を起点に進める。
   // 完了が大幅に遅れた場合、過去日が積み上がらないよう未来まで進める。
-  const lowerBound = from > completedAt ? from : completedAt
+  //
+  // 「未来」は**完了した日の翌日以降**とする。遅れて完了した日がちょうど
+  // 発生日（毎週 月・水 を水曜に完了）だと、完了した時刻より後というだけでは
+  // その日の回が残り、今日が期限の回がもう一度できてしまう。その日にやった
+  // 完了で、その日の分も済んだと見なす。
+  const endOfCompletionDay = new Date(completedAt)
+  endOfCompletionDay.setHours(23, 59, 59, 999)
+  const lowerBound = from > completedAt ? from : endOfCompletionDay
   let candidate = rule.after(from, false)
 
   // 終了条件（COUNT / UNTIL）を超えたら null が返る
