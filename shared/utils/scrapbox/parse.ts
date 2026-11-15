@@ -1,5 +1,5 @@
-import type { Line, Inline, ImageNode, IframeNode } from "./types";
-import { isAppDate, isAppMonth } from "../date";
+import type { Line, Inline, ImageNode, IframeNode } from './types'
+import { isAppDate, isAppMonth } from '../date'
 
 /**
  * Scrapbox 記法のパーサ（docs/11-scrapbox-notation.md）。
@@ -15,7 +15,7 @@ import { isAppDate, isAppMonth } from "../date";
  */
 
 /** 画像として扱う拡張子。 */
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i;
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i
 
 /**
  * このサービスの画像を指すパス（docs/11-scrapbox-notation.md 11.7）。
@@ -24,7 +24,7 @@ const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i;
  * 「URL に見えるもの」で表す。ホスト名を本文に埋め込まないよう、
  * アプリからの相対パスにしている。
  */
-const APP_IMAGE_PATH = /^\/images\//;
+const APP_IMAGE_PATH = /^\/images\//
 
 /**
  * `:name:`（自分で登録したアイコン）。
@@ -32,7 +32,7 @@ const APP_IMAGE_PATH = /^\/images\//;
  * 使える文字は絵文字のショートコードと同じ範囲にそろえる
  * （shared/types/icon.ts の ICON_NAME_PATTERN）。
  */
-const ICON_PATTERN = /^:([a-zA-Z0-9_-]+):/;
+const ICON_PATTERN = /^:([a-zA-Z0-9_-]+):/
 
 /**
  * このサービスの Item 詳細を指すパス。
@@ -42,11 +42,10 @@ const ICON_PATTERN = /^:([a-zA-Z0-9_-]+):/;
  * （docs/11-scrapbox-notation.md 11.7）。URL の入力欄・アドレスバーから
  * そのまま貼り付けられるよう、id 部分は UUID の形だけを見る。
  */
-const APP_ITEM_PATH =
-  /^\/items\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const APP_ITEM_PATH = /^\/items\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** このサービスの日記（1日）を指すパス。 */
-const APP_DIARY_PATH = /^\/diary\/(\d{4}-\d{2}-\d{2})$/;
+const APP_DIARY_PATH = /^\/diary\/(\d{4}-\d{2}-\d{2})$/
 
 /**
  * このサービスの日記の月のページを指すパス。
@@ -56,14 +55,14 @@ const APP_DIARY_PATH = /^\/diary\/(\d{4}-\d{2}-\d{2})$/;
  * 逆に引く（バックリンク）ときに、その月の日記リンクまで巻き込むため
  * （docs/11-scrapbox-notation.md 11.11）。
  */
-const APP_DIARY_MONTH_PATH = /^\/diary\/month\/(\d{4}-\d{2})$/;
+const APP_DIARY_MONTH_PATH = /^\/diary\/month\/(\d{4}-\d{2})$/
 
 function isAppDiaryPath(value: string): boolean {
-  const day = APP_DIARY_PATH.exec(value);
-  if (day !== null) return isAppDate(day[1]);
+  const day = APP_DIARY_PATH.exec(value)
+  if (day !== null) return isAppDate(day[1])
 
-  const month = APP_DIARY_MONTH_PATH.exec(value);
-  return month !== null && isAppMonth(month[1]);
+  const month = APP_DIARY_MONTH_PATH.exec(value)
+  return month !== null && isAppMonth(month[1])
 }
 
 /**
@@ -75,71 +74,66 @@ function isAppDiaryPath(value: string): boolean {
  * 同じ記号に同じ見た目を与えて使っていたため。`!`（赤）・`%`（グレー）・`~`（オレンジ）も
  * 同じ理由で、色違いの目印に割り当てている。
  */
-const DECORATION_SYMBOLS = "!\"#%&'()*+,\\-./{|}<>_~";
-const DECORATION_PATTERN = new RegExp(
-  `^([${DECORATION_SYMBOLS}]+)\\s+([\\s\\S]+)$`,
-);
+const DECORATION_SYMBOLS = "!\"#%&'()*+,\\-./{|}<>_~"
+const DECORATION_PATTERN = new RegExp(`^([${DECORATION_SYMBOLS}]+)\\s+([\\s\\S]+)$`)
 
 /**
  * 区切りの罫線（Scrapbox と同じ、ハイフン4つ以上だけの行）。
  *
  * 3つ以下は取らない。文中の「---」のような書き方まで線になってしまうため。
  */
-const RULE_PATTERN = /^-{4,}$/;
+const RULE_PATTERN = /^-{4,}$/
 
-const URL_PATTERN = /^https?:\/\/\S+$/i;
-const BARE_URL_PATTERN = /https?:\/\/[^\s\]]+/;
+const URL_PATTERN = /^https?:\/\/\S+$/i
+const BARE_URL_PATTERN = /https?:\/\/[^\s\]]+/
 
 export function parseScrapbox(input: string): Line[] {
-  const rawLines = input.replace(/\r\n?/g, "\n").split("\n");
-  const lines: Line[] = [];
+  const rawLines = input.replace(/\r\n?/g, '\n').split('\n')
+  const lines: Line[] = []
 
   /** コードブロックの中にいる間、その基準となる字下げ。 */
-  let codeIndent: number | null = null;
+  let codeIndent: number | null = null
 
   for (let i = 0; i < rawLines.length; i++) {
-    const raw = rawLines[i]!;
-    const indent = indentOf(raw);
-    const rest = raw.slice(indent);
+    const raw = rawLines[i]!
+    const indent = indentOf(raw)
+    const rest = raw.slice(indent)
 
     // コードブロックの中: 基準より深い行が続く限り。空行は、ブロックの
     // 基準の字下げ（`code:` 行の字下げ + 1）と同じ間だけ続きとみなす。
     // 合わない空行は、そこでコードブロックを抜けたとみなす
     // （docs/11-scrapbox-notation.md 11.6、Delete キーでの解除に対応するため）
     if (codeIndent !== null) {
-      const inBlock = rest.trim()
-        ? indent > codeIndent
-        : indent === codeIndent + 1;
+      const inBlock = rest.trim() ? indent > codeIndent : indent === codeIndent + 1
       if (inBlock) {
-        const nextRaw = rawLines[i + 1];
-        const nextRest =
-          nextRaw !== undefined ? nextRaw.slice(indentOf(nextRaw)) : undefined;
+        const nextRaw = rawLines[i + 1]
+        const nextRest = nextRaw !== undefined ? nextRaw.slice(indentOf(nextRaw)) : undefined
         const nextIsBody =
           nextRaw !== undefined &&
           (nextRest!.trim()
             ? indentOf(nextRaw) > codeIndent
-            : indentOf(nextRaw) === codeIndent + 1);
+            : indentOf(nextRaw) === codeIndent + 1)
         // 基準より深い字下げはコードの一部なので中身に残す
-        const base = Math.min(codeIndent + 1, indent);
+        const base = Math.min(codeIndent + 1, indent)
         lines.push({
           ...split(raw, base),
-          type: "codeBody",
+          type: 'codeBody',
           indent: codeIndent,
           last: !nextIsBody,
-        });
-        continue;
+        })
+        continue
       }
-      codeIndent = null;
+      codeIndent = null
     }
 
     if (rest.startsWith(CODE_MARKER)) {
-      codeIndent = indent;
+      codeIndent = indent
       lines.push({
         ...split(raw, indent + CODE_MARKER.length),
-        type: "codeHeader",
+        type: 'codeHeader',
         indent,
-      });
-      continue;
+      })
+      continue
     }
 
     /*
@@ -152,83 +146,81 @@ export function parseScrapbox(input: string): Line[] {
     if (rest.startsWith(TABLE_MARKER)) {
       lines.push({
         ...split(raw, indent + TABLE_MARKER.length),
-        type: "tableHeader",
+        type: 'tableHeader',
         indent,
-      });
+      })
 
-      const rows: { raw: string; base: number }[] = [];
-      let next = i + 1;
+      const rows: { raw: string; base: number }[] = []
+      let next = i + 1
       while (next < rawLines.length) {
-        const rowRaw = rawLines[next]!;
-        const rowIndent = indentOf(rowRaw);
-        const rowRest = rowRaw.slice(rowIndent);
+        const rowRaw = rawLines[next]!
+        const rowIndent = indentOf(rowRaw)
+        const rowRest = rowRaw.slice(rowIndent)
         // 空行は、表の基準の字下げ（見出し + 1）と同じ間だけ続きとみなす
         // （コードブロックと同じ扱い。docs/11-scrapbox-notation.md 11.6）
-        const inTable = rowRest.trim()
-          ? rowIndent > indent
-          : rowIndent === indent + 1;
-        if (!inTable) break;
+        const inTable = rowRest.trim() ? rowIndent > indent : rowIndent === indent + 1
+        if (!inTable) break
 
         // 基準より深い字下げはセルの中身なので、そのまま残す
-        rows.push({ raw: rowRaw, base: Math.min(indent + 1, rowIndent) });
-        next += 1;
+        rows.push({ raw: rowRaw, base: Math.min(indent + 1, rowIndent) })
+        next += 1
       }
 
       const cells = rows.map((row) =>
         row.raw
           .slice(row.base)
-          .split("\t")
+          .split('\t')
           .map((cell) => parseInline(cell)),
-      );
-      const columns = columnWidths(cells);
+      )
+      const columns = columnWidths(cells)
 
       rows.forEach((row, index) => {
         lines.push({
           ...split(row.raw, row.base),
-          type: "tableRow",
+          type: 'tableRow',
           indent,
           cells: cells[index]!,
           columns,
           last: index === rows.length - 1,
-        });
-      });
+        })
+      })
 
-      i = next - 1;
-      continue;
+      i = next - 1
+      continue
     }
 
     // 引用の `>` と、それに続く空白ひとつまでが行頭
-    const quote = /^> ?/.exec(rest);
+    const quote = /^> ?/.exec(rest)
     if (quote) {
-      const line = split(raw, indent + quote[0].length);
+      const line = split(raw, indent + quote[0].length)
       lines.push({
         ...line,
-        type: "quote",
+        type: 'quote',
         indent,
         nodes: parseInline(line.content),
-      });
-      continue;
+      })
+      continue
     }
 
     // ハイフンだけの行は区切りの罫線。中身は解釈しない
     if (RULE_PATTERN.test(rest)) {
-      lines.push({ ...split(raw, indent), type: "rule", indent });
-      continue;
+      lines.push({ ...split(raw, indent), type: 'rule', indent })
+      continue
     }
 
     lines.push({
       ...split(raw, indent),
-      type: "text",
+      type: 'text',
       indent,
       nodes: parseInline(rest),
-    });
+    })
   }
 
-  return lines;
+  return lines
 }
 
-const CODE_MARKER = "code:";
-const TABLE_MARKER = "table:";
+const CODE_MARKER = 'code:'
+const TABLE_MARKER = 'table:'
 
 /**
  * 埋め込み（`[URL]`）にするホスト（docs/11-scrapbox-notation.md 11.12）。
@@ -245,7 +237,7 @@ const TABLE_MARKER = "table:";
  * 「移動」として来るため、そちらにも同じ一覧が要る（docs/16-macos-app.md 16.2）。
  * 片方だけ増やすと、記法は埋め込みになるのにアプリではブラウザが開く。
  */
-const IFRAME_HOSTS = ["kifu.tsumego.jp", "kifu-lab.vercel.app"];
+const IFRAME_HOSTS = ['kifu.tsumego.jp', 'kifu-lab.vercel.app']
 
 /**
  * 埋め込みの既定の高さ（px）。
@@ -257,7 +249,7 @@ const IFRAME_HOSTS = ["kifu.tsumego.jp", "kifu-lab.vercel.app"];
  * 揃えるためにここを唯一の出どころにし、画面側は CSS 変数で受け取る
  * （ScrapboxEditor.vue）。
  */
-export const IFRAME_DEFAULT_HEIGHT = 420;
+export const IFRAME_DEFAULT_HEIGHT = 420
 
 /**
  * 埋め込みとして出す URL か。
@@ -267,12 +259,12 @@ export const IFRAME_DEFAULT_HEIGHT = 420;
  * これまでどおりリンクとして出す（docs/11-scrapbox-notation.md 11.10）。
  */
 export function isIframeUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (!URL_PATTERN.test(trimmed)) return false;
+  const trimmed = value.trim()
+  if (!URL_PATTERN.test(trimmed)) return false
   try {
-    return IFRAME_HOSTS.includes(new URL(trimmed).hostname.toLowerCase());
+    return IFRAME_HOSTS.includes(new URL(trimmed).hostname.toLowerCase())
   } catch {
-    return false;
+    return false
   }
 }
 
@@ -284,20 +276,20 @@ export function isIframeUrl(value: string): boolean {
  * 折り返す（幅を content から決めると行ごとにずれるため、広げはしない）。
  */
 function columnWidths(rows: Inline[][][]): number[] {
-  const widths: number[] = [];
+  const widths: number[] = []
   for (const cells of rows) {
     cells.forEach((cell, index) => {
-      const width = displayWidth(inlineText(cell));
-      widths[index] = Math.max(widths[index] ?? MIN_COLUMN_WIDTH, width);
-    });
+      const width = displayWidth(inlineText(cell))
+      widths[index] = Math.max(widths[index] ?? MIN_COLUMN_WIDTH, width)
+    })
   }
   // 桁がいくら長くても、画面からはみ出させない（入りきらない分は折り返す）
-  return widths.map((width) => Math.min(width, MAX_COLUMN_WIDTH));
+  return widths.map((width) => Math.min(width, MAX_COLUMN_WIDTH))
 }
 
 /** 桁の幅の下限・上限（全角を2として数えた文字数）。 */
-const MIN_COLUMN_WIDTH = 2;
-const MAX_COLUMN_WIDTH = 40;
+const MIN_COLUMN_WIDTH = 2
+const MAX_COLUMN_WIDTH = 40
 
 /**
  * 全角を2・半角を1として数えた文字数。
@@ -305,12 +297,12 @@ const MAX_COLUMN_WIDTH = 40;
  * 東アジアの文字（漢字・かな・全角記号）と絵文字を2つぶんとして数える。
  */
 const WIDE_CHARACTER =
-  /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\u{1F300}-\u{1FAFF}]/u;
+  /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\u{1F300}-\u{1FAFF}]/u
 
 function displayWidth(text: string): number {
-  let width = 0;
-  for (const char of text) width += WIDE_CHARACTER.test(char) ? 2 : 1;
-  return width;
+  let width = 0
+  for (const char of text) width += WIDE_CHARACTER.test(char) ? 2 : 1
+  return width
 }
 
 /**
@@ -324,31 +316,28 @@ function inlineText(nodes: Inline[]): string {
   return nodes
     .map((node) => {
       switch (node.type) {
-        case "text":
-        case "code":
-          return node.value;
-        case "decoration":
-        case "link":
-          return inlineText(node.nodes);
-        case "pageLink":
-          return node.title;
-        case "hashtag":
-          return `#${node.name}`;
-        case "image":
-        case "icon":
-        case "iframe":
-          return "　";
+        case 'text':
+        case 'code':
+          return node.value
+        case 'decoration':
+        case 'link':
+          return inlineText(node.nodes)
+        case 'pageLink':
+          return node.title
+        case 'hashtag':
+          return `#${node.name}`
+        case 'image':
+        case 'icon':
+        case 'iframe':
+          return '　'
       }
     })
-    .join("");
+    .join('')
 }
 
 /** 行を、余白に置き換える行頭と中身に分ける。 */
-function split(
-  raw: string,
-  at: number,
-): { raw: string; prefix: string; content: string } {
-  return { raw, prefix: raw.slice(0, at), content: raw.slice(at) };
+function split(raw: string, at: number): { raw: string; prefix: string; content: string } {
+  return { raw, prefix: raw.slice(0, at), content: raw.slice(at) }
 }
 
 /**
@@ -360,12 +349,12 @@ function split(
  * 深い字下げは中身の一部なので、そのまま残る。
  */
 export function codeBodyOf(lines: Line[], index: number): string {
-  const body: string[] = [];
+  const body: string[] = []
   for (let i = index + 1; i < lines.length; i++) {
-    if (lines[i]!.type !== "codeBody") break;
-    body.push(lines[i]!.content);
+    if (lines[i]!.type !== 'codeBody') break
+    body.push(lines[i]!.content)
   }
-  return body.join("\n");
+  return body.join('\n')
 }
 
 /**
@@ -378,9 +367,9 @@ export function codeBodyOf(lines: Line[], index: number): string {
  * 押しただけでブロックを抜けてしまう（空行の判定を参照）。
  */
 export function continuationPrefix(line: Line | null): string {
-  const stripped = (line?.prefix ?? "").replace(/(?:code:|table:)$/, "");
-  const header = line?.type === "codeHeader" || line?.type === "tableHeader";
-  return header ? `${stripped} ` : stripped;
+  const stripped = (line?.prefix ?? '').replace(/(?:code:|table:)$/, '')
+  const header = line?.type === 'codeHeader' || line?.type === 'tableHeader'
+  return header ? `${stripped} ` : stripped
 }
 
 /**
@@ -406,8 +395,8 @@ export function dropsIndentOnEnter(
   content: string,
   awaitsImage = false,
 ): boolean {
-  if (awaitsImage) return false;
-  return line?.type === "text" && line.indent > 0 && content === "";
+  if (awaitsImage) return false
+  return line?.type === 'text' && line.indent > 0 && content === ''
 }
 
 /**
@@ -421,9 +410,9 @@ export function dropsIndentOnEnter(
  * （コードの中の段付けを保つ）。
  */
 export function linesFromInput(text: string, line: Line | null): string[] {
-  const [first = "", ...rest] = text.split("\n");
-  const next = continuationPrefix(line);
-  return [(line?.prefix ?? "") + first, ...rest.map((value) => next + value)];
+  const [first = '', ...rest] = text.split('\n')
+  const next = continuationPrefix(line)
+  return [(line?.prefix ?? '') + first, ...rest.map((value) => next + value)]
 }
 
 /**
@@ -434,9 +423,9 @@ export function linesFromInput(text: string, line: Line | null): string[] {
  * 意味の単位で外す。
  */
 export function dropPrefixUnit(prefix: string): string {
-  const marker = /(?:> ?|code:|table:)$/.exec(prefix);
-  if (marker) return prefix.slice(0, -marker[0].length);
-  return prefix.slice(0, -1);
+  const marker = /(?:> ?|code:|table:)$/.exec(prefix)
+  if (marker) return prefix.slice(0, -marker[0].length)
+  return prefix.slice(0, -1)
 }
 
 /**
@@ -447,65 +436,65 @@ export function dropPrefixUnit(prefix: string): string {
  * Scrapbox では行頭の空白が階層を表すため、保存時に正規化してはならない。
  */
 export function indentOf(line: string): number {
-  let count = 0;
+  let count = 0
   while (count < line.length) {
-    const char = line[count];
-    if (char !== " " && char !== "\t" && char !== "　") break;
-    count++;
+    const char = line[count]
+    if (char !== ' ' && char !== '\t' && char !== '　') break
+    count++
   }
-  return count;
+  return count
 }
 
 export function parseInline(input: string): Inline[] {
-  const nodes: Inline[] = [];
-  let buffer = "";
+  const nodes: Inline[] = []
+  let buffer = ''
 
   const flush = () => {
     if (buffer) {
-      nodes.push({ type: "text", value: buffer });
-      buffer = "";
+      nodes.push({ type: 'text', value: buffer })
+      buffer = ''
     }
-  };
+  }
 
-  let i = 0;
+  let i = 0
   while (i < input.length) {
-    const char = input[i]!;
+    const char = input[i]!
 
     // インラインコード: バッククオートで囲む。中身は解釈しない。
-    if (char === "`") {
-      const end = input.indexOf("`", i + 1);
+    if (char === '`') {
+      const end = input.indexOf('`', i + 1)
       if (end > i) {
-        flush();
-        nodes.push({ type: "code", value: input.slice(i + 1, end) });
-        i = end + 1;
-        continue;
+        flush()
+        nodes.push({ type: 'code', value: input.slice(i + 1, end) })
+        i = end + 1
+        continue
       }
     }
 
-    if (char === "[") {
-      const bracket = readBracket(input, i);
+    if (char === '[') {
+      const bracket = readBracket(input, i)
       if (bracket) {
-        flush();
+        flush()
         nodes.push(
           ...classifyBracket(
             bracket.inner,
             bracket.double,
             input.slice(i, bracket.end),
           ),
-        );
-        i = bracket.end;
-        continue;
+        )
+        i = bracket.end
+        continue
       }
     }
 
     // ハッシュタグ: 空白区切りの `#タグ`
-    if (char === "#" && (i === 0 || /\s/.test(input[i - 1]!))) {
-      const match = /^#([^\s[\]#]+)/.exec(input.slice(i));
+    if (char === '#' && (i === 0 || /\s/.test(input[i - 1]!))) {
+      const match = /^#([^\s[\]#]+)/.exec(input.slice(i))
       if (match) {
-        flush();
-        nodes.push({ type: "hashtag", name: match[1]! });
-        i += match[0].length;
-        continue;
+        flush()
+        nodes.push({ type: 'hashtag', name: match[1]! })
+        i += match[0].length
+        continue
       }
     }
 
@@ -515,41 +504,41 @@ export function parseInline(input: string): Inline[] {
      * ここでは形だけを見る。登録が無ければ描画側が書かれたままの文字を
      * 出すので、`12:30:45` のような普通の文章が壊れることはない。
      */
-    if (char === ":") {
-      const match = ICON_PATTERN.exec(input.slice(i));
+    if (char === ':') {
+      const match = ICON_PATTERN.exec(input.slice(i))
       if (match) {
-        flush();
+        flush()
         nodes.push({
-          type: "icon",
+          type: 'icon',
           name: match[1]!.toLowerCase(),
           raw: match[0],
-        });
-        i += match[0].length;
-        continue;
+        })
+        i += match[0].length
+        continue
       }
     }
 
     // 裸の URL もリンクにする
-    if (char === "h") {
-      const match = BARE_URL_PATTERN.exec(input.slice(i));
+    if (char === 'h') {
+      const match = BARE_URL_PATTERN.exec(input.slice(i))
       if (match && match.index === 0) {
-        flush();
+        flush()
         nodes.push({
-          type: "link",
+          type: 'link',
           href: match[0],
-          nodes: [{ type: "text", value: match[0] }],
-        });
-        i += match[0].length;
-        continue;
+          nodes: [{ type: 'text', value: match[0] }],
+        })
+        i += match[0].length
+        continue
       }
     }
 
-    buffer += char;
-    i++;
+    buffer += char
+    i++
   }
 
-  flush();
-  return nodes;
+  flush()
+  return nodes
 }
 
 /**
@@ -562,27 +551,27 @@ function readBracket(
   input: string,
   start: number,
 ): { inner: string; end: number; double: boolean } | null {
-  const double = input.startsWith("[[", start);
-  const open = double ? start + 2 : start + 1;
+  const double = input.startsWith('[[', start)
+  const open = double ? start + 2 : start + 1
 
-  let depth = 1;
-  let i = open;
+  let depth = 1
+  let i = open
   while (i < input.length) {
-    if (input[i] === "[") depth++;
-    else if (input[i] === "]") {
-      depth--;
-      if (depth === 0) break;
+    if (input[i] === '[') depth++
+    else if (input[i] === ']') {
+      depth--
+      if (depth === 0) break
     }
-    i++;
+    i++
   }
-  if (depth !== 0) return null;
+  if (depth !== 0) return null
 
   if (double) {
     // `[[...]]` は閉じ括弧も2つ必要
-    if (input[i + 1] !== "]") return null;
-    return { inner: input.slice(open, i), end: i + 2, double: true };
+    if (input[i + 1] !== ']') return null
+    return { inner: input.slice(open, i), end: i + 2, double: true }
   }
-  return { inner: input.slice(open, i), end: i + 1, double: false };
+  return { inner: input.slice(open, i), end: i + 1, double: false }
 }
 
 /**
@@ -591,22 +580,18 @@ function readBracket(
  * @param raw 書かれたままの `[...]`。ページリンク（＝リンク先の決まっていない
  *   TODO へのリンク）が、あとで自分の書かれた形を辿れるようにするために持つ。
  */
-function classifyBracket(
-  inner: string,
-  double: boolean,
-  raw: string,
-): Inline[] {
-  const content = inner.trim();
-  if (!content) return [{ type: "text", value: double ? "[[]]" : "[]" }];
+function classifyBracket(inner: string, double: boolean, raw: string): Inline[] {
+  const content = inner.trim()
+  if (!content) return [{ type: 'text', value: double ? '[[]]' : '[]' }]
 
   if (double) {
     // `[[画像URL]]` は横幅いっぱいの画像、それ以外は強調
     if (isImage(content)) {
-      return [{ type: "image", src: normalizeImageSrc(content), large: true }];
+      return [{ type: 'image', src: normalizeImageSrc(content), large: true }]
     }
     return [
       {
-        type: "decoration",
+        type: 'decoration',
         level: 1,
         italic: false,
         strike: false,
@@ -617,72 +602,68 @@ function classifyBracket(
         warning: false,
         nodes: parseInline(content),
       },
-    ];
+    ]
   }
 
   // 文字装飾: `[* 強調]` `[/ 斜体]` `[-/*** ...]`
-  const decoration = DECORATION_PATTERN.exec(content);
+  const decoration = DECORATION_PATTERN.exec(content)
   if (decoration) {
-    const symbols = decoration[1]!;
+    const symbols = decoration[1]!
     return [
       {
-        type: "decoration",
+        type: 'decoration',
         level: (symbols.match(/\*/g) ?? []).length,
-        italic: symbols.includes("/"),
-        strike: symbols.includes("-"),
-        underline: symbols.includes("_"),
-        highlight: symbols.includes("&"),
-        alert: symbols.includes("!"),
-        muted: symbols.includes("%"),
-        warning: symbols.includes("~"),
+        italic: symbols.includes('/'),
+        strike: symbols.includes('-'),
+        underline: symbols.includes('_'),
+        highlight: symbols.includes('&'),
+        alert: symbols.includes('!'),
+        muted: symbols.includes('%'),
+        warning: symbols.includes('~'),
         nodes: parseInline(decoration[2]!),
       },
-    ];
+    ]
   }
 
-  const tokens = content.split(/\s+/);
+  const tokens = content.split(/\s+/)
 
   // `[リンク先URL 画像URL]` と、その逆順
   if (tokens.length === 2) {
-    const [a, b] = tokens as [string, string];
+    const [a, b] = tokens as [string, string]
     if (isImage(a) && isUrl(b)) {
-      return [
-        { type: "image", src: normalizeImageSrc(a), large: false, href: b },
-      ];
+      return [{ type: 'image', src: normalizeImageSrc(a), large: false, href: b }]
     }
     if (isUrl(a) && isImage(b)) {
-      return [
-        { type: "image", src: normalizeImageSrc(b), large: false, href: a },
-      ];
+      return [{ type: 'image', src: normalizeImageSrc(b), large: false, href: a }]
     }
   }
 
   // `[URL タイトル]` と `[タイトル URL]`
   if (tokens.length >= 2) {
-    const first = tokens[0]!;
-    const last = tokens.at(-1)!;
+    const first = tokens[0]!
+    const last = tokens.at(-1)!
     if (isUrl(first)) {
       return [
         {
-          type: "link",
+          type: 'link',
           href: first,
-          nodes: parseInline(tokens.slice(1).join(" ")),
+          nodes: parseInline(tokens.slice(1).join(' ')),
         },
-      ];
+      ]
     }
     if (isUrl(last)) {
       return [
         {
-          type: "link",
+          type: 'link',
           href: last,
-          nodes: parseInline(tokens.slice(0, -1).join(" ")),
+          nodes: parseInline(tokens.slice(0, -1).join(' ')),
         },
-      ];
+      ]
     }
   }
 
   if (isImage(content)) {
-    return [{ type: "image", src: normalizeImageSrc(content), large: false }];
+    return [{ type: 'image', src: normalizeImageSrc(content), large: false }]
   }
   /*
    * 単体の URL は、ホストによって埋め込みにする（11.12）。
@@ -692,20 +673,16 @@ function classifyBracket(
    * リンクのまま（角括弧で囲んだときだけ埋め込みになる）。
    */
   if (isIframeUrl(content)) {
-    return [{ type: "iframe", url: content, height: IFRAME_DEFAULT_HEIGHT }];
+    return [{ type: 'iframe', url: content, height: IFRAME_DEFAULT_HEIGHT }]
   }
   if (isUrl(content)) {
     return [
-      {
-        type: "link",
-        href: content,
-        nodes: [{ type: "text", value: content }],
-      },
-    ];
+      { type: 'link', href: content, nodes: [{ type: 'text', value: content }] },
+    ]
   }
 
   // 残りはページリンク（リンク先の決まっていない TODO へのリンク。11.13）
-  return [{ type: "pageLink", title: content, raw }];
+  return [{ type: 'pageLink', title: content, raw }]
 }
 
 function isUrl(value: string): boolean {
@@ -714,17 +691,17 @@ function isUrl(value: string): boolean {
     APP_IMAGE_PATH.test(value) ||
     APP_ITEM_PATH.test(value) ||
     isAppDiaryPath(value)
-  );
+  )
 }
 
 /** 本文に含まれる最初の画像の src。ないなら null（日記一覧のプレビュー用）。 */
 export function firstImageSrc(input: string): string | null {
   for (const line of parseScrapbox(input)) {
-    if (line.type !== "text" && line.type !== "quote") continue;
-    const image = firstImageIn(line.nodes);
-    if (image) return image.src;
+    if (line.type !== 'text' && line.type !== 'quote') continue
+    const image = firstImageIn(line.nodes)
+    if (image) return image.src
   }
-  return null;
+  return null
 }
 
 /**
@@ -735,14 +712,14 @@ export function firstImageSrc(input: string): string | null {
  */
 export function imagesIn(line: Line): ImageNode[] {
   switch (line.type) {
-    case "text":
-    case "quote":
-      return collectImages(line.nodes);
+    case 'text':
+    case 'quote':
+      return collectImages(line.nodes)
     // 表は桁ごとに中身を持つ。どの桁の画像も行の高さを決める
-    case "tableRow":
-      return line.cells.flatMap((cell) => collectImages(cell));
+    case 'tableRow':
+      return line.cells.flatMap((cell) => collectImages(cell))
     default:
-      return [];
+      return []
   }
 }
 
@@ -756,52 +733,51 @@ export function imagesIn(line: Line): ImageNode[] {
  */
 export function iframesIn(line: Line): IframeNode[] {
   switch (line.type) {
-    case "text":
-    case "quote":
-      return collectIframes(line.nodes);
-    case "tableRow":
-      return line.cells.flatMap((cell) => collectIframes(cell));
+    case 'text':
+    case 'quote':
+      return collectIframes(line.nodes)
+    case 'tableRow':
+      return line.cells.flatMap((cell) => collectIframes(cell))
     default:
-      return [];
+      return []
   }
 }
 
 function collectIframes(nodes: Inline[]): IframeNode[] {
-  const found: IframeNode[] = [];
+  const found: IframeNode[] = []
   for (const node of nodes) {
-    if (node.type === "iframe") found.push(node);
-    if (node.type === "decoration" || node.type === "link") {
-      found.push(...collectIframes(node.nodes));
+    if (node.type === 'iframe') found.push(node)
+    if (node.type === 'decoration' || node.type === 'link') {
+      found.push(...collectIframes(node.nodes))
     }
   }
-  return found;
+  return found
 }
 
 function collectImages(nodes: Inline[]): ImageNode[] {
-  const found: ImageNode[] = [];
+  const found: ImageNode[] = []
   for (const node of nodes) {
-    if (node.type === "image") found.push(node);
-    if (node.type === "decoration" || node.type === "link") {
-      found.push(...collectImages(node.nodes));
+    if (node.type === 'image') found.push(node)
+    if (node.type === 'decoration' || node.type === 'link') {
+      found.push(...collectImages(node.nodes))
     }
   }
-  return found;
+  return found
 }
 
 function firstImageIn(nodes: Inline[]): ImageNode | null {
-  return collectImages(nodes)[0] ?? null;
+  return collectImages(nodes)[0] ?? null
 }
 
 /** Gyazo の共有ページ（`gyazo.com/<id>`）・画像ID（`i.gyazo.com/<id>`）の URL。 */
-const GYAZO_URL_PATTERN =
-  /^https?:\/\/(?:i\.)?gyazo\.com\/([0-9a-f]{32})(\.[a-z0-9]+)?(?:\?.*)?$/i;
+const GYAZO_URL_PATTERN = /^https?:\/\/(?:i\.)?gyazo\.com\/([0-9a-f]{32})(\.[a-z0-9]+)?(?:\?.*)?$/i
 
 function isImage(value: string): boolean {
-  if (APP_IMAGE_PATH.test(value)) return true;
-  if (!URL_PATTERN.test(value)) return false;
+  if (APP_IMAGE_PATH.test(value)) return true
+  if (!URL_PATTERN.test(value)) return false
   // Gyazo は拡張子なしでも画像を指す
-  if (GYAZO_URL_PATTERN.test(value)) return true;
-  return IMAGE_EXTENSIONS.test(value);
+  if (GYAZO_URL_PATTERN.test(value)) return true
+  return IMAGE_EXTENSIONS.test(value)
 }
 
 /**
@@ -811,8 +787,8 @@ function isImage(value: string): boolean {
  * 拡張子は共有ページからは分からないため、Gyazo の既定形式である png を仮定する。
  */
 function normalizeImageSrc(value: string): string {
-  const match = GYAZO_URL_PATTERN.exec(value);
-  if (!match) return value;
-  const [, id, extension] = match;
-  return `https://i.gyazo.com/${id}${extension ?? ".png"}`;
+  const match = GYAZO_URL_PATTERN.exec(value)
+  if (!match) return value
+  const [, id, extension] = match
+  return `https://i.gyazo.com/${id}${extension ?? '.png'}`
 }

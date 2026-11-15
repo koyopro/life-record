@@ -1,5 +1,5 @@
-import { parseScrapbox } from "./parse";
-import type { IframeNode, Inline, Line, PageLinkNode } from "./types";
+import { parseScrapbox } from './parse'
+import type { IframeNode, Inline, Line, PageLinkNode } from './types'
 
 /**
  * AST から HTML を作る（docs/11-scrapbox-notation.md）。
@@ -9,15 +9,15 @@ import type { IframeNode, Inline, Line, PageLinkNode } from "./types";
  */
 
 const ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}
 
 export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ESCAPES[char]!);
+  return value.replace(/[&<>"']/g, (char) => ESCAPES[char]!)
 }
 
 /**
@@ -26,10 +26,10 @@ export function escapeHtml(value: string): string {
  * `javascript:` などのスキームを弾く。相対パスは自前の画像なので許可する。
  */
 function safeUrl(value: string): string | null {
-  const trimmed = value.trim();
-  if (trimmed.startsWith("/")) return trimmed;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return null;
+  const trimmed = value.trim()
+  if (trimmed.startsWith('/')) return trimmed
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return null
 }
 
 /**
@@ -41,20 +41,17 @@ function safeUrl(value: string): string | null {
  */
 export interface RenderOptions {
   /** アイコンの名前 → 画像のパス。渡さなければ、書かれたままの文字を出す。 */
-  icons?: Record<string, string>;
+  icons?: Record<string, string>
 }
 
 /** 全行をまとめて描画する（読み取り専用の表示向け）。 */
-export function renderScrapbox(
-  input: string,
-  options: RenderOptions = {},
-): string {
+export function renderScrapbox(input: string, options: RenderOptions = {}): string {
   return parseScrapbox(input)
     .map(
       (line) =>
         `<div class="${lineClass(line)}"${indentStyle(line)}>${renderLine(line, options)}</div>`,
     )
-    .join("");
+    .join('')
 }
 
 /**
@@ -65,51 +62,50 @@ export function renderScrapbox(
  */
 export function renderLine(line: Line, options: RenderOptions = {}): string {
   switch (line.type) {
-    case "codeHeader":
+    case 'codeHeader':
       // `code:` は行頭として余白に置き換えるので、ここではファイル名だけを出す
-      return `<span class="sb-code__name">${escapeHtml(line.content) || "&nbsp;"}</span>`;
-    case "codeBody":
-      return `<code class="sb-code__text">${escapeHtml(line.content) || "&nbsp;"}</code>`;
-    case "rule":
+      return `<span class="sb-code__name">${escapeHtml(line.content) || '&nbsp;'}</span>`
+    case 'codeBody':
+      return `<code class="sb-code__text">${escapeHtml(line.content) || '&nbsp;'}</code>`
+    case 'rule':
       // ハイフンは線そのものになるので、文字としては出さない
-      return '<hr class="sb-rule" />';
-    case "tableHeader":
+      return '<hr class="sb-rule" />'
+    case 'tableHeader':
       // `table:` は行頭として余白に置き換えるので、ここでは名前だけを出す
-      return `<span class="sb-table__name">${escapeHtml(line.content) || "&nbsp;"}</span>`;
-    case "tableRow":
+      return `<span class="sb-table__name">${escapeHtml(line.content) || '&nbsp;'}</span>`
+    case 'tableRow':
       return line.cells
         .map(
           (cell) =>
-            `<span class="sb-table__cell">${renderInline(cell, options) || "&nbsp;"}</span>`,
+            `<span class="sb-table__cell">${renderInline(cell, options) || '&nbsp;'}</span>`,
         )
-        .join("");
-    case "quote":
-    case "text": {
-      const html = renderInline(line.nodes, options);
+        .join('')
+    case 'quote':
+    case 'text': {
+      const html = renderInline(line.nodes, options)
       // 空行の高さを保つ
-      return html || "&nbsp;";
+      return html || '&nbsp;'
     }
   }
 }
 
 /** 行の外枠に付けるクラス。 */
 export function lineClass(line: Line): string {
-  const classes = ["sb-line", `sb-line--${kebab(line.type)}`];
-  if (line.indent > 0) classes.push("sb-line--indented");
-  if (line.type === "codeBody" && line.last) classes.push("sb-line--code-last");
-  if (line.type === "tableRow" && line.last)
-    classes.push("sb-line--table-last");
-  return classes.join(" ");
+  const classes = ['sb-line', `sb-line--${kebab(line.type)}`]
+  if (line.indent > 0) classes.push('sb-line--indented')
+  if (line.type === 'codeBody' && line.last) classes.push('sb-line--code-last')
+  if (line.type === 'tableRow' && line.last) classes.push('sb-line--table-last')
+  return classes.join(' ')
 }
 
 /** 字下げと桁の幅は CSS 変数で渡す。どちらも数値から作るので属性に入れても安全。 */
 export function indentStyle(line: Line): string {
   const declarations = [
-    line.indent > 0 ? `--sb-indent:${line.indent}` : "",
-    tableColumns(line) ? `--sb-table-cols:${tableColumns(line)}` : "",
-  ].filter(Boolean);
+    line.indent > 0 ? `--sb-indent:${line.indent}` : '',
+    tableColumns(line) ? `--sb-table-cols:${tableColumns(line)}` : '',
+  ].filter(Boolean)
 
-  return declarations.length ? ` style="${declarations.join(";")}"` : "";
+  return declarations.length ? ` style="${declarations.join(';')}"` : ''
 }
 
 /**
@@ -120,7 +116,7 @@ export function indentStyle(line: Line): string {
  * `parse.ts` の columnWidths を参照。
  */
 export function tableColumns(line: Line): string | null {
-  if (line.type !== "tableRow") return null;
+  if (line.type !== 'tableRow') return null
   /*
    * 幅の単位は `ch`（数字1文字の幅）。半角1文字ぶんの幅そのものなので、
    * 数えた文字数（半角=1・全角=2）をそのまま掛ければ、**中身が折り返さずに
@@ -134,85 +130,81 @@ export function tableColumns(line: Line): string | null {
    */
   return line.columns
     .map((width) => `minmax(0, calc(${width} * 1ch + 1.25rem))`)
-    .join(" ");
+    .join(' ')
 }
 
 function kebab(value: string): string {
-  return value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
+  return value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)
 }
 
-export function renderInline(
-  nodes: Inline[],
-  options: RenderOptions = {},
-): string {
-  return nodes.map((node) => renderNode(node, options)).join("");
+export function renderInline(nodes: Inline[], options: RenderOptions = {}): string {
+  return nodes.map((node) => renderNode(node, options)).join('')
 }
 
 function renderNode(node: Inline, options: RenderOptions): string {
   switch (node.type) {
-    case "text":
-      return escapeHtml(node.value);
+    case 'text':
+      return escapeHtml(node.value)
 
-    case "code":
-      return `<code class="sb-code-inline">${escapeHtml(node.value)}</code>`;
+    case 'code':
+      return `<code class="sb-code-inline">${escapeHtml(node.value)}</code>`
 
-    case "decoration": {
-      const inner = renderInline(node.nodes, options);
-      const classes = ["sb-deco"];
+    case 'decoration': {
+      const inner = renderInline(node.nodes, options)
+      const classes = ['sb-deco']
       // Scrapbox は `*` の数で文字サイズが変わる。見出し記法はない。
-      if (node.level > 0)
-        classes.push(`sb-deco--level${Math.min(node.level, 6)}`);
-      if (node.italic) classes.push("sb-deco--italic");
-      if (node.strike) classes.push("sb-deco--strike");
-      if (node.underline) classes.push("sb-deco--underline");
-      if (node.highlight) classes.push("sb-deco--highlight");
-      if (node.alert) classes.push("sb-deco--alert");
-      if (node.muted) classes.push("sb-deco--muted");
-      if (node.warning) classes.push("sb-deco--warning");
-      return `<span class="${classes.join(" ")}">${inner}</span>`;
+      if (node.level > 0) classes.push(`sb-deco--level${Math.min(node.level, 6)}`)
+      if (node.italic) classes.push('sb-deco--italic')
+      if (node.strike) classes.push('sb-deco--strike')
+      if (node.underline) classes.push('sb-deco--underline')
+      if (node.highlight) classes.push('sb-deco--highlight')
+      if (node.alert) classes.push('sb-deco--alert')
+      if (node.muted) classes.push('sb-deco--muted')
+      if (node.warning) classes.push('sb-deco--warning')
+      return `<span class="${classes.join(' ')}">${inner}</span>`
     }
 
-    case "link": {
-      const href = safeUrl(node.href);
-      const inner = renderInline(node.nodes, options);
-      if (!href) return inner;
+    case 'link': {
+      const href = safeUrl(node.href)
+      const inner = renderInline(node.nodes, options)
+      if (!href) return inner
       // アプリ内のパス（/items/... /diary/...）は、同じタブの中の
       // ページ遷移として扱う。外部リンクと違い、新規タブを開くと
       // 一覧やタブが増えるだけで、日記とタスクを行き来する用途に合わない。
-      if (href.startsWith("/")) {
-        return `<a class="sb-link sb-link--internal" href="${escapeHtml(href)}">${inner}</a>`;
+      if (href.startsWith('/')) {
+        return `<a class="sb-link sb-link--internal" href="${escapeHtml(href)}">${inner}</a>`
       }
-      return `<a class="sb-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
+      return `<a class="sb-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${inner}</a>`
     }
 
-    case "pageLink":
-      return renderPageLink(node);
+    case 'pageLink':
+      return renderPageLink(node)
 
-    case "image": {
-      const src = safeUrl(node.src);
-      if (!src) return escapeHtml(node.src);
-      const classes = node.large ? "sb-image sb-image--large" : "sb-image";
-      const img = `<img class="${classes}" src="${escapeHtml(src)}" alt="" loading="lazy" />`;
-      const href = node.href ? safeUrl(node.href) : null;
-      if (!href) return img;
-      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${img}</a>`;
+    case 'image': {
+      const src = safeUrl(node.src)
+      if (!src) return escapeHtml(node.src)
+      const classes = node.large ? 'sb-image sb-image--large' : 'sb-image'
+      const img = `<img class="${classes}" src="${escapeHtml(src)}" alt="" loading="lazy" />`
+      const href = node.href ? safeUrl(node.href) : null
+      if (!href) return img
+      return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${img}</a>`
     }
 
-    case "hashtag":
-      return `<span class="sb-hashtag">#${escapeHtml(node.name)}</span>`;
+    case 'hashtag':
+      return `<span class="sb-hashtag">#${escapeHtml(node.name)}</span>`
 
-    case "iframe":
-      return renderIframe(node);
+    case 'iframe':
+      return renderIframe(node)
 
-    case "icon": {
-      const src = options.icons?.[node.name];
+    case 'icon': {
+      const src = options.icons?.[node.name]
       // 登録が無ければ書かれたままの文字を出す。`12:30:45` のような
       // 普通の文章を、記法として食べてしまわないため
-      if (!src) return escapeHtml(node.raw);
+      if (!src) return escapeHtml(node.raw)
 
-      const safe = safeUrl(src);
-      if (!safe) return escapeHtml(node.raw);
-      return `<img class="sb-icon" src="${escapeHtml(safe)}" alt="${escapeHtml(node.raw)}" title="${escapeHtml(node.raw)}" loading="lazy" />`;
+      const safe = safeUrl(src)
+      if (!safe) return escapeHtml(node.raw)
+      return `<img class="sb-icon" src="${escapeHtml(safe)}" alt="${escapeHtml(node.raw)}" title="${escapeHtml(node.raw)}" loading="lazy" />`
     }
   }
 }
@@ -233,15 +225,14 @@ function renderNode(node: Inline, options: RenderOptions): string {
  * 書き損じで、TODO の題ではない。押せるようにはせず、印だけ付けて出す。
  */
 function renderPageLink(node: PageLinkNode): string {
-  const title = escapeHtml(node.title);
-  if (node.title.startsWith("/"))
-    return `<span class="sb-page-link">${title}</span>`;
+  const title = escapeHtml(node.title)
+  if (node.title.startsWith('/')) return `<span class="sb-page-link">${title}</span>`
 
   return (
     `<button type="button" class="sb-page-link sb-page-link--todo"` +
     ` data-todo-text="${title}" data-todo-raw="${escapeHtml(node.raw)}"` +
     ` title="「${title}」の作業記録を書く">${title}</button>`
-  );
+  )
 }
 
 /**
@@ -256,11 +247,11 @@ function renderPageLink(node: PageLinkNode): string {
  * 数値としてしか作らないので属性に入れても安全。
  */
 function renderIframe(node: IframeNode): string {
-  const src = safeUrl(node.url);
+  const src = safeUrl(node.url)
   // 認めない URL は、書かれたままの文字として出す（リンクと同じ扱い）
-  if (!src) return escapeHtml(node.url);
+  if (!src) return escapeHtml(node.url)
 
-  const url = escapeHtml(src);
+  const url = escapeHtml(src)
   const frame =
     `<iframe class="sb-iframe" src="${url}" style="height:${node.height}px"` +
     ` title="${url}" loading="lazy"` +
@@ -274,7 +265,7 @@ function renderIframe(node: IframeNode): string {
      * - 渡さないもの: `allow-top-navigation`（こちらの画面を勝手に飛ばす）、
      *   `allow-modals`、`allow-popups-to-escape-sandbox`
      */
-    ` sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`;
+    ` sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`
 
   /*
    * そのページを開く小さなボタンを、**埋め込みの右下に重ねて**置く。
@@ -290,9 +281,9 @@ function renderIframe(node: IframeNode): string {
   const open =
     `<a class="sb-embed__open" href="${url}" target="_blank" rel="noopener noreferrer"` +
     ` title="${url} を開く" aria-label="${url} を別のタブで開く">` +
-    `<span aria-hidden="true">↗</span></a>`;
+    `<span aria-hidden="true">↗</span></a>`
 
-  return `<span class="sb-embed">${frame}${open}</span>`;
+  return `<span class="sb-embed">${frame}${open}</span>`
 }
 
 /**
@@ -306,42 +297,42 @@ export function toPlainText(input: string): string {
     .map((line) => {
       switch (line.type) {
         // コードブロックも、リストの中に埋め込まれていれば字下げを保つ
-        case "codeHeader":
-        case "codeBody":
-          return `${" ".repeat(line.indent)}${line.content}`;
-        case "quote":
-        case "text":
-          return `${" ".repeat(line.indent)}${plainInline(line.nodes)}`;
+        case 'codeHeader':
+        case 'codeBody':
+          return `${' '.repeat(line.indent)}${line.content}`
+        case 'quote':
+        case 'text':
+          return `${' '.repeat(line.indent)}${plainInline(line.nodes)}`
       }
     })
-    .join("\n")
-    .trim();
+    .join('\n')
+    .trim()
 }
 
 function plainInline(nodes: Inline[]): string {
   return nodes
     .map((node) => {
       switch (node.type) {
-        case "text":
-        case "code":
-          return node.value;
-        case "decoration":
-          return plainInline(node.nodes);
-        case "link":
-          return plainInline(node.nodes);
-        case "pageLink":
-          return node.title;
-        case "image":
-          return "";
-        case "hashtag":
-          return `#${node.name}`;
+        case 'text':
+        case 'code':
+          return node.value
+        case 'decoration':
+          return plainInline(node.nodes)
+        case 'link':
+          return plainInline(node.nodes)
+        case 'pageLink':
+          return node.title
+        case 'image':
+          return ''
+        case 'hashtag':
+          return `#${node.name}`
         // 抜粋では画像を出さないので、書かれたままの `:name:` を残す
-        case "icon":
-          return node.raw;
+        case 'icon':
+          return node.raw
         // 埋め込みは絵として出せないので、書かれた URL をそのまま残す
-        case "iframe":
-          return node.url;
+        case 'iframe':
+          return node.url
       }
     })
-    .join("");
+    .join('')
 }

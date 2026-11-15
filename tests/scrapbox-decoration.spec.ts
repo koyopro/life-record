@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { parseScrapbox } from "~~/shared/utils/scrapbox/parse";
-import { renderLine } from "~~/shared/utils/scrapbox/render";
+import { describe, expect, it } from 'vitest'
+import { parseScrapbox } from '~~/shared/utils/scrapbox/parse'
+import { renderLine } from '~~/shared/utils/scrapbox/render'
 
 /**
  * 文字装飾（docs/11-scrapbox-notation.md 11.3）。
@@ -8,110 +8,86 @@ import { renderLine } from "~~/shared/utils/scrapbox/render";
  * Scrapbox は装飾記号をそのまま CSS クラスにするが、このサービスでは
  * 意味を与えた記号だけを解釈する。`&` は目印（色を敷く）。
  */
-describe("目印（`[& …]`）", () => {
-  it("`&` を目印として読む", () => {
-    const line = parseScrapbox("[& ここ]が大事")[0]!;
+describe('目印（`[& …]`）', () => {
+  it('`&` を目印として読む', () => {
+    const line = parseScrapbox('[& ここ]が大事')[0]!
 
     expect(line).toMatchObject({
-      type: "text",
+      type: 'text',
       nodes: [
-        {
-          type: "decoration",
-          highlight: true,
-          nodes: [{ type: "text", value: "ここ" }],
-        },
-        { type: "text", value: "が大事" },
+        { type: 'decoration', highlight: true, nodes: [{ type: 'text', value: 'ここ' }] },
+        { type: 'text', value: 'が大事' },
       ],
-    });
-  });
+    })
+  })
 
-  it("目印だけのときは、他の装飾は付けない", () => {
-    const line = parseScrapbox("[& ここ]")[0]!;
+  it('目印だけのときは、他の装飾は付けない', () => {
+    const line = parseScrapbox('[& ここ]')[0]!
 
     expect(line).toMatchObject({
       nodes: [
-        {
-          type: "decoration",
-          level: 0,
-          italic: false,
-          strike: false,
-          underline: false,
-        },
+        { type: 'decoration', level: 0, italic: false, strike: false, underline: false },
       ],
-    });
-  });
+    })
+  })
 
-  it("他の記号と組み合わせられる", () => {
-    expect(parseScrapbox("[&* 強い目印]")[0]).toMatchObject({
-      nodes: [{ type: "decoration", highlight: true, level: 1 }],
-    });
-  });
+  it('他の記号と組み合わせられる', () => {
+    expect(parseScrapbox('[&* 強い目印]')[0]).toMatchObject({
+      nodes: [{ type: 'decoration', highlight: true, level: 1 }],
+    })
+  })
 
-  it("表示は目印のクラスを付けた要素にする", () => {
-    expect(renderLine(parseScrapbox("[& ここ]")[0]!)).toBe(
+  it('表示は目印のクラスを付けた要素にする', () => {
+    expect(renderLine(parseScrapbox('[& ここ]')[0]!)).toBe(
       '<span class="sb-deco sb-deco--highlight">ここ</span>',
-    );
-  });
+    )
+  })
 
-  it("`&` を書いていなければ目印にしない", () => {
-    expect(parseScrapbox("[* 強調]")[0]).toMatchObject({
-      nodes: [{ type: "decoration", highlight: false }],
-    });
-  });
-});
+  it('`&` を書いていなければ目印にしない', () => {
+    expect(parseScrapbox('[* 強調]')[0]).toMatchObject({
+      nodes: [{ type: 'decoration', highlight: false }],
+    })
+  })
+})
 
-describe("赤い目印（`[! …]`）", () => {
-  it("`!` を赤い目印として読む", () => {
-    expect(parseScrapbox("[! 注意]です")[0]).toMatchObject({
-      type: "text",
+describe('色違いの目印（`[! …]` `[% …]` `[~ …]`）', () => {
+  it('`!` を赤い目印として読む', () => {
+    expect(parseScrapbox('[! 注意]です')[0]).toMatchObject({
+      type: 'text',
       nodes: [
-        {
-          type: "decoration",
-          alert: true,
-          highlight: false,
-          level: 0,
-          nodes: [{ type: "text", value: "注意" }],
-        },
-        { type: "text", value: "です" },
+        { type: 'decoration', alert: true, highlight: false, level: 0 },
+        { type: 'text', value: 'です' },
       ],
-    });
-  });
+    })
+  })
 
-  it("表示は赤い目印のクラスを付けた要素にする", () => {
-    expect(renderLine(parseScrapbox("[! 注意]")[0]!)).toBe(
+  it('`!` は赤い目印のクラスを付けた要素にする', () => {
+    expect(renderLine(parseScrapbox('[! 注意]')[0]!)).toBe(
       '<span class="sb-deco sb-deco--alert">注意</span>',
-    );
-  });
+    )
+  })
 
-  it("他の記号と組み合わせられる", () => {
-    expect(parseScrapbox("[!* 強い注意]")[0]).toMatchObject({
-      nodes: [{ type: "decoration", alert: true, level: 1 }],
-    });
-  });
-
-  it("`!` を書いていなければ赤い目印にしない", () => {
-    expect(parseScrapbox("[& ここ]")[0]).toMatchObject({
-      nodes: [{ type: "decoration", alert: false }],
-    });
-  });
-});
-
-describe("グレー・オレンジの目印（`[% …]` `[~ …]`）", () => {
-  it("`%` をグレーの目印として読む", () => {
-    expect(renderLine(parseScrapbox("[% 補足]")[0]!)).toBe(
+  it('`%` はグレーの目印のクラスを付けた要素にする', () => {
+    expect(renderLine(parseScrapbox('[% 補足]')[0]!)).toBe(
       '<span class="sb-deco sb-deco--muted">補足</span>',
-    );
-  });
+    )
+  })
 
-  it("`~` をオレンジの目印として読む", () => {
-    expect(renderLine(parseScrapbox("[~ 保留]")[0]!)).toBe(
+  it('`~` はオレンジの目印のクラスを付けた要素にする', () => {
+    expect(renderLine(parseScrapbox('[~ 保留]')[0]!)).toBe(
       '<span class="sb-deco sb-deco--warning">保留</span>',
-    );
-  });
+    )
+  })
 
-  it("書いていなければ付けない", () => {
-    expect(parseScrapbox("[& ここ]")[0]).toMatchObject({
-      nodes: [{ type: "decoration", muted: false, warning: false }],
-    });
-  });
-});
+  it('他の記号と組み合わせられる', () => {
+    expect(parseScrapbox('[!* 強い注意]')[0]).toMatchObject({
+      nodes: [{ type: 'decoration', alert: true, level: 1 }],
+    })
+  })
+
+  it('書いていなければ付けない', () => {
+    expect(parseScrapbox('[& ここ]')[0]).toMatchObject({
+      nodes: [{ type: 'decoration', alert: false, muted: false, warning: false }],
+    })
+  })
+})

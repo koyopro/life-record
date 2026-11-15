@@ -16,13 +16,13 @@ export type Line =
   | CodeBodyLine
   | RuleLine
   | TableHeaderLine
-  | TableRowLine;
+  | TableRowLine
 
 interface LineBase {
   /** 行頭の空白の数。箇条書きの階層になる。 */
-  indent: number;
+  indent: number
   /** 元の行そのまま。 */
-  raw: string;
+  raw: string
   /**
    * 行頭のうち、**表示では文字を出さず余白に置き換える**部分。
    *
@@ -31,19 +31,19 @@ interface LineBase {
    * 表示と同じ幅の余白を入れる。そうしないと、カーソルの有無で
    * 文字の開始位置がずれる（docs/11-scrapbox-notation.md 11.6）。
    */
-  prefix: string;
+  prefix: string
   /** `prefix` を除いた行の中身。編集で直接さわるのはこちら。 */
-  content: string;
+  content: string
 }
 
 export interface TextLine extends LineBase {
-  type: "text";
-  nodes: Inline[];
+  type: 'text'
+  nodes: Inline[]
 }
 
 export interface QuoteLine extends LineBase {
-  type: "quote";
-  nodes: Inline[];
+  type: 'quote'
+  nodes: Inline[]
 }
 
 /**
@@ -53,12 +53,12 @@ export interface QuoteLine extends LineBase {
  * 中身を解釈しないので `nodes` は持たない。
  */
 export interface RuleLine extends LineBase {
-  type: "rule";
+  type: 'rule'
 }
 
 /** `table:名前` の行。`content` が表の名前にあたる。 */
 export interface TableHeaderLine extends LineBase {
-  type: "tableHeader";
+  type: 'tableHeader'
 }
 
 /**
@@ -69,18 +69,18 @@ export interface TableHeaderLine extends LineBase {
  * 決まりから、行はそれぞれ別の要素として描かれる。docs/11-scrapbox-notation.md）。
  */
 export interface TableRowLine extends LineBase {
-  type: "tableRow";
+  type: 'tableRow'
   /** セルの中身。行の中の記法（リンクなど）も解釈する。 */
-  cells: Inline[][];
+  cells: Inline[][]
   /** 桁ごとの幅。全角を2・半角を1として数えた文字数。 */
-  columns: number[];
+  columns: number[]
   /** 表の最後の行か。見た目をまとめるために使う。 */
-  last: boolean;
+  last: boolean
 }
 
 /** `code:ファイル名` の行。`content` がファイル名にあたる。 */
 export interface CodeHeaderLine extends LineBase {
-  type: "codeHeader";
+  type: 'codeHeader'
 }
 
 /**
@@ -90,9 +90,9 @@ export interface CodeHeaderLine extends LineBase {
  * それより深い字下げはコードの一部なので `content` に残す。
  */
 export interface CodeBodyLine extends LineBase {
-  type: "codeBody";
+  type: 'codeBody'
   /** ブロックの最後の行か。見た目をまとめるために使う。 */
-  last: boolean;
+  last: boolean
 }
 
 /** 行の中身。 */
@@ -105,17 +105,17 @@ export type Inline =
   | ImageNode
   | HashTagNode
   | IconNode
-  | IframeNode;
+  | IframeNode
 
 export interface TextNode {
-  type: "text";
-  value: string;
+  type: 'text'
+  value: string
 }
 
 /** バッククオートで囲まれたインラインコード。中身は解釈しない。 */
 export interface CodeNode {
-  type: "code";
-  value: string;
+  type: 'code'
+  value: string
 }
 
 /**
@@ -125,28 +125,28 @@ export interface CodeNode {
  * 種類ごとの真偽値と、`*` の個数（文字サイズ）を持つ。
  */
 export interface DecorationNode {
-  type: "decoration";
+  type: 'decoration'
   /** `*` の個数。0 なら文字サイズは変えない。 */
-  level: number;
-  italic: boolean;
-  strike: boolean;
-  underline: boolean;
+  level: number
+  italic: boolean
+  strike: boolean
+  underline: boolean
   /** `&`。目印として色を敷く（docs/11-scrapbox-notation.md 11.3）。 */
-  highlight: boolean;
-  /** `!`。赤い目印として色を敷く（docs/11-scrapbox-notation.md 11.3）。 */
-  alert: boolean;
+  highlight: boolean
+  /** `!`。赤い目印として色を敷く。 */
+  alert: boolean
   /** `%`。グレーの目印として色を敷く。 */
-  muted: boolean;
+  muted: boolean
   /** `~`。オレンジの目印として色を敷く。 */
-  warning: boolean;
-  nodes: Inline[];
+  warning: boolean
+  nodes: Inline[]
 }
 
 /** 外部リンク。 */
 export interface LinkNode {
-  type: "link";
-  href: string;
-  nodes: Inline[];
+  type: 'link'
+  href: string
+  nodes: Inline[]
 }
 
 /**
@@ -159,24 +159,24 @@ export interface LinkNode {
  * 書かれたままの文字列も持っておく。
  */
 export interface PageLinkNode {
-  type: "pageLink";
-  title: string;
+  type: 'pageLink'
+  title: string
   /** 書かれたままの `[題]`。リンク先を決めたときに、これを目印に書き換える。 */
-  raw: string;
+  raw: string
 }
 
 export interface ImageNode {
-  type: "image";
-  src: string;
+  type: 'image'
+  src: string
   /** `[[画像URL]]` の場合。横幅いっぱいに表示する。 */
-  large: boolean;
+  large: boolean
   /** 画像にリンクが付いている場合の遷移先。 */
-  href?: string;
+  href?: string
 }
 
 export interface HashTagNode {
-  type: "hashtag";
-  name: string;
+  type: 'hashtag'
+  name: string
 }
 
 /**
@@ -190,11 +190,11 @@ export interface HashTagNode {
  * 節点には持たせておく。
  */
 export interface IframeNode {
-  type: "iframe";
+  type: 'iframe'
   /** 埋め込む URL（`http(s)` のみ）。 */
-  url: string;
+  url: string
   /** 表示の高さ（px）。 */
-  height: number;
+  height: number
 }
 
 /**
@@ -205,9 +205,9 @@ export interface IframeNode {
  * 描画時に決める。そのため、書かれたままの文字列も持っておく。
  */
 export interface IconNode {
-  type: "icon";
+  type: 'icon'
   /** 引くための名前（小文字）。 */
-  name: string;
+  name: string
   /** 書かれたままの `:Name:`。登録が無ければこれをそのまま出す。 */
-  raw: string;
+  raw: string
 }
