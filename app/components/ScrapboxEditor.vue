@@ -3454,6 +3454,22 @@ defineExpose({
   background: #99cc99;
   padding: 0.1em 0.2em;
 }
+/* 色違いの目印。考え方は `&` と同じ。`[! 赤]` `[% グレー]` `[~ オレンジ]` */
+.editor :deep(.sb-deco--alert),
+.editor :deep(.sb-deco--muted),
+.editor :deep(.sb-deco--warning) {
+  color: #fff;
+  padding: 0.1em 0.2em;
+}
+.editor :deep(.sb-deco--muted) {
+  background: #c0c0c0;
+}
+.editor :deep(.sb-deco--warning) {
+  background: #f0ad4e;
+}
+.editor :deep(.sb-deco--alert) {
+  background: #ee6666;
+}
 
 .editor :deep(.sb-deco--underline) {
   text-decoration: underline;
