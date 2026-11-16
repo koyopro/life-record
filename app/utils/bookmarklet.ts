@@ -18,7 +18,7 @@
  * 商品ページから受け口（`/share`）の URL を組み立てる。
  * Amazon の商品ページでなければ null。
  *
- * 作るのは「タグ `本`・期限なし」の未着手タスク。
+ * 作るのは「タグ `本` と作者・期限なし」の未着手タスク。
  *
  * @param origin このアプリの置き場（`https://example.vercel.app`）
  * @param doc 商品ページ
@@ -44,7 +44,13 @@ export function amazonIntakeUrl(
    * まとめて日付として読もうとするため、URL より前に置くと期限が外れない
    * （shared/utils/share.ts の `smart`）。
    */
-  params.set('smart', '#本 ^なし')
+  //
+  // 作者もタグにする（共著なら全員）。同じ作者の本をタグでたどれるように
+  const tags = ['本']
+  for (const author of findAuthors()) {
+    if (tags.indexOf(author) === -1) tags.push(author)
+  }
+  params.set('smart', `${tags.map((tag) => `#${tag}`).join(' ')} ^なし`)
 
   // メモには画像だけを入れる。Scrapbox の画像記法（角括弧の URL）で、
   // 1行に1枚（docs/11-scrapbox-notation.md 11.7）
@@ -125,6 +131,53 @@ export function amazonIntakeUrl(
     if (fromOg.trim()) return clean(trimSiteName(fromOg))
 
     return clean(trimSiteName(doc.title || ''))
+  }
+
+  /**
+   * 作者の名前（タグに使える形に直したもの）。見つからなければ空。
+   *
+   * 商品ページの著者欄（`#bylineInfo`）は1人ずつ `.author` に分かれ、
+   * 名前のリンクと役割（`(著)` `(翻訳)` など）が並ぶ。
+   * 役割が「著・作・原作・画」なら作者。翻訳・監修・解説・編集などは
+   * 本を書いた人ではないので外す。役割が書かれていなければ作者とみなす。
+   */
+  function findAuthors(): string[] {
+    const found: string[] = []
+    for (const entry of Array.from(doc.querySelectorAll('#bylineInfo .author'))) {
+      const link =
+        entry.querySelector('a.contributorNameID') || entry.querySelector('a')
+      const name = link ? clean(link.textContent || '') : ''
+      if (!name) continue
+
+      const roleElement = entry.querySelector('.contribution')
+      const role = roleElement ? roleElement.textContent || '' : ''
+      if (!isAuthorRole(role)) continue
+
+      const tag = authorTag(name)
+      if (tag && found.indexOf(tag) === -1) found.push(tag)
+    }
+    return found
+  }
+
+  function isAuthorRole(role: string): boolean {
+    if (/著|作|画|author|writer|illustrator/i.test(role)) return true
+    return !/訳|監修|解説|編|序文|朗読|ナレーター|translator|editor|narrator|foreword|introduction|contributor/i.test(
+      role,
+    )
+  }
+
+  /**
+   * 名前をタグ名にする。タグには空白・カンマ・`#` を入れられない
+   * （docs/09-tags.md 9.2「タグ名の正規化」）。
+   *
+   * 日本語の名前の姓と名の間の空白（`須藤 功平`）は詰め、
+   * 英字の名前（`Robert C. Martin`）は `_` でつなぐ。
+   * 長さはタグの上限（50字）までにする。
+   */
+  function authorTag(name: string): string {
+    const parts = name.replace(/[,，#＃]/g, ' ').split(/\s+/).filter(Boolean)
+    const joiner = /[A-Za-z]/.test(name) ? '_' : ''
+    return parts.join(joiner).slice(0, 50)
   }
 
   /**

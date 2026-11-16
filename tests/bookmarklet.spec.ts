@@ -135,6 +135,78 @@ describe('amazonIntakeUrl', () => {
     })
   })
 
+  describe('作者のタグ', () => {
+    /** 著者欄の1人分。役割（`(著)` など）は省ける。 */
+    function author(name: string, role?: string): string {
+      return `<span class="author notFaded">
+        <a class="a-link-normal" href="/e/B001">${name}</a>
+        ${role ? `<span class="contribution"><span class="a-color-secondary">${role}</span></span>` : ''}
+      </span>`
+    }
+
+    function smartOf(byline: string): string | null {
+      const doc = productPage(`
+        <span id="productTitle">リーダブルコード</span>
+        <div id="bylineInfo">${byline}</div>
+      `)
+      return intakeQuery(
+        amazonIntakeUrl(ORIGIN, doc, 'https://www.amazon.co.jp/dp/B06XC33Q6S'),
+      )!.smart
+    }
+
+    it('作者が複数いれば全員をタグにし、翻訳・解説は外す', () => {
+      expect(
+        smartOf(
+          author('ダスティン・ボズウェル', '(著), ') +
+            author('トレバー・フォシェ', '(著), ') +
+            author('須藤 功平', '(解説), ') +
+            author('角 征典', '(翻訳)'),
+        ),
+      ).toBe('#本 #ダスティン・ボズウェル #トレバー・フォシェ ^なし')
+    })
+
+    it('名前の空白は、日本語なら詰め、英字なら _ でつなぐ', () => {
+      expect(
+        smartOf(author('山田 太郎', '(著)') + author('Robert C. Martin', '(Author)')),
+      ).toBe('#本 #山田太郎 #Robert_C._Martin ^なし')
+    })
+
+    it('原作・作画のように役割が分かれていても、両方とも作者にする', () => {
+      expect(
+        smartOf(author('原作者', '(原作), ') + author('作画者', '(作画)')),
+      ).toBe('#本 #原作者 #作画者 ^なし')
+    })
+
+    it('役割が書かれていなければ作者とみなす。同じ人は一度だけ', () => {
+      expect(smartOf(author('著者A') + author('著者A', '(著)'))).toBe(
+        '#本 #著者A ^なし',
+      )
+    })
+
+    it('受け口を通すと、作者がタグとして付く', () => {
+      const doc = productPage(`
+        <span id="productTitle">Clean Code</span>
+        <div id="bylineInfo">
+          ${author('Robert C. Martin', '(著)')}
+          ${author('花井 志生', '(翻訳)')}
+        </div>
+      `)
+      const intake = intakeQuery(
+        amazonIntakeUrl(ORIGIN, doc, 'https://www.amazon.co.jp/dp/4048930591'),
+      )!
+      const composed = composeShare({
+        title: intake.title ?? undefined,
+        url: intake.url ?? undefined,
+        smart: intake.smart ?? undefined,
+      })
+
+      expect(buildItemDraft(composed.text, { note: composed.note })).toMatchObject({
+        // タグ名は小文字にそろう（docs/09-tags.md 9.2）
+        draft: { tags: ['robert_c._martin', '本'], dueAt: null },
+      })
+    })
+  })
+
   it('/gp/product/<ASIN> の形でも同じ URL にする', () => {
     const intake = intakeQuery(
       amazonIntakeUrl(
