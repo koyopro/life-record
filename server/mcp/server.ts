@@ -5,7 +5,7 @@ import { ITEM_STATUSES, type ItemDetailDto, type ItemDto } from '../../shared/ty
 import type { DiaryDetailDto, DiaryDto, DiarySummaryDto } from '../../shared/types/diary'
 import type { Fetched } from '../../shared/types/fetched'
 import type { SearchHit } from '../../shared/types/search'
-import { RTM_TAG_COLORS, TAG_COLORS, normalizeTagName, type TagDto } from '../../shared/types/tag'
+import { PICKER_TAG_COLORS, TAG_COLORS, normalizeTagName, type TagDto } from '../../shared/types/tag'
 import { APP_TIME_ZONE, toAppDate } from '../../shared/utils/date'
 import { orderByNames, sortByColorGroup } from '../../shared/utils/tag-order'
 
@@ -307,7 +307,8 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
       title: 'タグの色を変える',
       description: [
         'タグの色をまとめて変える。タグは名前で指定し、無い名前は作らずにエラーとして返す。',
-        `色は Remember The Milk と同じ24色: ${RTM_TAG_COLORS.join(', ')}。`,
+        `使う色: ${PICKER_TAG_COLORS.join(', ')}。`,
+        '淡い色（-pale）は似ていて見分けが付かないので使わない（受け付けはする）。',
         'null で色を外す（未設定に戻す）。',
       ].join(''),
       inputSchema: {

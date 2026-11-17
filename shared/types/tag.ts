@@ -66,6 +66,15 @@ export const LEGACY_TAG_COLORS = [
  */
 export const TAG_COLORS = [...RTM_TAG_COLORS, ...LEGACY_TAG_COLORS] as const
 
+/**
+ * 色見本に出す色。RTM の淡い色（`-pale`、色見本の 1 段目と 3 段目）は出さない。
+ *
+ * 淡い色どうしは、特に暗い背景の上でどれもクリーム色に見えて見分けが付かず、
+ * 色分けの役に立たないため（docs/09-tags.md「タグの色」）。enum からは消せないし、
+ * 取り込んだタグには付いていることがあるので、値としては受け付けたまま残す。
+ */
+export const PICKER_TAG_COLORS = TAG_COLORS.filter((color) => !color.endsWith('-pale'))
+
 export type TagColor = (typeof TAG_COLORS)[number]
 
 export type RtmTagColor = (typeof RTM_TAG_COLORS)[number]

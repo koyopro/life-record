@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   LEGACY_TAG_COLORS,
+  PICKER_TAG_COLORS,
   RTM_TAG_COLORS,
   TAG_NAME_MAX_LENGTH,
   normalizeTagName,
@@ -199,10 +200,15 @@ function onDragEnd() {
 }
 
 /**
- * 色見本の並び。RTM と同じ 24 色（6 列 × 4 行）を先に出し、
+ * 色見本の並び。RTM の濃い色 12 色（6 列 × 2 行）を先に出し、
  * それより前から使っている独自の色をその下に続ける。
+ *
+ * RTM の淡い色は出さない（PICKER_TAG_COLORS）。どれも似ていて見分けが付かないため。
  */
-const colorGroups = [RTM_TAG_COLORS, LEGACY_TAG_COLORS] as const
+const colorGroups = [
+  RTM_TAG_COLORS.filter((color) => PICKER_TAG_COLORS.includes(color)),
+  LEGACY_TAG_COLORS,
+] as const
 
 function swatchStyle(color: TagColor) {
   return { '--tag-color': tagColorVar(color), '--tag-text': tagTextColorVar(color) }
