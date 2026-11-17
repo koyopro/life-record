@@ -8,7 +8,7 @@ import { createMcpServer, type ApiCall } from '~~/server/mcp/server'
  *
  * サイト全体は Vercel の Deployment Protection で守っているが、Claude は
  * そのログインを通れない。Claude からは「Protection Bypass for Automation」の
- * 秘密をクエリに付けて届かせ、ここではさらに `MCP_TOKEN` を確かめる。
+ * 秘密をヘッダーに付けて届かせ、ここではさらに `MCP_TOKEN` を確かめる。
  * バイパスの秘密はサイト全体の鍵なので、MCP だけを別の鍵で閉じておく。
  *
  * `MCP_TOKEN` が無ければ、エンドポイントごと無いものとして扱う。
@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
 function isAuthorized(event: Parameters<typeof getQuery>[0], expected: string): boolean {
   const header = getHeader(event, 'authorization')
   const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
-  // claude.ai のカスタムコネクタはヘッダーを足せないため、クエリでも受ける
+  // ヘッダーを足せないクライアントのために、クエリでも受ける
   const query = getQuery(event).token
   const given = bearer ?? (typeof query === 'string' ? query : undefined)
   if (!given) return false

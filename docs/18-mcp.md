@@ -8,7 +8,7 @@ Claude（claude.ai / Claude アプリ / Claude Code）から、タスク・作�
 
 ```text
 Claude ──HTTPS──▶ Vercel（Deployment Protection）──▶ /mcp ──内部呼び出し──▶ /api/...
-          ?x-vercel-protection-bypass=…&token=…
+          ヘッダー: x-vercel-protection-bypass / Authorization: Bearer
 ```
 
 - 方式は MCP の **Streamable HTTP**。セッションを持たない（stateless）。
@@ -26,16 +26,19 @@ Claude はそのログインを通れないので、鍵を2つ使う。
 
 | 鍵 | 置き場所 | 役割 |
 |---|---|---|
-| Protection Bypass for Automation の秘密 | Vercel が発行 | Deployment Protection を通る。クエリ `x-vercel-protection-bypass` |
-| `MCP_TOKEN` | Vercel の環境変数 | `/mcp` を開ける。クエリ `token` か `Authorization: Bearer` |
+| Protection Bypass for Automation の秘密 | Vercel が発行 | Deployment Protection を通る。ヘッダー `x-vercel-protection-bypass` |
+| `MCP_TOKEN` | Vercel の環境変数 | `/mcp` を開ける。`Authorization: Bearer`（クエリ `token` でも可） |
 
 バイパスの秘密は**サイト全体の鍵**（`/api` にも届く）。`/mcp` だけ別の鍵でも閉じておき、
 どちらか片方が漏れただけでは MCP から読み書きされないようにする。
 
 - `MCP_TOKEN` が未設定なら `/mcp` は 404（機能ごと無効）
 - 比較は `timingSafeEqual`
-- claude.ai のカスタムコネクタは任意のヘッダーを足せないため、鍵は URL のクエリに載せる。
-  **コネクタの URL そのものが鍵**なので、人に見せない
+- 鍵は**リクエストヘッダー**で渡す。claude.ai のカスタムコネクタは認証を「サインインなし」に
+  するとヘッダーを足せ、値は保存後に再表示されない。URL のクエリに載せると URL そのものが
+  鍵になり、履歴や画面に残りやすいため
+- どちらもクエリでも受ける（`x-vercel-protection-bypass` / `token`）。ヘッダーを足せない
+  クライアント向けの逃げ道
 
 OAuth（コネクタ標準の認可フロー）は実装しない。単一ユーザーで、アプリ側に
 ログインの仕組みを持たない方針（Q3）と釣り合わないため。
@@ -76,20 +79,23 @@ OAuth（コネクタ標準の認可フロー）は実装しない。単一ユー
 2. Vercel の環境変数に `MCP_TOKEN` を足す（Preview に効かせる）。値は長いランダム文字列
    （例: `openssl rand -hex 32`）
 3. 再デプロイする
-4. Claude の 設定 → コネクタ → **カスタムコネクタを追加** で、URL に次を入れる。
+4. Claude の 設定 → コネクタ → **カスタムコネクタを追加** で次のように入れる。
    ホストは日常使っている Preview のブランチ URL（デプロイごとに変わらない方）にする
 
-   ```text
-   https://<preview のホスト>/mcp?x-vercel-protection-bypass=<バイパスの秘密>&token=<MCP_TOKEN>
-   ```
+   - URL: `https://<preview のホスト>/mcp`
+   - 認証: **サインインなし**（OAuth は実装していない）
+   - リクエストヘッダー:
 
-   OAuth の欄は空のままにする
+     | ヘッダー | 値 |
+     |---|---|
+     | `x-vercel-protection-bypass` | バイパスの秘密 |
+     | `Authorization` | `Bearer <MCP_TOKEN>` |
 5. 会話で「今日のタスクを見せて」などと頼んで、ツールが呼ばれることを確かめる
 
 Claude Code からは次で足せる。
 
 ```bash
-claude mcp add --transport http life-record "https://<preview のホスト>/mcp?x-vercel-protection-bypass=<秘密>" --header "Authorization: Bearer <MCP_TOKEN>"
+claude mcp add --transport http life-record "https://<preview のホスト>/mcp" --header "x-vercel-protection-bypass: <秘密>" --header "Authorization: Bearer <MCP_TOKEN>"
 ```
 
 ### 鍵を替えるとき
