@@ -95,6 +95,7 @@ async function restoreTags(db: Executor, data: ExportData): Promise<Map<string, 
     const row = {
       name,
       color: tag?.color ?? null,
+      position: tag?.position ?? null,
       // 作られた時刻も書き出し側に合わせる。id だけは名前で突き合わせる都合上、
       // 取り込んだ先のものになる（どこからも参照されないので支障はない）
       ...(tag?.createdAt ? { createdAt: new Date(tag.createdAt) } : {}),

@@ -176,6 +176,12 @@ export const tags = pgTable(
     name: text('name').notNull(),
     /** 表示色。未設定は NULL（表示側は既定の色で出す）。 */
     color: tagColor('color'),
+    /**
+     * 一覧での並び順（小さいほど上）。NULL は並べ替えたことのないタグで、
+     * 並べたものの後ろに名前順で続く。新しく作られたタグも NULL から始まる
+     * （docs/09-tags.md 9.3「並べ替え」）。
+     */
+    position: integer('position'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

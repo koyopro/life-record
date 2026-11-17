@@ -266,6 +266,8 @@ Item を横断的に分類するためのタグ。詳細は [09-tags.md](09-tags
 |---|---|---|---|
 | id | UUID | Yes | タグID |
 | name | text | Yes | タグ名（小文字に正規化・一意） |
+| color | tag_color (enum) | No | 表示色。NULL は未設定 |
+| position | integer | No | 一覧での並び順。NULL は並べ替えたことのないタグ（名前順で後ろに続く） |
 | created_at | timestamptz | Yes | 作成日時 |
 
 ### item_tags
@@ -511,6 +513,8 @@ CREATE UNIQUE INDEX items_generated_from_uniq
 CREATE TABLE tags (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name       TEXT NOT NULL,
+  color      tag_color,
+  position   INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT tags_name_unique UNIQUE (name),
   CONSTRAINT tags_name_not_blank CHECK (length(btrim(name)) > 0),

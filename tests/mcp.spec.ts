@@ -54,6 +54,7 @@ describe('MCP サーバー', () => {
       'list_diaries',
       'list_items',
       'list_tags',
+      'reorder_tags',
       'search',
       'set_item_tags',
       'set_tag_colors',
@@ -199,6 +200,37 @@ describe('set_tag_colors', () => {
     })
     expect(result.isError).toBe(true)
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('reorder_tags', () => {
+  const tags = [
+    { id: 'a', name: 'self', color: 'rtm-orange', count: 1 },
+    { id: 'b', name: 'igo', color: 'rtm-amber-pale', count: 1 },
+    { id: 'c', name: 'theme', color: 'rtm-red', count: 1 },
+    { id: 'd', name: 'mon', color: null, count: 1 },
+  ]
+
+  it('色ごとにまとめた id の並びを送る', async () => {
+    const { api, calls } = fakeApi({ 'GET /api/tags': tags, 'POST /api/tags/reorder': [] })
+    const client = await connect(api)
+    await client.callTool({ name: 'reorder_tags', arguments: { byColor: true } })
+    expect(calls.at(-1)?.body).toEqual({ ids: ['c', 'a', 'b', 'd'] })
+  })
+
+  it('名前で指定したものを先頭に、残りは今の順で続ける', async () => {
+    const { api, calls } = fakeApi({ 'GET /api/tags': tags, 'POST /api/tags/reorder': [] })
+    const client = await connect(api)
+    await client.callTool({ name: 'reorder_tags', arguments: { names: ['mon', 'IGO'] } })
+    expect(calls.at(-1)?.body).toEqual({ ids: ['d', 'b', 'a', 'c'] })
+  })
+
+  it('無い名前があれば何も送らない', async () => {
+    const { api, calls } = fakeApi({ 'GET /api/tags': tags })
+    const client = await connect(api)
+    const result = await client.callTool({ name: 'reorder_tags', arguments: { names: ['nope'] } })
+    expect(result.isError).toBe(true)
+    expect(calls.every((c) => c.method === 'GET')).toBe(true)
   })
 })
 

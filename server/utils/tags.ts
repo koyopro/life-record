@@ -85,8 +85,9 @@ export async function listTagsWithCount(db: Executor) {
     .leftJoin(itemTags, eq(itemTags.tagId, tags.id))
     // 結合の条件で絞る。where で絞ると、未完了が0件のタグごと消える
     .leftJoin(items, and(eq(items.id, itemTags.itemId), isOpen()))
-    .groupBy(tags.id, tags.name, tags.color)
-    .orderBy(asc(tags.name))
+    .groupBy(tags.id, tags.name, tags.color, tags.position)
+    // 並べ替えたものを先に、まだ並べていないものはその後ろに名前順で続ける
+    .orderBy(sql`${tags.position} ASC NULLS LAST`, asc(tags.name))
 }
 
 /** 1つのタグに付いている未完了 Item の件数。リネーム（統合）の応答に使う。 */

@@ -7,6 +7,7 @@ import {
   type TagColor,
   type TagDto,
 } from '~~/shared/types/tag'
+import { moveInList, sortByColorGroup } from '~~/shared/utils/tag-order'
 
 /**
  * タグ一覧（docs/09-tags.md 9.3）。
@@ -15,7 +16,7 @@ import {
  * 入るための入口。`g` `s` は特定のタグへ直接移れる別の入口
  * （app.vue の GoToTagDialog）を使う。
  */
-const { tags, pending, colorOf, setColor, rename } = useTags()
+const { tags, pending, colorOf, setColor, rename, reorder } = useTags()
 
 useHead({ title: 'タグ' })
 
@@ -128,6 +129,75 @@ async function submitRename(tag: TagDto) {
   }
 }
 
+// --- 並べ替え（docs/09-tags.md 9.3「並べ替え」） ------------------------
+//
+// 並べ替えている間は、行を押しても絞り込みへ移らず、名前・色の変更も出さない。
+// 移動のボタンとリンクが同じ行に並ぶと、押し間違えて画面が変わるため。
+
+const sorting = ref(false)
+
+/** 手元集計（オフライン）のタグは id が本物でないので、並べ替えを送れない。 */
+const canSort = computed(() => tags.value.length > 1 && !tags.value.some((tag) => isLocalTag(tag.id)))
+
+function toggleSorting() {
+  sorting.value = !sorting.value
+  openColorId.value = null
+  renamingId.value = null
+}
+
+async function applyOrder(next: TagDto[]) {
+  errorMessage.value = null
+  try {
+    await reorder(next.map((tag) => tag.id))
+  } catch {
+    errorMessage.value = '並べ替えできませんでした'
+  }
+}
+
+function move(index: number, delta: -1 | 1) {
+  void applyOrder(moveInList(tags.value, index, index + delta))
+}
+
+/**
+ * 色ごとにまとめる。同じ色のタグどうしは今の並びのまま
+ * （shared/utils/tag-order.ts の sortByColorGroup）。
+ */
+function sortByColor() {
+  void applyOrder(sortByColorGroup(tags.value))
+}
+
+/*
+ * ドラッグでの並べ替え（マウス向け）。タッチではスクロールと取り合うので、
+ * 狭い画面では ↑↓ のボタンで動かす。
+ */
+const draggingIndex = ref<number | null>(null)
+const dropIndex = ref<number | null>(null)
+
+function onDragStart(event: DragEvent, index: number) {
+  draggingIndex.value = index
+  event.dataTransfer?.setData('text/plain', tags.value[index]?.name ?? '')
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+
+function onDragOver(event: DragEvent, index: number) {
+  if (draggingIndex.value === null) return
+  event.preventDefault()
+  dropIndex.value = index
+}
+
+function onDrop(index: number) {
+  const from = draggingIndex.value
+  draggingIndex.value = null
+  dropIndex.value = null
+  if (from === null || from === index) return
+  void applyOrder(moveInList(tags.value, from, index))
+}
+
+function onDragEnd() {
+  draggingIndex.value = null
+  dropIndex.value = null
+}
+
 /**
  * 色見本の並び。RTM と同じ 24 色（6 列 × 4 行）を先に出し、
  * それより前から使っている独自の色をその下に続ける。
@@ -141,7 +211,27 @@ function swatchStyle(color: TagColor) {
 
 <template>
   <div class="page">
-    <h1 class="page__title">タグ</h1>
+    <div class="page__header">
+      <h1 class="page__title">タグ</h1>
+      <button
+        v-if="canSort || sorting"
+        type="button"
+        class="page__sort"
+        :aria-pressed="sorting"
+        @click="toggleSorting"
+      >
+        {{ sorting ? '完了' : '並べ替え' }}
+      </button>
+    </div>
+
+    <div v-if="sorting" class="sortbar">
+      <button type="button" class="sortbar__button" :disabled="!canSort" @click="sortByColor">
+        色ごとに並べる
+      </button>
+      <p class="sortbar__note">
+        同じ色のタグは今の順のまま、色ごとにまとめます。↑↓ かドラッグで動かせます。
+      </p>
+    </div>
 
     <p v-if="errorMessage" class="page__error" role="alert">{{ errorMessage }}</p>
 
@@ -150,6 +240,59 @@ function swatchStyle(color: TagColor) {
     <p v-else-if="!tags.length" class="page__placeholder">
       タグはまだありません。タスクに <code>#タグ名</code> を付けるとここに並びます。
     </p>
+
+    <ul v-else-if="sorting" class="tags" aria-label="タグの並べ替え">
+      <li
+        v-for="(tag, index) in tags"
+        :key="tag.id"
+        class="tags__row"
+        :class="{
+          'tags__row--dragging': draggingIndex === index,
+          'tags__row--drop': dropIndex === index && draggingIndex !== index,
+        }"
+        :draggable="canSort"
+        @dragstart="onDragStart($event, index)"
+        @dragover="onDragOver($event, index)"
+        @drop.prevent="onDrop(index)"
+        @dragend="onDragEnd"
+      >
+        <div class="tags__main">
+          <div class="tags__item tags__item--sorting">
+            <span class="tags__name">
+              <span class="tags__handle" aria-hidden="true">⠿</span>
+              <span
+                class="tags__dot"
+                :style="{
+                  '--tag-color': tagColorVar(tag.color),
+                  '--tag-text': tagTextColorVar(tag.color),
+                }"
+                aria-hidden="true"
+              />
+              {{ tag.name }}
+            </span>
+            <span class="tags__count">{{ tag.count }}</span>
+          </div>
+          <button
+            type="button"
+            class="tags__control"
+            :disabled="!canSort || index === 0"
+            :aria-label="`「${tag.name}」を上へ`"
+            @click="move(index, -1)"
+          >
+            <span aria-hidden="true">↑</span>
+          </button>
+          <button
+            type="button"
+            class="tags__control"
+            :disabled="!canSort || index === tags.length - 1"
+            :aria-label="`「${tag.name}」を下へ`"
+            @click="move(index, 1)"
+          >
+            <span aria-hidden="true">↓</span>
+          </button>
+        </div>
+      </li>
+    </ul>
 
     <ul v-else class="tags">
       <li v-for="tag in tags" :key="tag.id" class="tags__row">
@@ -284,6 +427,76 @@ function swatchStyle(color: TagColor) {
 .page {
   display: grid;
   gap: 1rem;
+}
+
+.page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.page__sort {
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.page__sort[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.sortbar {
+  display: grid;
+  justify-items: start;
+  gap: 0.375rem;
+}
+
+.sortbar__button {
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sortbar__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.tags__item--sorting {
+  cursor: grab;
+  user-select: none;
+}
+
+.tags__handle {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.tags__row--dragging {
+  opacity: 0.4;
+}
+
+/* 落とす先の行。枠の色で、入る位置を示す */
+.tags__row--drop .tags__item {
+  border-color: var(--accent);
+}
+
+.tags__control:disabled {
+  opacity: 0.35;
 }
 
 .page__title {

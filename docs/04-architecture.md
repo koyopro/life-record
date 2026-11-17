@@ -153,6 +153,7 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 | GET | `/api/tags` | タグ一覧（Item 件数つき） |
 | PATCH | `/api/tags/:id` | タグのリネーム |
 | DELETE | `/api/tags/:id` | タグの削除 |
+| POST | `/api/tags/reorder` | タグの並べ替え（並び全体を id の配列で渡す） |
 | POST | `/api/sections` | Section 作成（id はサーバーが採番） |
 | PUT | `/api/sections/:id` | Section の upsert。**id はクライアントが決める**（オフラインで書いた記録を、繋がってからそのまま送るため。docs/12-offline.md 12.6） |
 | PATCH | `/api/sections/:id` | Section の部分更新（本文・日付） |

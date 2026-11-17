@@ -36,6 +36,8 @@ export interface ExportedTag {
   id: string
   name: string
   color: TagColor | null
+  /** 一覧での並び順。並べていなければ null。古い書き出しには無い。 */
+  position?: number | null
   createdAt: string
 }
 

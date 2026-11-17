@@ -58,6 +58,7 @@ export function buildExport(rows: ExportRows, exportedAt: Date): ExportData {
       id: tag.id,
       name: tag.name,
       color: tag.color,
+      position: tag.position,
       createdAt: tag.createdAt.toISOString(),
     })),
     icons: rows.icons.map((icon) => ({

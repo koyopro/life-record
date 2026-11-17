@@ -1,4 +1,5 @@
 import type { TagColor, TagDto } from '~~/shared/types/tag'
+import { orderByNames } from '~~/shared/utils/tag-order'
 
 /**
  * 直近に取れたタグの色を控えておく場所（名前 → 色）。
@@ -12,6 +13,14 @@ import type { TagColor, TagDto } from '~~/shared/types/tag'
  * （docs/15-client-state.md 14.4）。
  */
 const COLORS_STORAGE_KEY = 'datalake:tag-colors'
+
+/**
+ * 直近に取れたタグの並び（名前の配列）。色と同じく、取得が終わるまでの
+ * 手元集計を、並べ替えた順で出すための控え（docs/09-tags.md 9.3「並べ替え」）。
+ */
+const ORDER_STORAGE_KEY = 'datalake:tag-order'
+
+let lastRememberedOrder: string | null = null
 
 /**
  * 最後に控えた内容。
@@ -45,13 +54,18 @@ export function useTags() {
     () => ({}),
   )
 
+  /** 覚えている並び（名前の配列）。取得が終わるまでの間だけ使う。 */
+  const rememberedOrder = useState<string[]>('tags:remembered-order', () => [])
+
   onMounted(() => {
     if (Object.keys(rememberedColors.value).length > 0) return
     try {
       const raw = localStorage.getItem(COLORS_STORAGE_KEY)
       if (raw) rememberedColors.value = JSON.parse(raw) as Record<string, TagColor | null>
+      const order = localStorage.getItem(ORDER_STORAGE_KEY)
+      if (order) rememberedOrder.value = JSON.parse(order) as string[]
     } catch {
-      // 読めない環境（プライベートブラウズなど）では、取得が終わるまで既定の色
+      // 読めない環境（プライベートブラウズなど）では、取得が終わるまで既定の色・名前順
     }
   })
 
@@ -79,18 +93,53 @@ export function useTags() {
     const list = data.value ?? []
     if (!error.value && list.length > 0) return list
 
-    // 色だけは覚えているものを重ねる。件数は手元の Item から数えたほうが新しい
-    return local.value.map((tag) => ({
-      ...tag,
-      color: rememberedColors.value[tag.name] ?? null,
-    }))
+    // 色と並びは覚えているものを重ねる。件数は手元の Item から数えたほうが新しい
+    return orderByNames(
+      local.value.map((tag) => ({
+        ...tag,
+        color: rememberedColors.value[tag.name] ?? null,
+      })),
+      rememberedOrder.value,
+    )
   })
 
   /*
    * この端末で直した色は、届いた内容より優先する。取りに行った後に直すと、
    * その応答が後から届いて直す前に戻るため（docs/15-client-state.md 14.2 の 4）。
    */
-  const { list: tags, edit, revert } = useLocalEdits<TagDto>('tags', fetched)
+  const { list: edited, edit, revert } = useLocalEdits<TagDto>('tags', fetched)
+
+  /**
+   * この端末で並べ替えた順（id の配列）。送っている間と、届いた一覧が
+   * その順に追いつくまでの間だけ持つ。色と同じく、並べ替える前に出した
+   * 取得の応答が後から届いて、元の並びへ戻って見えるのを防ぐ
+   * （docs/15-client-state.md 14.2）。
+   */
+  const orderOverride = useState<string[] | null>('tags:order-override', () => null)
+
+  const tags = computed<TagDto[]>(() => {
+    const override = orderOverride.value
+    if (!override) return edited.value
+    const rank = new Map(override.map((id, index) => [id, index]))
+    // 並べ替えた後に現れたタグは、届いた並びのまま後ろに置く
+    return edited.value
+      .map((tag, index) => ({ tag, index }))
+      .sort(
+        (a, b) =>
+          (rank.get(a.tag.id) ?? override.length + a.index) -
+          (rank.get(b.tag.id) ?? override.length + b.index),
+      )
+      .map(({ tag }) => tag)
+  })
+
+  // 届いた一覧が並べ替えた順に追いついたら、手元の順は手放す
+  watch(edited, (list) => {
+    const override = orderOverride.value
+    if (!override) return
+    const arrived = list.map((tag) => tag.id).filter((id) => override.includes(id))
+    const expected = override.filter((id) => arrived.includes(id))
+    if (arrived.every((id, index) => id === expected[index])) orderOverride.value = null
+  })
 
   // 取れたら控え直す。次のリロードで最初から色を出せるようにする
   watch(
@@ -100,6 +149,17 @@ export function useTags() {
 
       const next: Record<string, TagColor | null> = {}
       for (const tag of list) next[tag.name] = tag.color
+
+      const order = JSON.stringify(list.map((tag) => tag.name))
+      if (order !== lastRememberedOrder) {
+        lastRememberedOrder = order
+        rememberedOrder.value = list.map((tag) => tag.name)
+        try {
+          localStorage.setItem(ORDER_STORAGE_KEY, order)
+        } catch {
+          // 書けなくても、その回の表示は変わらない
+        }
+      }
 
       const json = JSON.stringify(next)
       if (json === lastRememberedColors) return
@@ -178,5 +238,29 @@ export function useTags() {
     return updated
   }
 
-  return { tags, pending, refresh, suggest, colorOf, setColor, rename }
+  /**
+   * タグを並べ替える（docs/09-tags.md 9.3「並べ替え」）。並び全体を id で渡す。
+   *
+   * 色と同じく、応答を待たずに手元の並びを変える。並べ替えは続けて何度も
+   * 押す操作なので、1回ごとに往復を待つと押した行がその場に留まって見える。
+   * 送れなかったら元の並びへ戻し、呼んだ側が知らせられるよう投げ直す。
+   */
+  async function reorder(ids: string[]) {
+    const before = orderOverride.value
+    orderOverride.value = ids
+
+    try {
+      const list = await $fetch<TagDto[]>('/api/tags/reorder', {
+        method: 'POST',
+        body: { ids },
+      })
+      // 続けて並べ替えていたら、後の操作の応答に任せる
+      if (orderOverride.value === ids) data.value = list
+    } catch (e) {
+      if (orderOverride.value === ids) orderOverride.value = before
+      throw e
+    }
+  }
+
+  return { tags, pending, refresh, suggest, colorOf, setColor, rename, reorder }
 }

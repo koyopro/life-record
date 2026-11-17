@@ -7,6 +7,7 @@ import type { Fetched } from '../../shared/types/fetched'
 import type { SearchHit } from '../../shared/types/search'
 import { RTM_TAG_COLORS, TAG_COLORS, normalizeTagName, type TagDto } from '../../shared/types/tag'
 import { APP_TIME_ZONE, toAppDate } from '../../shared/utils/date'
+import { orderByNames, sortByColorGroup } from '../../shared/utils/tag-order'
 
 /**
  * Claude から読み書きするための MCP サーバー（docs/18-mcp.md）。
@@ -258,11 +259,46 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
     'list_tags',
     {
       title: 'タグ一覧',
-      description: 'タグの一覧（タスクの件数つき）。',
+      description: 'タグの一覧（未完了のタスクの件数つき）。画面と同じ並び順で返す。',
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
     () => run(() => api('/api/tags')),
+  )
+
+  server.registerTool(
+    'reorder_tags',
+    {
+      title: 'タグを並べ替える',
+      description: [
+        'タグ一覧の並び順を変える。names に並べたい順でタグ名を渡すと、その順で先頭に置き、',
+        '渡さなかったタグは今の順のまま後ろに続く。byColor=true なら色ごとにまとめる',
+        '（色相順、同じ色相は濃い色→淡い色、色なしは最後。同じ色どうしは今の順を保つ）。',
+        '両方を指定すると、names で並べた後に色ごとにまとめる。',
+      ].join(''),
+      inputSchema: {
+        names: z.array(z.string()).optional(),
+        byColor: z.boolean().optional(),
+      },
+      annotations: { idempotentHint: true },
+    },
+    ({ names, byColor }) =>
+      run(async () => {
+        if (!names?.length && !byColor) throw new Error('names か byColor を指定してください')
+        const current = await api<TagDto[]>('/api/tags')
+        let next = current
+        if (names?.length) {
+          const unknown = names.filter((name) => !current.some((t) => t.name === (normalizeTagName(name) ?? name)))
+          if (unknown.length) throw new Error(`タグが見つかりません: ${unknown.join(', ')}`)
+          next = orderByNames(next, names.map((name) => normalizeTagName(name) ?? name))
+        }
+        if (byColor) next = sortByColorGroup(next)
+        const saved = await api<TagDto[]>('/api/tags/reorder', {
+          method: 'POST',
+          body: { ids: next.map((tag) => tag.id) },
+        })
+        return saved.map((tag) => ({ name: tag.name, color: tag.color }))
+      }),
   )
 
   server.registerTool(
