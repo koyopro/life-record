@@ -3,6 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { ITEM_STATUSES, type ItemDetailDto, type ItemDto } from '../../shared/types/item'
 import type { DiaryDetailDto, DiaryDto, DiarySummaryDto } from '../../shared/types/diary'
+import type { Fetched } from '../../shared/types/fetched'
 import type { SearchHit } from '../../shared/types/search'
 import { APP_TIME_ZONE, toAppDate } from '../../shared/utils/date'
 
@@ -157,7 +158,7 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
     },
     ({ status, open, dueToday, tag, untagged, limit }) =>
       run(async () => {
-        const items = await api<ItemDto[]>('/api/items', {
+        const { data: items } = await api<Fetched<ItemDto[]>>('/api/items', {
           query: {
             status,
             open: open ? 'true' : undefined,
@@ -181,7 +182,8 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
     },
     ({ id }) =>
       run(async () => {
-        const { dueAt, dueHasTime, ...item } = await api<ItemDetailDto>(`/api/items/${id}`)
+        const { data } = await api<Fetched<ItemDetailDto>>(`/api/items/${id}`)
+        const { dueAt, dueHasTime, ...item } = data
         return { ...item, due: formatDue(dueAt, dueHasTime) }
       }),
   )
@@ -277,7 +279,7 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
     ({ itemId, body, date }) =>
       run(async () => {
         const day = date ?? today
-        const item = await api<ItemDetailDto>(`/api/items/${itemId}`)
+        const { data: item } = await api<Fetched<ItemDetailDto>>(`/api/items/${itemId}`)
         // 同じ日に複数あるときは最後の1件が当日の枠（docs/03-functional-spec.md 3.2）
         const existing = item.sections.filter((s) => s.date === day).at(-1)
         if (existing) {
@@ -316,8 +318,8 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
     },
     ({ date }) =>
       run(async () => {
-        const diary = await api<DiaryDetailDto>(`/api/diaries/${date ?? today}`)
-        return diary
+        const { data } = await api<Fetched<DiaryDetailDto>>(`/api/diaries/${date ?? today}`)
+        return data
       }),
   )
 
@@ -354,7 +356,7 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
         const day = date ?? today
         let next = body
         if ((mode ?? 'append') === 'append') {
-          const current = await api<DiaryDetailDto>(`/api/diaries/${day}`)
+          const { data: current } = await api<Fetched<DiaryDetailDto>>(`/api/diaries/${day}`)
           next = appendText(current.body, body)
         }
         return await api<DiaryDto>(`/api/diaries/${day}`, { method: 'PUT', body: { body: next } })

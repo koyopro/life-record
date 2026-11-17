@@ -11,6 +11,11 @@ interface Call {
   body?: unknown
 }
 
+/** 取り直しの時刻つきで返す API の応答（server/utils/fetched.ts）。 */
+function fetched<T>(data: T) {
+  return { fetchedAt: '2026-11-17T01:00:00.000Z', data }
+}
+
 /** API の代わり。呼ばれた内容を控え、パスごとの応答を返す。 */
 function fakeApi(responses: Record<string, unknown>) {
   const calls: Call[] = []
@@ -64,12 +69,12 @@ describe('MCP サーバー', () => {
 
   it('作業記録は、その日の記録があれば追記する', async () => {
     const { api, calls } = fakeApi({
-      'GET /api/items/11111111-1111-4111-8111-111111111111': {
+      'GET /api/items/11111111-1111-4111-8111-111111111111': fetched({
         sections: [
           { id: 's1', date: '2026-11-16', body: '昨日' },
           { id: 's2', date: '2026-11-17', body: '朝の作業\n' },
         ],
-      },
+      }),
       'PATCH /api/sections/s2': { id: 's2' },
     })
     const client = await connect(api)
@@ -87,7 +92,7 @@ describe('MCP サーバー', () => {
 
   it('作業記録は、その日の記録が無ければ作る', async () => {
     const { api, calls } = fakeApi({
-      'GET /api/items/11111111-1111-4111-8111-111111111111': { sections: [] },
+      'GET /api/items/11111111-1111-4111-8111-111111111111': fetched({ sections: [] }),
       'POST /api/sections': { id: 'new' },
     })
     const client = await connect(api)
@@ -104,7 +109,7 @@ describe('MCP サーバー', () => {
 
   it('日記は既定で書き足す', async () => {
     const { api, calls } = fakeApi({
-      'GET /api/diaries/2026-11-17': { body: '朝' },
+      'GET /api/diaries/2026-11-17': fetched({ body: '朝' }),
       'PUT /api/diaries/2026-11-17': { date: '2026-11-17', body: '朝\n夜' },
     })
     const client = await connect(api)
@@ -147,7 +152,7 @@ describe('MCP サーバー', () => {
       tags: [],
       recurrenceRule: null,
     }))
-    const client = await connect(fakeApi({ 'GET /api/items': items }).api)
+    const client = await connect(fakeApi({ 'GET /api/items': fetched(items) }).api)
     const result = await client.callTool({ name: 'list_items', arguments: { open: true } })
     const parsed = JSON.parse(textOf(result))
     expect(parsed.total).toBe(60)
