@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RTM_TAG_COLORS, TAG_COLORS, type TagColor } from '~~/shared/types/tag'
+import { PICKER_TAG_COLORS, TAG_COLORS, type TagColor } from '~~/shared/types/tag'
 import {
   TAG_COLOR_SORT_ORDER,
   moveInList,
@@ -18,9 +18,9 @@ describe('sortByColorGroup', () => {
       tag('red-pale', 'rtm-red-pale'),
       tag('blue', 'rtm-blue'),
       tag('red', 'rtm-red'),
-      tag('legacy', 'teal'),
+      tag('teal', 'teal'),
     ])
-    expect(sorted.map((t) => t.name)).toEqual(['red', 'red-pale', 'blue', 'blue-pale', 'legacy', 'none'])
+    expect(sorted.map((t) => t.name)).toEqual(['red', 'red-pale', 'teal', 'blue', 'blue-pale', 'none'])
   })
 
   it('同じ色どうしは今の並びを保つ', () => {
@@ -35,7 +35,11 @@ describe('sortByColorGroup', () => {
 
   it('すべての色に順番がある', () => {
     expect([...TAG_COLOR_SORT_ORDER].sort()).toEqual([...TAG_COLORS].sort())
-    expect(TAG_COLOR_SORT_ORDER.slice(0, RTM_TAG_COLORS.length).every((c) => c.startsWith('rtm-'))).toBe(true)
+  })
+
+  it('色見本に出す色は、色見本と同じ順に並ぶ', () => {
+    const picked = TAG_COLOR_SORT_ORDER.filter((c) => (PICKER_TAG_COLORS as readonly string[]).includes(c))
+    expect(picked).toEqual([...PICKER_TAG_COLORS])
   })
 })
 

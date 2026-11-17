@@ -1,4 +1,4 @@
-import { LEGACY_TAG_COLORS, type TagColor } from '../types/tag'
+import type { TagColor } from '../types/tag'
 
 /**
  * タグの並べ替え（docs/09-tags.md 9.3「並べ替え」）。
@@ -7,29 +7,25 @@ import { LEGACY_TAG_COLORS, type TagColor } from '../types/tag'
 /**
  * 「色ごとに並べる」ときの色の順。
  *
- * 色相の順（赤 → 橙 → 黄 → 緑 → 青 → 紫）に並べ、同じ色相では濃い色を
- * 淡い色の前に置く。濃い色を親のタグ、淡い色をその下の細かいタグに
- * 使い分けたとき、親が先に来るようにするため。
- * RTM の色見本を持つ前の独自の色はその後ろ、色なしは最後。
+ * 色見本（PICKER_TAG_COLORS）と同じ色相の順（赤 → 橙 → 黄 → 緑 → 青 → 紫 → 茶 → 灰）。
+ * 色見本から外した色は、見た目の近い色のすぐ後ろに置く。淡い色は対になる濃い色の後ろ。
+ * 濃い色を親のタグ、淡い色をその下の細かいタグに使い分けたとき、親が先に来るようにするため。
+ * 色なしは最後。
  */
-const RTM_HUES = [
-  'red',
-  'orange',
-  'amber',
-  'gold',
-  'olive',
-  'green',
-  'forest',
-  'sky',
-  'blue',
-  'navy',
-  'purple',
-  'mauve',
-] as const
-
 export const TAG_COLOR_SORT_ORDER: readonly TagColor[] = [
-  ...RTM_HUES.flatMap((hue) => [`rtm-${hue}`, `rtm-${hue}-pale`] as TagColor[]),
-  ...LEGACY_TAG_COLORS,
+  'rtm-red', 'rtm-red-pale', 'red',
+  'rtm-orange', 'rtm-orange-pale', 'orange', 'rtm-amber', 'rtm-amber-pale',
+  'yellow', 'rtm-gold', 'rtm-gold-pale',
+  'rtm-olive', 'rtm-olive-pale', 'olive',
+  'rtm-green', 'rtm-green-pale', 'green', 'rtm-forest', 'rtm-forest-pale',
+  'teal',
+  'blue', 'rtm-sky', 'rtm-sky-pale',
+  'rtm-blue', 'rtm-blue-pale', 'rtm-navy', 'rtm-navy-pale', 'indigo',
+  'rtm-purple', 'rtm-purple-pale', 'purple',
+  'pink',
+  'rtm-mauve', 'rtm-mauve-pale',
+  'brown',
+  'gray',
 ]
 
 function colorRank(color: TagColor | null): number {

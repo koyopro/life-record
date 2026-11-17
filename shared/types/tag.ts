@@ -67,13 +67,36 @@ export const LEGACY_TAG_COLORS = [
 export const TAG_COLORS = [...RTM_TAG_COLORS, ...LEGACY_TAG_COLORS] as const
 
 /**
- * 色見本に出す色。RTM の淡い色（`-pale`、色見本の 1 段目と 3 段目）は出さない。
+ * 色見本に出す色と、その並び（色相の順）。docs/09-tags.md「タグの色」。
  *
- * 淡い色どうしは、特に暗い背景の上でどれもクリーム色に見えて見分けが付かず、
- * 色分けの役に立たないため（docs/09-tags.md「タグの色」）。enum からは消せないし、
- * 取り込んだタグには付いていることがあるので、値としては受け付けたまま残す。
+ * どの2色も、明暗どちらの背景の上でもはっきり見分けられるものだけに絞る
+ * （CIEDE2000 の色差で、どの組も 19 以上）。外したのは次の色。
+ *
+ * - RTM の淡い色（`-pale`）: どれもクリーム色に見えて見分けが付かない
+ * - `rtm-amber` `rtm-gold`: 茶色っぽく、橙・黄・olive と紛れる（黄色は `yellow` を使う）
+ * - `rtm-sky` `rtm-navy` `rtm-forest`: それぞれ青・紫・olive と紛れる
+ * - 独自の `red` `orange` `olive` `green` `indigo`: RTM の同じ系統の色と紛れる
+ *
+ * 外した色も enum からは消せず、付いているタグもあるので、値としては
+ * 受け付けたまま残す。独自の色の名前は値と一致しないものがある
+ * （`blue` は水色、`purple` は藤紫）。色を見分けやすく振り直したため。
  */
-export const PICKER_TAG_COLORS = TAG_COLORS.filter((color) => !color.endsWith('-pale'))
+export const PICKER_TAG_COLORS = [
+  'rtm-red',
+  'rtm-orange',
+  'yellow',
+  'rtm-olive',
+  'rtm-green',
+  'teal',
+  'blue',
+  'rtm-blue',
+  'rtm-purple',
+  'purple',
+  'pink',
+  'rtm-mauve',
+  'brown',
+  'gray',
+] as const satisfies readonly TagColor[]
 
 export type TagColor = (typeof TAG_COLORS)[number]
 
@@ -95,7 +118,9 @@ export interface TagColorSwatch {
  *
  * RTM の 24 色は明暗どちらでも RTM と同じ見え方にするため、
  * light-dark() を使わず 16 進の値をそのまま使う。
- * 独自の 12 色は明暗で振る値なので、ここにはライト側の値を置く。
+ * 独自の 12 色のうち、色見本に出す 7 色（PICKER_TAG_COLORS）も明暗で振らない
+ * （明暗で値が変わると、見分けやすさを片方でしか確かめられないため）。
+ * 色見本に出さない残りは明暗で振る値なので、ここにはライト側の値を置く。
  */
 export const TAG_COLOR_SWATCHES: Record<TagColor, TagColorSwatch> = {
   'rtm-sky-pale': { background: '#d6e6f6', foreground: '#337fcc' },
@@ -124,16 +149,16 @@ export const TAG_COLOR_SWATCHES: Record<TagColor, TagColorSwatch> = {
   'rtm-forest': { background: '#006633', foreground: '#f1f5ec' },
   red: { background: '#c94f4f', foreground: '#ffffff' },
   orange: { background: '#c17a2e', foreground: '#ffffff' },
-  yellow: { background: '#a8891f', foreground: '#ffffff' },
+  yellow: { background: '#f2c400', foreground: '#1c1b17' },
   olive: { background: '#7c8a3c', foreground: '#ffffff' },
   green: { background: '#3f8f5f', foreground: '#ffffff' },
-  teal: { background: '#2f8f88', foreground: '#ffffff' },
-  blue: { background: '#3f7bc9', foreground: '#ffffff' },
+  teal: { background: '#00a8a0', foreground: '#1c1b17' },
+  blue: { background: '#3fb8ec', foreground: '#1c1b17' },
   indigo: { background: '#5a5fc7', foreground: '#ffffff' },
-  purple: { background: '#8a5fc7', foreground: '#ffffff' },
-  pink: { background: '#c75f96', foreground: '#ffffff' },
-  brown: { background: '#8a6a4a', foreground: '#ffffff' },
-  gray: { background: '#7c7c74', foreground: '#ffffff' },
+  purple: { background: '#a98af0', foreground: '#1c1b17' },
+  pink: { background: '#e8489a', foreground: '#1c1b17' },
+  brown: { background: '#7a4a28', foreground: '#ffffff' },
+  gray: { background: '#9b9b94', foreground: '#1c1b17' },
 }
 
 /**

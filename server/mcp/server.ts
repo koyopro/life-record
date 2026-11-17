@@ -308,7 +308,7 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
       description: [
         'タグの色をまとめて変える。タグは名前で指定し、無い名前は作らずにエラーとして返す。',
         `使う色: ${PICKER_TAG_COLORS.join(', ')}。`,
-        '淡い色（-pale）は似ていて見分けが付かないので使わない（受け付けはする）。',
+        '（色相の順。blue は水色、purple は藤紫、yellow ははっきりした黄色）。これ以外の色は似ていて見分けが付かないので使わない（受け付けはする）。',
         'null で色を外す（未設定に戻す）。',
       ].join(''),
       inputSchema: {

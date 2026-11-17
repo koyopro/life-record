@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   LEGACY_TAG_COLORS,
+  PICKER_TAG_COLORS,
   RTM_TAG_COLORS,
   rtmTagColorFromHex,
   TAG_COLOR_SWATCHES,
@@ -20,6 +21,19 @@ const css = readFileSync(resolve('app/assets/css/main.css'), 'utf8')
 function cssVar(name: string): string | null {
   const match = css.match(new RegExp(`^\\s*--${name}:\\s*(.+?);`, 'm'))
   return match ? match[1]!.trim() : null
+}
+
+/** WCAG のコントラスト比。 */
+function contrast(a: string, b: string): number {
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+  }
+  const [dark, light] = [luminance(a), luminance(b)].sort((x, y) => x - y)
+  return (light! + 0.05) / (dark! + 0.05)
 }
 
 describe('タグの色見本', () => {
@@ -52,8 +66,18 @@ describe('タグの色見本', () => {
     }
   })
 
-  it('独自の 12 色は白文字で読ませる前提のまま', () => {
-    for (const color of LEGACY_TAG_COLORS) {
+  it('色見本に出す独自の色は、明暗で値を変えず、文字が読める濃さの組にする', () => {
+    for (const color of PICKER_TAG_COLORS.filter((c) => (LEGACY_TAG_COLORS as readonly string[]).includes(c))) {
+      const swatch = TAG_COLOR_SWATCHES[color]
+      expect(cssVar(`tag-${color}`), color).toBe(swatch.background)
+      expect(cssVar(`tag-${color}-fg`), `${color} の文字色`).toBe(swatch.foreground)
+      // WCAG の AA（4.5）を満たす
+      expect(contrast(swatch.background, swatch.foreground), color).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('色見本に出さない独自の色は、白文字で読ませる前提のまま', () => {
+    for (const color of LEGACY_TAG_COLORS.filter((c) => !(PICKER_TAG_COLORS as readonly string[]).includes(c))) {
       expect(TAG_COLOR_SWATCHES[color].foreground).toBe('#ffffff')
     }
   })

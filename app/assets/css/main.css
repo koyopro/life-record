@@ -85,33 +85,37 @@
   --tag-rtm-forest: #006633;
   --tag-rtm-forest-fg: #f1f5ec;
   /*
-   * RTM の色見本を持つ前から使っている独自の 12 色。白文字で読める濃さに
-   * そろえてあるので、文字色はどれも白。暗い側は背景に沈むので明るく振る。
+   * RTM の色見本を持つ前から使っている独自の 12 色。
+   *
+   * 色見本に出す 7 色（yellow / teal / blue / purple / pink / brown / gray、
+   * shared/types/tag.ts の PICKER_TAG_COLORS）は、RTM の色と見分けやすい値に
+   * 振り直してあり、明暗で値を変えない。明るい色には濃い文字を乗せる。
+   * 残りは色見本に出さない古い値で、暗い側は背景に沈むので明るく振る。
    */
   --tag-red: light-dark(#c94f4f, color-mix(in srgb, #c94f4f 80%, white));
   --tag-red-fg: #ffffff;
   --tag-orange: light-dark(#c17a2e, color-mix(in srgb, #c17a2e 80%, white));
   --tag-orange-fg: #ffffff;
-  --tag-yellow: light-dark(#a8891f, color-mix(in srgb, #a8891f 80%, white));
-  --tag-yellow-fg: #ffffff;
+  --tag-yellow: #f2c400;
+  --tag-yellow-fg: #1c1b17;
   --tag-olive: light-dark(#7c8a3c, color-mix(in srgb, #7c8a3c 80%, white));
   --tag-olive-fg: #ffffff;
   --tag-green: light-dark(#3f8f5f, color-mix(in srgb, #3f8f5f 80%, white));
   --tag-green-fg: #ffffff;
-  --tag-teal: light-dark(#2f8f88, color-mix(in srgb, #2f8f88 80%, white));
-  --tag-teal-fg: #ffffff;
-  --tag-blue: light-dark(#3f7bc9, color-mix(in srgb, #3f7bc9 80%, white));
-  --tag-blue-fg: #ffffff;
+  --tag-teal: #00a8a0;
+  --tag-teal-fg: #1c1b17;
+  --tag-blue: #3fb8ec;
+  --tag-blue-fg: #1c1b17;
   --tag-indigo: light-dark(#5a5fc7, color-mix(in srgb, #5a5fc7 80%, white));
   --tag-indigo-fg: #ffffff;
-  --tag-purple: light-dark(#8a5fc7, color-mix(in srgb, #8a5fc7 80%, white));
-  --tag-purple-fg: #ffffff;
-  --tag-pink: light-dark(#c75f96, color-mix(in srgb, #c75f96 80%, white));
-  --tag-pink-fg: #ffffff;
-  --tag-brown: light-dark(#8a6a4a, color-mix(in srgb, #8a6a4a 80%, white));
+  --tag-purple: #a98af0;
+  --tag-purple-fg: #1c1b17;
+  --tag-pink: #e8489a;
+  --tag-pink-fg: #1c1b17;
+  --tag-brown: #7a4a28;
   --tag-brown-fg: #ffffff;
-  --tag-gray: light-dark(#7c7c74, color-mix(in srgb, #7c7c74 80%, white));
-  --tag-gray-fg: #ffffff;
+  --tag-gray: #9b9b94;
+  --tag-gray-fg: #1c1b17;
   --tag-default: light-dark(#9a9a90, #55544c);
   --tag-default-fg: #ffffff;
   /*
