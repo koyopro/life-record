@@ -52,18 +52,18 @@ export function amazonIntakeUrl(
   }
   params.set('smart', `${tags.map((tag) => `#${tag}`).join(' ')} ^なし`)
 
-  // メモには画像だけを入れる。Scrapbox の画像記法（角括弧の URL）で、
-  // 1行に1枚（docs/11-scrapbox-notation.md 11.7）
-  const images = findImages()
-  const note = images.map((src) => `[${src}]`).join('\n')
-  if (note) params.set('note', note)
-
-  // 本文（2行目以降。作業記録になる）には、1枚目の画像と商品紹介文を入れる。
-  // 一覧のカードに出る抜粋は本文なので、何の商品か一目で分かるようにする
-  const body = [images[0] ? `[${images[0]}]` : '', findDescription()]
+  /*
+   * 画像と商品紹介文は、すべてメモに入れる。画像は Scrapbox の画像記法
+   * （角括弧の URL）で1行に1枚（docs/11-scrapbox-notation.md 11.7）、
+   * その下に紹介文を続ける。
+   *
+   * 本文（作業記録）には入れない。作業記録は日付を持ち、取り込んだ日の
+   * 日記に出てしまう。本の説明は「その日にやったこと」ではない。
+   */
+  const note = [...findImages().map((src) => `[${src}]`), findDescription()]
     .filter(Boolean)
     .join('\n')
-  if (body) params.set('text', body)
+  if (note) params.set('note', note)
 
   /*
    * 空白は `+` ではなく `%20` にする。

@@ -329,19 +329,25 @@ describe('amazonIntakeUrl', () => {
     expect(intake?.title).toBe('リーダブルコード : 著者: 本')
   })
 
-  describe('本文（1枚目の画像と商品紹介文）', () => {
+  describe('メモ（画像と商品紹介文）', () => {
     const HREF = 'https://www.amazon.co.jp/dp/B06XC33Q6S'
     const IMAGE =
       '<img id="landingImage" data-old-hires="https://m.media-amazon.com/images/I/71ct-MqaFBL._SL1442_.jpg">'
 
-    /** 受け口に渡した本文（`text`）。 */
+    /** 受け口に渡したメモ（`note`）。 */
     function bodyOf(html: string): string | null {
+      const url = amazonIntakeUrl(ORIGIN, productPage(html), HREF)
+      return url ? new URL(url).searchParams.get('note') : null
+    }
+
+    /** 受け口に渡した本文（`text`）。作業記録になるもの。 */
+    function textOf(html: string): string | null {
       const url = amazonIntakeUrl(ORIGIN, productPage(html), HREF)
       return url ? new URL(url).searchParams.get('text') : null
     }
 
-    it('1枚目の画像をリンク記法で入れ、その下に商品紹介文を続ける', () => {
-      const body = bodyOf(`
+    it('画像を1行に1枚入れ、その下に商品紹介文を続ける。本文には入れない', () => {
+      const html = `
         <span id="productTitle">本</span>
         ${IMAGE}
         <div id="altImages"><img src="https://m.media-amazon.com/images/I/Other._SS40_.jpg"></div>
@@ -349,12 +355,14 @@ describe('amazonIntakeUrl', () => {
           <div class="a-expander-content"><span>読みやすいコードを書くための<br>実践的な指針。</span></div>
           <a>続きを読む</a>
         </div>
-      `)
-
-      expect(body).toBe(
+      `
+      // 作業記録は日記に出るので、本の説明は入れない
+      expect(textOf(html)).toBeNull()
+      expect(bodyOf(html)).toBe(
         [
-          // 大きさの指定（._SL1442_）は、メモの画像と同じく外して原寸にする
+          // 大きさの指定（._SL1442_）は外して原寸にする
           '[https://m.media-amazon.com/images/I/71ct-MqaFBL.jpg]',
+          '[https://m.media-amazon.com/images/I/Other.jpg]',
           '読みやすいコードを書くための',
           '実践的な指針。',
         ].join('\n'),
@@ -393,7 +401,7 @@ describe('amazonIntakeUrl', () => {
       expect(body).toBe(`${'あ'.repeat(1000)}…`)
     })
 
-    it('画像も紹介文も無ければ、本文は渡さない', () => {
+    it('画像も紹介文も無ければ、メモは渡さない', () => {
       expect(bodyOf('<span id="productTitle">本</span>')).toBeNull()
     })
   })
