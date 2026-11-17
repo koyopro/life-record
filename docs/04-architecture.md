@@ -171,6 +171,9 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 
 すべてのエンドポイントで認証を必須とする（Vercel の Deployment Protection による）。
 
+Claude から読み書きするための MCP エンドポイント（`/mcp`）も持つ。中身はこれらの API を
+呼ぶだけで、認証は別に鍵を確かめる（[16-mcp.md](16-mcp.md)）。
+
 ### エラー応答
 
 エラーメッセージは `createError` の **`message`** に入れる。`statusMessage` は
@@ -268,8 +271,10 @@ IAM ユーザーを作成し、対象バケットへの最小権限（`s3:PutObj
 | `S3_BUCKET` | バケット名 |
 | `AWS_ACCESS_KEY_ID` | S3 用 IAM アクセスキー |
 | `AWS_SECRET_ACCESS_KEY` | S3 用 IAM シークレット |
+| `MCP_TOKEN` | Claude から `/mcp` に繋ぐための鍵。未設定なら `/mcp` は無効（[16-mcp.md](16-mcp.md)） |
 
-認証は Vercel の Deployment Protection で行うため、アプリケーション用の認証関連の環境変数は持たない。
+認証は Vercel の Deployment Protection で行うため、アプリケーション用の認証関連の環境変数は
+`MCP_TOKEN`（Claude からの接続専用）のほかは持たない。
 
 Vercel のプロジェクト設定で管理し、リポジトリにはコミットしない。
 
