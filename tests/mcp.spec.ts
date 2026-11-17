@@ -56,6 +56,7 @@ describe('MCP サーバー', () => {
       'list_tags',
       'search',
       'set_item_tags',
+      'set_tag_colors',
       'update_item',
       'update_work_log',
       'write_diary',
@@ -158,6 +159,46 @@ describe('MCP サーバー', () => {
     expect(parsed.total).toBe(60)
     expect(parsed.items).toHaveLength(50)
     expect(parsed.items[0].excerpt).toHaveLength(200)
+  })
+})
+
+describe('set_tag_colors', () => {
+  it('名前で引いて色を変え、無い名前はエラーとして返す', async () => {
+    const { api, calls } = fakeApi({
+      'GET /api/tags': [
+        { id: 't1', name: '本', color: null, count: 5 },
+        { id: 't2', name: 'want', color: null, count: 0 },
+      ],
+      'PATCH /api/tags/t1': { id: 't1', name: '本', color: 'rtm-olive-pale', count: 5 },
+    })
+    const client = await connect(api)
+    const result = await client.callTool({
+      name: 'set_tag_colors',
+      arguments: {
+        changes: [
+          { name: '本', color: 'rtm-olive-pale' },
+          { name: '無いタグ', color: 'rtm-red' },
+        ],
+      },
+    })
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      { path: '/api/tags/t1', method: 'PATCH', query: undefined, body: { color: 'rtm-olive-pale' } },
+    ])
+    expect(JSON.parse(textOf(result))).toEqual([
+      { name: '本', ok: true, before: null, color: 'rtm-olive-pale' },
+      { name: '無いタグ', ok: false, error: 'タグが見つかりません' },
+    ])
+  })
+
+  it('知らない色は受け付けない', async () => {
+    const { api, calls } = fakeApi({})
+    const client = await connect(api)
+    const result = await client.callTool({
+      name: 'set_tag_colors',
+      arguments: { changes: [{ name: '本', color: 'rainbow' }] },
+    })
+    expect(result.isError).toBe(true)
+    expect(calls).toHaveLength(0)
   })
 })
 

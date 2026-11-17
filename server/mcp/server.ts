@@ -5,6 +5,7 @@ import { ITEM_STATUSES, type ItemDetailDto, type ItemDto } from '../../shared/ty
 import type { DiaryDetailDto, DiaryDto, DiarySummaryDto } from '../../shared/types/diary'
 import type { Fetched } from '../../shared/types/fetched'
 import type { SearchHit } from '../../shared/types/search'
+import { RTM_TAG_COLORS, TAG_COLORS, normalizeTagName, type TagDto } from '../../shared/types/tag'
 import { APP_TIME_ZONE, toAppDate } from '../../shared/utils/date'
 
 /**
@@ -262,6 +263,51 @@ export function createMcpServer(api: ApiCall, now: Date = new Date()): McpServer
       annotations: { readOnlyHint: true },
     },
     () => run(() => api('/api/tags')),
+  )
+
+  server.registerTool(
+    'set_tag_colors',
+    {
+      title: 'タグの色を変える',
+      description: [
+        'タグの色をまとめて変える。タグは名前で指定し、無い名前は作らずにエラーとして返す。',
+        `色は Remember The Milk と同じ24色: ${RTM_TAG_COLORS.join(', ')}。`,
+        'null で色を外す（未設定に戻す）。',
+      ].join(''),
+      inputSchema: {
+        changes: z
+          .array(
+            z.object({
+              name: z.string().min(1).describe('タグ名'),
+              color: z.enum(TAG_COLORS).nullable(),
+            }),
+          )
+          .min(1),
+      },
+      annotations: { idempotentHint: true },
+    },
+    ({ changes }) =>
+      run(async () => {
+        const tags = await api<TagDto[]>('/api/tags')
+        const byName = new Map(tags.map((t) => [t.name, t]))
+        // 1件の失敗で残りを止めない。どれが変わったかを1件ずつ返す
+        const results = []
+        for (const { name, color } of changes) {
+          const tag = byName.get(normalizeTagName(name) ?? name)
+          if (!tag) {
+            results.push({ name, ok: false, error: 'タグが見つかりません' })
+            continue
+          }
+          try {
+            const updated = await api<TagDto>(`/api/tags/${tag.id}`, { method: 'PATCH', body: { color } })
+            results.push({ name: updated.name, ok: true, before: tag.color, color: updated.color })
+          } catch (error) {
+            const e = error as { data?: { message?: string }; message?: string }
+            results.push({ name, ok: false, error: e?.data?.message ?? e?.message ?? String(error) })
+          }
+        }
+        return results
+      }),
   )
 
   server.registerTool(
