@@ -8,7 +8,7 @@ import { createMcpServer, type ApiCall } from '~~/server/mcp/server'
  *
  * サイト全体は Vercel の Deployment Protection で守っているが、Claude は
  * そのログインを通れない。Claude からは「Protection Bypass for Automation」の
- * 秘密をヘッダーに付けて届かせ、ここではさらに `MCP_TOKEN` を確かめる。
+ * 秘密を URL のクエリに付けて届かせ、ここではさらに `MCP_TOKEN` を確かめる。
  * バイパスの秘密はサイト全体の鍵なので、MCP だけを別の鍵で閉じておく。
  *
  * `MCP_TOKEN` が無ければ、エンドポイントごと無いものとして扱う。
