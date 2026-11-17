@@ -23,6 +23,7 @@
 | [15-client-state.md](15-client-state.md) | クライアントの状態管理（ストア / 編集の即時反映 / 遅延送信） |
 | [16-macos-app.md](16-macos-app.md) | macOS アプリ（Tauri / 外部リンクを既定のブラウザで開く） |
 | [17-bookmarklet.md](17-bookmarklet.md) | ブックマークレットからの取り込み（Amazon / /share の note） |
+| [18-mcp.md](18-mcp.md) | Claude からの読み書き（MCP サーバー / カスタムコネクタ） |
 
 ## 基本コンセプト
 
