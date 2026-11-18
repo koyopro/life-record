@@ -125,10 +125,10 @@ const selectionCount = useSelectionCount()
 const { open: sidebarOpen, docked: sidebarDocked, toggle: toggleSidebar } = useSidebar()
 
 /**
- * 画面側が `definePageMeta({ hideAddButton: true })` で「＋」を断れる。
- * 共有の受付画面（`/share`）は自前の保存ボタンが同じ場所に来るため。
+ * 画面キーボードが出ている間は、下端の ☰ と ＋ を退ける。入力欄の
+ * 操作ボタン（保存など）と同じ高さに来て重なるため（useVirtualKeyboard）。
  */
-const hideAddButton = computed(() => route.meta.hideAddButton === true)
+const keyboardOpen = useVirtualKeyboard()
 
 const shortcuts: Shortcut[] = [
   {
@@ -245,7 +245,7 @@ useShortcuts(shortcuts)
         （AppSidebar）が同じ場所に出るので、こちらは消す。
       -->
       <button
-        v-if="!sidebarOpen && !selectionCount"
+        v-if="!sidebarOpen && !selectionCount && !keyboardOpen"
         type="button"
         class="menu"
         aria-label="サイドバーの開閉"
@@ -261,7 +261,7 @@ useShortcuts(shortcuts)
         （日記・検索・詳細）からはタスク一覧へ移ってから開く。
       -->
       <button
-        v-if="!selectionCount && !hideAddButton"
+        v-if="!selectionCount && !keyboardOpen"
         type="button"
         class="add"
         aria-label="タスクを追加"
