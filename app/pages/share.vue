@@ -20,6 +20,12 @@ import { buildItemDraft } from '~/utils/item-draft'
  * 足して渡してくるので、メモの欄も出す。
  */
 
+/*
+ * 右下の「＋」（タスクを追加）は出さない。この画面の保存ボタンと
+ * 同じ場所に重なるうえ、ここでやることは共有された内容の保存だけなので要らない。
+ */
+definePageMeta({ hideAddButton: true })
+
 useHead({ title: '共有を受け取る' })
 
 const route = useRoute()

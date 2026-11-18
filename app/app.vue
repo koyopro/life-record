@@ -124,6 +124,12 @@ const selectionCount = useSelectionCount()
  */
 const { open: sidebarOpen, docked: sidebarDocked, toggle: toggleSidebar } = useSidebar()
 
+/**
+ * 画面側が `definePageMeta({ hideAddButton: true })` で「＋」を断れる。
+ * 共有の受付画面（`/share`）は自前の保存ボタンが同じ場所に来るため。
+ */
+const hideAddButton = computed(() => route.meta.hideAddButton === true)
+
 const shortcuts: Shortcut[] = [
   {
     keys: ['t'],
@@ -255,7 +261,7 @@ useShortcuts(shortcuts)
         （日記・検索・詳細）からはタスク一覧へ移ってから開く。
       -->
       <button
-        v-if="!selectionCount"
+        v-if="!selectionCount && !hideAddButton"
         type="button"
         class="add"
         aria-label="タスクを追加"
