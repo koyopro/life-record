@@ -57,7 +57,9 @@ Deployment Protection のままでは、Claude のカスタムコネクタを安
   読ませないためと、Service Worker が画面遷移をすべて殻で返すため（12-offline.md 12.2）。
   ログイン・OAuth・MCP は殻の対象から外してある（`navigateFallbackDenylist`）
 - **ログインが切れたら**: 殻から起きたアプリが API で 401 を受けた時点で、ログインへ移す
-  （`app/plugins/auth.client.ts`）。戻り先は元の画面。未送信の操作は消さない
+  （`app/plugins/auth.client.ts`）。見張るのは `fetch` そのもの。`useFetch` は Nuxt が内部に
+  持つ `$fetch` を使うので、`globalThis.$fetch` を差し替えても届かない（ofetch は呼ぶたびに
+  `globalThis.fetch` を引くので、こちらは効く）。戻り先は元の画面。未送信の操作は消さない
   （401 は送り直しの対象。sync-runner.ts）ので、ログインし直せばそのまま送られる
 - ログアウトは袖の下端。この端末の Cookie を消すだけ。全部を止めたいときは 19.2 のとおり鍵を変える
 
@@ -111,3 +113,8 @@ Claude のコネクタは認証を「サインイン」にして追加する。
 5. Claude のコネクタを追加し直す。URL は `https://<ホスト>/mcp`（クエリなし）、
    認証は「サインイン」。許可画面でパスワードを入れる
 6. 古い鍵を消す。Vercel の Protection Bypass for Automation の秘密と、環境変数 `MCP_TOKEN`
+
+すでにインストールしている端末では、Service Worker が古い版のアプリを返すので、
+ログインが切れても画面がログインへ移らない（手元の IndexedDB の内容で普段どおり動いて
+見え、書いたものは未送信のまま溜まる）。上端の「新しい版があります」で更新するか、
+一度スーパーリロードすると新しい版に入れ替わる。

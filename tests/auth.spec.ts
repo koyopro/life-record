@@ -188,3 +188,16 @@ describe('OAuth', () => {
     expect(verifyToken(config, tokens.refresh_token, 'access')).toBeNull()
   })
 })
+
+describe('isUnauthorizedResponse', () => {
+  const origin = 'https://app.example'
+
+  it('自分の API・画像への 401 だけをログイン切れとみなす', async () => {
+    const { isUnauthorizedResponse } = await import('~/utils/auth-redirect')
+    expect(isUnauthorizedResponse({ status: 401, url: `${origin}/api/tags` }, origin)).toBe(true)
+    expect(isUnauthorizedResponse({ status: 401, url: `${origin}/images/a.png` }, origin)).toBe(true)
+    expect(isUnauthorizedResponse({ status: 200, url: `${origin}/api/tags` }, origin)).toBe(false)
+    expect(isUnauthorizedResponse({ status: 401, url: 'https://s3.example/x' }, origin)).toBe(false)
+    expect(isUnauthorizedResponse({ status: 401, url: `${origin}/oauth/token` }, origin)).toBe(false)
+  })
+})
