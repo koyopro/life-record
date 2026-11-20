@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { createMcpServer, type ApiCall } from '~~/server/mcp/server'
 
@@ -6,19 +5,26 @@ import { createMcpServer, type ApiCall } from '~~/server/mcp/server'
  * Claude のカスタムコネクタから読み書きするための MCP エンドポイント
  * （docs/18-mcp.md）。
  *
- * サイト全体は Vercel の Deployment Protection で守っているが、Claude は
- * そのログインを通れない。Claude からは「Protection Bypass for Automation」の
- * 秘密を URL のクエリに付けて届かせ、ここではさらに `MCP_TOKEN` を確かめる。
- * バイパスの秘密はサイト全体の鍵なので、MCP だけを別の鍵で閉じておく。
+ * OAuth のアクセストークン（`Authorization: Bearer`）で守る（docs/19-auth.md）。
+ * 無いか無効なら 401 と、どこで認可を取ればよいか（`WWW-Authenticate` の
+ * `resource_metadata`）を返す。Claude はそれを見てログインの画面を開く。
  *
- * `MCP_TOKEN` が無ければ、エンドポイントごと無いものとして扱う。
+ * 認証が設定されていなければ、エンドポイントごと無いものとして扱う。
+ * 鍵が無いまま開くと、誰でも読み書きできてしまうため。
  */
 export default defineEventHandler(async (event) => {
-  const expected = process.env.MCP_TOKEN
-  if (!expected) {
+  const config = useAuthConfig()
+  if (!config) {
     throw createError({ statusCode: 404, message: 'Not Found' })
   }
-  if (!isAuthorized(event, expected)) {
+  if (allowCors(event)) return ''
+
+  if (!hasAccessToken(event, config)) {
+    setResponseHeader(
+      event,
+      'www-authenticate',
+      `Bearer resource_metadata="${originOf(event)}/.well-known/oauth-protected-resource"`,
+    )
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
 
@@ -31,10 +37,15 @@ export default defineEventHandler(async (event) => {
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   })
-  // 既存の API を HTTP を介さずに呼ぶ（Nitro の内部呼び出し）
-  // （$fetch の型は全ルートの応答型を展開して重すぎるため、型をほどいて渡す）
+
+  /*
+   * 既存の API を HTTP を介さずに呼ぶ（Nitro の内部呼び出し）。内部呼び出しも
+   * 認証のミドルウェアを通るので、受け取ったアクセストークンをそのまま渡す。
+   * （$fetch の型は全ルートの応答型を展開して重すぎるため、型をほどいて渡す）
+   */
+  const authorization = getHeader(event, 'authorization')!
   const fetchApi = $fetch as unknown as (path: string, options?: object) => Promise<never>
-  const api: ApiCall = (path, options) => fetchApi(path, options)
+  const api: ApiCall = (path, options) => fetchApi(path, { ...options, headers: { authorization } })
   const server = createMcpServer(api)
   await server.connect(transport)
 
@@ -44,15 +55,3 @@ export default defineEventHandler(async (event) => {
     await server.close()
   }
 })
-
-function isAuthorized(event: Parameters<typeof getQuery>[0], expected: string): boolean {
-  const header = getHeader(event, 'authorization')
-  const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
-  // ヘッダーを足せないクライアントのために、クエリでも受ける
-  const query = getQuery(event).token
-  const given = bearer ?? (typeof query === 'string' ? query : undefined)
-  if (!given) return false
-  const a = Buffer.from(given)
-  const b = Buffer.from(expected)
-  return a.length === b.length && timingSafeEqual(a, b)
-}

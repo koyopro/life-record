@@ -39,10 +39,10 @@ export default defineNuxtConfig({
     /*
      * manifest の取得に Cookie を付ける（`crossorigin="use-credentials"`）。
      *
-     * サイト全体を Vercel の Deployment Protection で守っているため
-     * （docs/07-open-questions.md Q3）、Cookie の付かない取得には認証の画面が
-     * 返る。既定では manifest だけが Cookie 無しで取得されるので、これを
-     * 付けないとブラウザは manifest を読めず、インストールできない。
+     * Vercel の Deployment Protection で守っていた頃、Cookie の付かない取得には
+     * 認証の画面が返り、manifest を読めずインストールできなかったため。
+     * 自前の認証（docs/19-auth.md）では manifest は認証の対象外だが、
+     * Deployment Protection へ戻したときに困らないよう残しておく。
      */
     useCredentials: true,
     manifest: {
@@ -113,7 +113,16 @@ export default defineNuxtConfig({
       globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
       // 画面への移動はすべて殻で受ける（API と画像は素通し）
       navigateFallback: '/offline-shell',
-      navigateFallbackDenylist: [/^\/api\//, /^\/images\//],
+      // ログインと OAuth・MCP はサーバーが返す画面なので、殻で受けない（docs/19-auth.md）
+      navigateFallbackDenylist: [
+        /^\/api\//,
+        /^\/images\//,
+        /^\/login/,
+        /^\/logout/,
+        /^\/oauth\//,
+        /^\/\.well-known\//,
+        /^\/mcp/,
+      ],
       /*
        * 古い版のキャッシュは、入れ替えるときに消す。
        * 居座らせると、消えた JS を読もうとして壊れる。

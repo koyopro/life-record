@@ -329,6 +329,10 @@ watch(open, async (value) => {
         >
           ブックマークレット
         </NuxtLink>
+        <!-- サーバーが返す画面へ移るので、NuxtLink ではなく素のフォームで送る -->
+        <form class="foot__logout" method="post" action="/logout">
+          <button type="submit" class="item foot__link foot__link--wide">ログアウト</button>
+        </form>
       </footer>
     </nav>
   </aside>
@@ -519,6 +523,21 @@ watch(open, async (value) => {
 /* 横に並べると狭すぎるものは、行を丸ごと使う */
 .foot__link--wide {
   flex-basis: 100%;
+}
+
+.foot__logout {
+  display: flex;
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* リンクと同じ見た目にそろえる（ボタンの既定の枠と背景を消す） */
+.foot__logout button {
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .group__head {

@@ -166,8 +166,6 @@ DB は GitHub Actions で毎日 `pg_dump` を取り、S3 へ置く
 
 ## 認証
 
-Vercel の Deployment Protection でサイト全体を保護する方針のため、アプリケーション側には認証を実装していない。
-
-> **公開前の確認事項:** Hobby プランでは Deployment Protection が Preview デプロイのみ対象で、
-> Production を保護できない可能性がある。公開前に必ず確認すること。
-> 詳細は [docs/07-open-questions.md](docs/07-open-questions.md) Q3。
+パスワード1つでアプリと MCP（Claude のコネクタ）を守る自前の認証。
+環境変数 `AUTH_SECRET` と `AUTH_PASSWORD_HASH`（`npm run auth:hash` で作る）を設定すると有効になる。
+Deployment Protection からの切り替え手順は [docs/19-auth.md](docs/19-auth.md) 19.5。

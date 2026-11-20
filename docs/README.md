@@ -24,6 +24,7 @@
 | [16-macos-app.md](16-macos-app.md) | macOS アプリ（Tauri / 外部リンクを既定のブラウザで開く） |
 | [17-bookmarklet.md](17-bookmarklet.md) | ブックマークレットからの取り込み（Amazon / /share の note） |
 | [18-mcp.md](18-mcp.md) | Claude からの読み書き（MCP サーバー / カスタムコネクタ） |
+| [19-auth.md](19-auth.md) | 認証（パスワードのログイン / MCP の OAuth） |
 
 ## 基本コンセプト
 

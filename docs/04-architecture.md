@@ -176,10 +176,10 @@ GraphQL や tRPC は、個人用途に対して構成が重くなるため採用
 クイックメモ専用のエンドポイントは設けない。クイックメモも SmartAdd も
 「1行目を解釈して Item を作る」処理は同じで、分けると同じロジックが二重になるため。
 
-すべてのエンドポイントで認証を必須とする（Vercel の Deployment Protection による）。
+すべてのエンドポイントで認証を必須とする（自前のパスワード認証。[19-auth.md](19-auth.md)）。
 
 Claude から読み書きするための MCP エンドポイント（`/mcp`）も持つ。中身はこれらの API を
-呼ぶだけで、認証は別に鍵を確かめる（[18-mcp.md](18-mcp.md)）。
+呼ぶだけで、OAuth のアクセストークンで守る（[18-mcp.md](18-mcp.md)、[19-auth.md](19-auth.md)）。
 
 ### エラー応答
 
@@ -280,10 +280,11 @@ IAM ユーザーを作成し、対象バケットへの最小権限（`s3:PutObj
 | `S3_BUCKET` | バケット名 |
 | `AWS_ACCESS_KEY_ID` | S3 用 IAM アクセスキー |
 | `AWS_SECRET_ACCESS_KEY` | S3 用 IAM シークレット |
-| `MCP_TOKEN` | Claude から `/mcp` に繋ぐための鍵。未設定なら `/mcp` は無効（[18-mcp.md](18-mcp.md)） |
+| `AUTH_SECRET` | ログインと OAuth のトークンの署名に使う秘密（[19-auth.md](19-auth.md)） |
+| `AUTH_PASSWORD_HASH` | ログインのパスワードのハッシュ。`AUTH_SECRET` と両方そろったときだけ認証が有効 |
 
-認証は Vercel の Deployment Protection で行うため、アプリケーション用の認証関連の環境変数は
-`MCP_TOKEN`（Claude からの接続専用）のほかは持たない。
+認証は自前のパスワード認証で行う（[19-auth.md](19-auth.md)）。ユーザーは1人なので、
+ユーザーテーブルは持たず、パスワードのハッシュを環境変数に置く。
 
 Vercel のプロジェクト設定で管理し、リポジトリにはコミットしない。
 

@@ -49,7 +49,12 @@ Drizzle を採用。型がスキーマから導出でき、生成物が軽く、
 
 ## Q3. 認証方式
 
-> **決定: Vercel の Deployment Protection を使う。アプリケーション側に認証は実装しない。**
+> **改訂（2026-11）: 自前のパスワード認証に切り替える（[19-auth.md](19-auth.md)）。**
+> Claude のカスタムコネクタを OAuth で繋ぐには、OAuth の入口を Deployment Protection の
+> 外に出す必要があり、それには有料プランが要るため。アプリと MCP をパスワード1つで守る。
+> 以下は当初の決定の記録。
+>
+> **決定（当初）: Vercel の Deployment Protection を使う。アプリケーション側に認証は実装しない。**
 >
 > **解決済み:** 懸念していた「Hobby プランでは Preview しか保護されない」点は、
 > **Preview 環境を主に使う**ことで回避した。日常利用も Preview の URL に対して行う。
